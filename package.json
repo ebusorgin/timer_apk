@@ -1,0 +1,29 @@
+{
+  "name": "time-app",
+  "version": "1.0.0",
+  "description": "Простое Android приложение для показа времени",
+  "scripts": {
+    "init": "npx cordova platform add android",
+    "build": "node build-script.js",
+    "build:release": "node build-script.js --release",
+    "install": "node install-and-run.js",
+    "run": "npm run build && npm run install",
+    "deploy": "npm run build && npm run install",
+    "check-device": "node check-device.js"
+  },
+  "keywords": [
+    "android",
+    "cordova",
+    "time"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "cordova-android": "^14.0.1"
+  },
+  "cordova": {
+    "platforms": [
+      "android"
+    ]
+  }
+}
