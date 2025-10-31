@@ -1,29 +1,17 @@
-// Стандартная инициализация Cordova
+// Инициализация приложения
 document.addEventListener('deviceready', onDeviceReady, false);
 
-// Для тестирования в браузере (если cordova.js не загружен)
+// Для тестирования в браузере
 if (typeof cordova === 'undefined') {
-    // Запускаем сразу если Cordova не доступен
     window.addEventListener('load', function() {
         setTimeout(onDeviceReady, 500);
     });
 }
 
-let timeFormat24 = false;
-let stopwatchRunning = false;
-let stopwatchTime = 0;
-let stopwatchInterval = null;
+let messageHistory = [];
 let theme = 'default';
-
-// Мировые часы - города и их смещения от UTC
-const worldClocks = [
-    { name: 'Москва', offset: 3 },
-    { name: 'Нью-Йорк', offset: -5 },
-    { name: 'Лондон', offset: 0 },
-    { name: 'Токио', offset: 9 },
-    { name: 'Пекин', offset: 8 },
-    { name: 'Дубай', offset: 4 }
-];
+let isSending = false;
+let currentModel = CONFIG.MODEL;
 
 function onDeviceReady() {
     // Скрываем splash screen если он есть
@@ -31,12 +19,86 @@ function onDeviceReady() {
         navigator.splashscreen.hide();
     }
     
+    loadModel();
     initTheme();
-    updateTime();
-    initStopwatch();
-    initWorldClocks();
-    setInterval(updateTime, 1000);
-    setInterval(updateWorldClocks, 1000);
+    initModelSelector();
+    loadHistory();
+    renderMessages();
+    initEventListeners();
+}
+
+function loadModel() {
+    const saved = localStorage.getItem('selectedModel');
+    if (saved && CONFIG.AVAILABLE_MODELS.find(m => m.id === saved)) {
+        currentModel = saved;
+    }
+    updateModelDisplay();
+}
+
+function initModelSelector() {
+    const dropdown = document.getElementById('modelDropdown');
+    const modelBtn = document.getElementById('modelBtn');
+    
+    // Создаем опции моделей
+    CONFIG.AVAILABLE_MODELS.forEach(model => {
+        const option = document.createElement('div');
+        option.className = 'model-option';
+        if (model.id === currentModel) {
+            option.classList.add('active');
+        }
+        
+        option.innerHTML = `
+            <div class="model-option-name">${model.name}</div>
+            <div class="model-option-desc">${model.description}</div>
+        `;
+        
+        option.addEventListener('click', () => {
+            currentModel = model.id;
+            localStorage.setItem('selectedModel', currentModel);
+            updateModelDisplay();
+            closeModelDropdown();
+        });
+        
+        dropdown.appendChild(option);
+    });
+    
+    // Открытие/закрытие dropdown
+    modelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleModelDropdown();
+    });
+    
+    // Закрытие при клике вне
+    document.addEventListener('click', () => {
+        closeModelDropdown();
+    });
+}
+
+function updateModelDisplay() {
+    const model = CONFIG.AVAILABLE_MODELS.find(m => m.id === currentModel);
+    if (model) {
+        document.getElementById('currentModelName').textContent = model.name;
+    }
+    
+    // Обновляем активную опцию в dropdown
+    document.querySelectorAll('.model-option').forEach(opt => {
+        opt.classList.remove('active');
+        const modelName = opt.querySelector('.model-option-name').textContent;
+        const model = CONFIG.AVAILABLE_MODELS.find(m => m.name === modelName);
+        if (model && model.id === currentModel) {
+            opt.classList.add('active');
+        }
+    });
+}
+
+function toggleModelDropdown() {
+    const dropdown = document.getElementById('modelDropdown');
+    dropdown.classList.toggle('show');
+}
+
+function closeModelDropdown() {
+    const dropdown = document.getElementById('modelDropdown');
+    dropdown.classList.remove('show');
 }
 
 function initTheme() {
@@ -57,156 +119,262 @@ function setTheme(newTheme) {
     
     if (newTheme === 'dark') {
         document.body.classList.add('dark-theme');
-        document.getElementById('themeToggle').textContent = '☀️ Светлая тема';
+        document.getElementById('themeToggle').textContent = '☀️ Светлая';
     } else if (newTheme === 'light') {
         document.body.classList.add('light-theme');
-        document.getElementById('themeToggle').textContent = '🌙 Темная тема';
+        document.getElementById('themeToggle').textContent = '🌙 Темная';
     } else {
-        document.getElementById('themeToggle').textContent = '🌙 Темная тема';
+        document.getElementById('themeToggle').textContent = '🌙 Темная';
     }
+    
     localStorage.setItem('theme', newTheme);
 }
 
-function updateTime() {
-    const now = new Date();
-    const timeElement = document.getElementById('time');
+function initEventListeners() {
+    const sendBtn = document.getElementById('sendBtn');
+    const messageInput = document.getElementById('messageInput');
+    const clearBtn = document.getElementById('clearBtn');
     
-    let hours = now.getHours();
-    let minutes = String(now.getMinutes()).padStart(2, '0');
-    let seconds = String(now.getSeconds()).padStart(2, '0');
-    let ampm = '';
+    sendBtn.addEventListener('click', sendMessage);
+    clearBtn.addEventListener('click', clearHistory);
     
-    if (!timeFormat24) {
-        ampm = hours >= 12 ? ' PM' : ' AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12;
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    // Автоматическое изменение высоты textarea
+    messageInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+}
+
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    const messageText = messageInput.value.trim();
+    
+    // Проверяем что есть текст
+    if (!messageText || isSending) {
+        if (!messageText) {
+            showError('Введите сообщение');
+        }
+        return;
     }
     
-    const timeString = String(hours).padStart(2, '0') + ':' + minutes + ':' + seconds + ampm;
-    timeElement.textContent = timeString;
+    // Проверяем наличие API ключа
+    if (!CONFIG || !CONFIG.OPENAI_API_KEY || CONFIG.OPENAI_API_KEY === 'your-api-key-here') {
+        showError('API ключ не настроен! Проверьте файл config.js');
+        return;
+    }
     
-    // Анимация при изменении секунд
-    timeElement.classList.add('animate');
-    setTimeout(() => timeElement.classList.remove('animate'), 1000);
+    // Добавляем сообщение пользователя
+    addMessage('user', messageText);
     
-    // Обновление даты
-    const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-    const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 
-                    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    messageInput.value = '';
+    messageInput.style.height = 'auto';
     
-    const dayName = days[now.getDay()];
-    const day = now.getDate();
-    const month = months[now.getMonth()];
-    const year = now.getFullYear();
-    const dateString = `${dayName}, ${day} ${month} ${year}`;
+    // Показываем индикатор загрузки
+    setLoading(true);
+    isSending = true;
     
-    document.getElementById('date').textContent = dateString;
-    document.getElementById('dayOfWeek').textContent = dayName;
+    // Отправляем запрос к GPT
+    sendToGPT(messageText)
+        .then(response => {
+            addMessage('assistant', response);
+            saveHistory();
+        })
+        .catch(error => {
+            showError('Ошибка: ' + error.message);
+        })
+        .finally(() => {
+            setLoading(false);
+            isSending = false;
+        });
+}
+
+async function sendToGPT(userMessage) {
+    // Добавляем сообщение пользователя в историю
+    messageHistory.push({
+        role: 'user',
+        content: userMessage
+    });
     
-    // Определение времени года
-    const monthNum = now.getMonth() + 1;
-    let season = '';
-    if (monthNum >= 3 && monthNum <= 5) {
-        season = '🌱 Весна';
-    } else if (monthNum >= 6 && monthNum <= 8) {
-        season = '☀️ Лето';
-    } else if (monthNum >= 9 && monthNum <= 11) {
-        season = '🍂 Осень';
+    try {
+        // Формируем сообщения для API
+        const apiMessages = messageHistory.map(msg => ({
+            role: msg.role,
+            content: msg.content
+        }));
+        
+        // Проверяем что модель существует
+        const modelExists = CONFIG.AVAILABLE_MODELS.find(m => m.id === currentModel);
+        if (!modelExists) {
+            throw new Error('Модель не найдена: ' + currentModel);
+        }
+        
+        const requestBody = {
+            model: currentModel,
+            messages: apiMessages,
+            temperature: 0.7,
+            max_tokens: 4096
+        };
+        
+        const response = await fetch(CONFIG.OPENAI_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}`
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorData = {};
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                // Игнорируем ошибку парсинга
+            }
+            
+            let errorMessage = 'Ошибка API';
+            
+            if (response.status === 401) {
+                errorMessage = 'Неверный API ключ';
+            } else if (response.status === 429) {
+                errorMessage = 'Превышен лимит запросов. Подождите немного.';
+            } else if (response.status === 402) {
+                errorMessage = 'Недостаточно средств на счету API';
+            } else if (errorData.error) {
+                errorMessage = errorData.error.message || errorData.error.type || errorMessage;
+                // Если модель не поддерживается, предлагаем решение
+                if (errorMessage.includes('model') && (errorMessage.includes('not found') || errorMessage.includes('invalid'))) {
+                    errorMessage += '. Попробуйте выбрать другую модель.';
+                }
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const data = await response.json();
+        const assistantMessage = data.choices[0].message.content;
+        
+        // Добавляем ответ ассистента в историю
+        messageHistory.push({
+            role: 'assistant',
+            content: assistantMessage
+        });
+        
+        return assistantMessage;
+        
+    } catch (error) {
+        // Удаляем сообщение пользователя из истории при ошибке
+        messageHistory.pop();
+        throw error;
+    }
+}
+
+function addMessage(role, content) {
+    // Убираем empty state если он есть
+    const messagesArea = document.getElementById('messagesArea');
+    const emptyState = messagesArea.querySelector('.empty-state');
+    if (emptyState) {
+        emptyState.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${role}`;
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.textContent = content;
+    
+    messageDiv.appendChild(contentDiv);
+    messagesArea.appendChild(messageDiv);
+    
+    // Прокручиваем вниз
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+}
+
+function setLoading(loading) {
+    const sendBtn = document.getElementById('sendBtn');
+    if (loading) {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<div class="loading"></div>';
+        // Показываем индикатор загрузки в чате
+        const messagesArea = document.getElementById('messagesArea');
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'message assistant';
+        loadingDiv.id = 'loadingMessage';
+        loadingDiv.innerHTML = '<div class="message-content"><div class="loading"></div> Думаю...</div>';
+        messagesArea.appendChild(loadingDiv);
+        messagesArea.scrollTop = messagesArea.scrollHeight;
     } else {
-        season = '❄️ Зима';
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '➤';
+        // Удаляем индикатор загрузки
+        const loadingMsg = document.getElementById('loadingMessage');
+        if (loadingMsg) {
+            loadingMsg.remove();
+        }
     }
-    document.getElementById('season').textContent = season;
 }
 
-function initStopwatch() {
-    document.getElementById('stopwatchStart').addEventListener('click', () => {
-        if (!stopwatchRunning) {
-            stopwatchRunning = true;
-            const startTime = Date.now() - stopwatchTime;
-            stopwatchInterval = setInterval(() => {
-                stopwatchTime = Date.now() - startTime;
-                updateStopwatchDisplay();
-            }, 10);
+function showError(message) {
+    addMessage('assistant', `❌ ${message}`);
+}
+
+function clearHistory() {
+    if (confirm('Очистить всю историю разговора?')) {
+        messageHistory = [];
+        localStorage.removeItem('chatHistory');
+        renderMessages();
+    }
+}
+
+function saveHistory() {
+    localStorage.setItem('chatHistory', JSON.stringify(messageHistory));
+}
+
+function loadHistory() {
+    const saved = localStorage.getItem('chatHistory');
+    if (saved) {
+        try {
+            messageHistory = JSON.parse(saved);
+        } catch (e) {
+            console.error('Ошибка загрузки истории:', e);
+            messageHistory = [];
         }
-    });
-    
-    document.getElementById('stopwatchStop').addEventListener('click', () => {
-        if (stopwatchRunning) {
-            stopwatchRunning = false;
-            clearInterval(stopwatchInterval);
-        }
-    });
-    
-    document.getElementById('stopwatchReset').addEventListener('click', () => {
-        stopwatchRunning = false;
-        stopwatchTime = 0;
-        clearInterval(stopwatchInterval);
-        updateStopwatchDisplay();
-    });
+    }
 }
 
-function updateStopwatchDisplay() {
-    const totalMs = stopwatchTime;
-    const hours = Math.floor(totalMs / 3600000);
-    const minutes = Math.floor((totalMs % 3600000) / 60000);
-    const seconds = Math.floor((totalMs % 60000) / 1000);
-    const ms = Math.floor((totalMs % 1000) / 10);
+function renderMessages() {
+    const messagesArea = document.getElementById('messagesArea');
+    messagesArea.innerHTML = '';
     
-    const display = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
-    document.getElementById('stopwatch').textContent = display;
-}
-
-function initWorldClocks() {
-    const worldClockElement = document.getElementById('worldClock');
-    worldClocks.forEach(clock => {
-        const item = document.createElement('div');
-        item.className = 'world-clock-item';
-        item.innerHTML = `<span>${clock.name}</span><span class="world-time" data-offset="${clock.offset}">--:--:--</span>`;
-        worldClockElement.appendChild(item);
-    });
-}
-
-function updateWorldClocks() {
-    const now = new Date();
-    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    if (messageHistory.length === 0) {
+        messagesArea.innerHTML = `
+            <div class="empty-state">
+                <h2>Начните разговор</h2>
+                <p>Напишите сообщение ниже</p>
+            </div>
+        `;
+        return;
+    }
     
-    document.querySelectorAll('.world-time').forEach(element => {
-        const offset = parseInt(element.getAttribute('data-offset'));
-        const cityTime = new Date(utcTime + (offset * 3600000));
-        
-        let hours = cityTime.getHours();
-        let minutes = String(cityTime.getMinutes()).padStart(2, '0');
-        let seconds = String(cityTime.getSeconds()).padStart(2, '0');
-        
-        if (!timeFormat24) {
-            const ampm = hours >= 12 ? ' PM' : ' AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            element.textContent = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}${ampm}`;
+    messageHistory.forEach(msg => {
+        if (typeof msg.content === 'string') {
+            addMessage(msg.role, msg.content);
         } else {
-            element.textContent = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+            // Fallback для старых форматов
+            addMessage(msg.role, msg.content || '');
         }
     });
-}
-
-// Переключение формата времени
-document.getElementById('format24').addEventListener('click', () => {
-    timeFormat24 = true;
-    document.getElementById('format24').classList.add('active');
-    document.getElementById('format12').classList.remove('active');
-    updateTime();
-    updateWorldClocks();
-});
-
-document.getElementById('format12').addEventListener('click', () => {
-    timeFormat24 = false;
-    document.getElementById('format12').classList.add('active');
-    document.getElementById('format24').classList.remove('active');
-    updateTime();
-    updateWorldClocks();
-});
-
-// Fallback для браузера - запускаем сразу если код уже выполняется
-if (document.readyState === 'complete' && typeof cordova === 'undefined') {
-    setTimeout(onDeviceReady, 100);
+    
+    // Прокручиваем вниз
+    setTimeout(() => {
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+    }, 100);
 }

@@ -53,6 +53,9 @@ Thumbs.db
 .env
 .env.local
 
+# Config files with API keys
+www/js/config.js
+
 # Build scripts cache
 build/
 dist/

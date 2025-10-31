@@ -1,7 +1,7 @@
 {
-  "name": "time-app",
+  "name": "gpt-chat-app",
   "version": "1.0.0",
-  "description": "Простое Android приложение для показа времени",
+  "description": "Простое Android приложение для общения с GPT",
   "scripts": {
     "init": "npx cordova platform add android",
     "build": "node build-script.js",
@@ -14,7 +14,9 @@
   "keywords": [
     "android",
     "cordova",
-    "time"
+    "gpt",
+    "chat",
+    "openai"
   ],
   "author": "",
   "license": "ISC",

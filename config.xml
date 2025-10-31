@@ -1,8 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget id="com.example.timeapp" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-    <name>TimeApp</name>
+    <name>GPT Chat</name>
     <description>
-        Простое приложение для показа текущего времени
+        Простое приложение для общения с GPT
     </description>
     <author email="dev@example.com" href="https://example.com">
         Your Name
