@@ -104,14 +104,47 @@ if (!fs.existsSync(gradlewPath) || !fs.existsSync(gradleWrapperJar)) {
         const originalDir = process.cwd();
         process.chdir(platformsPath);
         try {
+            // Используем пустой проект из tools для создания wrapper без AGP требований
+            const toolsPath = path.join(platformsPath, 'tools');
+            if (fs.existsSync(toolsPath)) {
+                process.chdir(toolsPath);
+                console.log('Использование tools проекта для создания wrapper...');
+            }
+            
             // Создаем wrapper с нужной версией
             execSync(`gradle wrapper --gradle-version ${gradleVersion}`, { stdio: 'inherit' });
+            
+            // Копируем созданный wrapper в корень платформы если создался в tools
+            if (process.cwd() !== platformsPath) {
+                const toolsGradlew = path.join(toolsPath, 'gradlew.bat');
+                const toolsGradleDir = path.join(toolsPath, 'gradle');
+                if (fs.existsSync(toolsGradlew) && fs.existsSync(toolsGradleDir)) {
+                    console.log('Копирование wrapper из tools в корень платформы...');
+                    fs.copyFileSync(toolsGradlew, gradlewPath);
+                    fs.copyFileSync(toolsGradlew.replace('.bat', ''), gradlewPath.replace('.bat', ''));
+                    
+                    const wrapperDest = path.join(platformsPath, 'gradle', 'wrapper');
+                    if (!fs.existsSync(wrapperDest)) {
+                        fs.mkdirSync(wrapperDest, { recursive: true });
+                    }
+                    const wrapperJar = path.join(toolsGradleDir, 'wrapper', 'gradle-wrapper.jar');
+                    const wrapperProps = path.join(toolsGradleDir, 'wrapper', 'gradle-wrapper.properties');
+                    if (fs.existsSync(wrapperJar)) {
+                        fs.copyFileSync(wrapperJar, gradleWrapperJar);
+                    }
+                    if (fs.existsSync(wrapperProps)) {
+                        fs.copyFileSync(wrapperProps, path.join(wrapperDest, 'gradle-wrapper.properties'));
+                    }
+                }
+                process.chdir(platformsPath);
+            }
+            
             console.log('✅ Gradle Wrapper создан!');
         } catch (error) {
             console.warn('Не удалось создать wrapper через системный Gradle:', error.message);
             // Продолжаем попытку создать wrapper через другие методы
+            process.chdir(originalDir);
         }
-        process.chdir(originalDir);
     } catch (gradleError) {
         console.log('Системный Gradle не найден, проверяем другие варианты...');
     }
