@@ -41,14 +41,28 @@ jobs:
             # Клонирование или обновление репозитория
             cd /opt/voice-room
             if [ -d ".git" ]; then
+              echo "Обновление существующего репозитория..."
               sudo -u voice-room git fetch origin || true
               sudo -u voice-room git reset --hard origin/$BRANCH || sudo -u voice-room git reset --hard origin/master || true
               sudo -u voice-room git clean -fd || true
             else
-              rm -rf /opt/voice-room/*
+              echo "Клонирование нового репозитория..."
+              rm -rf /opt/voice-room/* /opt/voice-room/.* 2>/dev/null || true
               sudo -u voice-room git clone $GIT_REPO_URL .
             fi
             chown -R voice-room:voice-room /opt/voice-room
+            
+            # Проверка наличия необходимых файлов
+            echo "Проверка структуры проекта..."
+            ls -la /opt/voice-room/ | head -20
+            if [ ! -f "/opt/voice-room/server/server.mjs" ]; then
+              echo "⚠️ server/server.mjs не найден! Проверяю структуру..."
+              find /opt/voice-room -name "*.mjs" -o -name "server.mjs" | head -10
+              echo "Содержимое директории:"
+              ls -la /opt/voice-room/server/ 2>/dev/null || echo "Директория server не существует"
+              exit 1
+            fi
+            echo "✅ Файл server/server.mjs найден"
             
             # Выполнение скрипта настройки или деплоя
             if [ -f "deploy.sh" ]; then
@@ -126,6 +140,11 @@ jobs:
               echo "⚠️ Application not responding, checking logs..."
               journalctl -u voice-room -n 30 --no-pager || true
               ps aux | grep node | grep -v grep || echo "No node process found"
+              echo "Проверка структуры проекта на сервере:"
+              ls -la /opt/voice-room/ | head -20
+              ls -la /opt/voice-room/server/ 2>/dev/null || echo "Директория server не существует"
+              echo "Проверка файла:"
+              test -f /opt/voice-room/server/server.mjs && echo "✅ server.mjs существует" || echo "❌ server.mjs НЕ существует"
               exit 1
             fi
             echo "✅ Deployment verified successfully"
