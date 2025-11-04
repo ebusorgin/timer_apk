@@ -6,6 +6,23 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Функция для рекурсивного копирования директории
+function copyDirSync(src, dest) {
+    if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+    }
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+            copyDirSync(srcPath, destPath);
+        } else {
+            fs.copyFileSync(srcPath, destPath);
+        }
+    }
+}
+
 // Проверка наличия необходимых папок
 const wwwPath = path.join(__dirname, 'www');
 if (!fs.existsSync(wwwPath)) {
@@ -39,12 +56,44 @@ if (!fs.existsSync(platformsPath)) {
 
 // Подготавливаем файлы (копируем www в platforms)
 console.log('Подготовка файлов...');
+let prepareFailed = false;
 try {
     execSync('npx cordova prepare android', { stdio: 'inherit' });
     console.log('Файлы подготовлены.');
 } catch (error) {
-    console.error('Ошибка при подготовке файлов:', error.message);
-    process.exit(1);
+    console.warn('⚠️  Ошибка при подготовке файлов через Cordova:', error.message);
+    console.log('Попытка восстановления платформы Android...');
+    
+    // Пробуем пересоздать платформу
+    try {
+        console.log('Удаление поврежденной платформы...');
+        if (fs.existsSync(platformsPath)) {
+            execSync('npx cordova platform remove android', { stdio: 'pipe' });
+        }
+        console.log('Добавление платформы заново...');
+        execSync('npx cordova platform add android', { stdio: 'inherit' });
+        console.log('Платформа восстановлена. Повторная попытка prepare...');
+        execSync('npx cordova prepare android', { stdio: 'inherit' });
+        console.log('✅ Файлы подготовлены после восстановления.');
+    } catch (recoveryError) {
+        console.warn('⚠️  Восстановление не удалось:', recoveryError.message);
+        console.log('Продолжаем сборку без prepare (файлы могут быть устаревшими)...');
+        prepareFailed = true;
+        
+        // Проверяем, есть ли хотя бы основные файлы
+        const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
+        if (!fs.existsSync(wwwDest)) {
+            console.log('Копирование www файлов вручную...');
+            const wwwSrc = path.join(__dirname, 'www');
+            if (fs.existsSync(wwwSrc)) {
+                // Создаем директорию если её нет
+                fs.mkdirSync(wwwDest, { recursive: true });
+                // Копируем файлы
+                copyDirSync(wwwSrc, wwwDest);
+                console.log('✅ www файлы скопированы вручную.');
+            }
+        }
+    }
 }
 
 // Проверяем наличие Gradle Wrapper и используем его напрямую для сборки

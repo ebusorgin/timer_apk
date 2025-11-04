@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "init": "npx cordova platform add android",
+    "platform:rebuild": "npx cordova platform remove android && npx cordova platform add android",
     "build": "node build-script.js",
     "build:release": "node build-script.js --release",
     "install:device": "node install-and-run.js",
