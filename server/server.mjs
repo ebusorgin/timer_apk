@@ -307,18 +307,27 @@ io.on('connection', (socket) => {
     console.log('✅ Client connected:', socket.id);
 
     socket.on('create-room', ({ username }, callback) => {
+        console.log('📝 Received create-room request from socket:', socket.id);
+        console.log('📝 Username:', username);
+        console.log('📝 Callback type:', typeof callback);
+        
+        // Проверяем что callback существует
+        if (!callback || typeof callback !== 'function') {
+            console.error('❌ Callback is not a function or missing');
+            socket.emit('room-created-error', { error: 'Server error: callback not available' });
+            return;
+        }
+        
         // Валидация username
         const usernameValidation = validateUsername(username);
         if (!usernameValidation.valid) {
             console.error('❌ Invalid username:', usernameValidation.error);
-            if (callback && typeof callback === 'function') {
-                callback({ error: usernameValidation.error });
-            }
+            callback({ error: usernameValidation.error });
             return;
         }
         
         const sanitizedUsername = usernameValidation.username;
-        console.log('📝 Creating room for user:', sanitizedUsername);
+        console.log('✅ Creating room for user:', sanitizedUsername);
         
         const roomId = generateRoomId();
         const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -330,13 +339,14 @@ io.on('connection', (socket) => {
         });
         
         socket.join(roomId);
-        console.log('✅ Room created:', roomId, 'User ID:', userId);
+        console.log('✅ Room created:', roomId, 'User ID:', userId, 'Socket ID:', socket.id);
         
-        if (callback && typeof callback === 'function') {
+        try {
             callback({ roomId, userId });
-        } else {
-            console.error('❌ Callback is not a function');
-            socket.emit('room-created', { roomId, userId });
+            console.log('✅ Callback called successfully');
+        } catch (error) {
+            console.error('❌ Error calling callback:', error);
+            socket.emit('room-created-error', { error: 'Server error calling callback' });
         }
     });
 
