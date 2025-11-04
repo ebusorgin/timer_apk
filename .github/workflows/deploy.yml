@@ -28,10 +28,17 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           script: |
-            cd /opt/voice-room
             export GIT_REPO_URL="${{ secrets.GIT_REPO_URL || 'https://github.com/ebusorgin/timer_apk.git' }}"
             BRANCH="${{ github.ref_name }}"
-            bash deploy.sh $BRANCH
+            if [ ! -d "/opt/voice-room" ]; then
+              mkdir -p /opt/voice-room
+              cd /opt/voice-room
+              git clone $GIT_REPO_URL .
+              chown -R voice-room:voice-room /opt/voice-room || useradd -r -s /bin/bash -d /opt/voice-room -m voice-room
+            else
+              cd /opt/voice-room
+            fi
+            bash deploy.sh $BRANCH || bash deploy.sh master || bash deploy.sh main
             
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.0
