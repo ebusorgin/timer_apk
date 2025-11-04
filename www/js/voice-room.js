@@ -77,51 +77,17 @@ const VoiceRoom = {
         this.initElements();
         
         // Инициализация настроек сервера (для Cordova)
-        this.initServerConfig();
-        
         // Загрузка сохраненного имени
         this.loadSavedUsername();
         
         // Настройка событий
         this.setupEventListeners();
         
-        // Инициализация Socket.IO (после настройки сервера)
+        // Инициализация Socket.IO
         this.initSocket();
         
         // Автоподключение по URL параметру
         this.handleUrlParams();
-    },
-    
-    initServerConfig() {
-        // Определяем, показывать ли поле настройки сервера
-        // Показываем в Cordova или на мобильных устройствах
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const isCordovaApp = App.isCordova || window.location.protocol === 'file:' || typeof cordova !== 'undefined';
-        const hasSavedUrl = App.getServerUrl() !== null;
-        
-        // Показываем поле если: Cordova приложение, мобильное устройство, или есть сохраненный URL
-        const showServerConfig = isCordovaApp || isMobile || hasSavedUrl;
-        
-        console.log('Server config - isCordova:', App.isCordova, 'isMobile:', isMobile, 'showConfig:', showServerConfig);
-        
-        if (this.elements.serverConfigContainer) {
-            if (showServerConfig) {
-                // Показываем поле настройки
-                this.elements.serverConfigContainer.style.display = 'block';
-            } else {
-                // В браузере на десктопе скрываем
-                this.elements.serverConfigContainer.style.display = 'none';
-            }
-        }
-        
-        // Загружаем сохраненный URL
-        const savedUrl = App.getServerUrl();
-        if (savedUrl && this.elements.serverUrlInput) {
-            this.elements.serverUrlInput.value = savedUrl;
-        } else if (this.elements.serverUrlInput) {
-            // Устанавливаем placeholder с примером
-            this.elements.serverUrlInput.placeholder = '192.168.1.100:3000';
-        }
     },
     
     initSocket() {
@@ -431,12 +397,6 @@ const VoiceRoom = {
         if (this.elements.usernameInput) {
             this.elements.usernameInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !this.currentRoomId) this.createRoom();
-            });
-        }
-        
-        if (this.elements.serverUrlInput) {
-            this.elements.serverUrlInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.saveServerUrl();
             });
         }
     },
