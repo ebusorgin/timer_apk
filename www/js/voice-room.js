@@ -252,31 +252,96 @@ const VoiceRoom = {
         this.socket.on('offer', async ({ offer, fromUserId }) => {
             try {
                 const peer = this.peers.get(fromUserId);
-                if (peer) {
+                if (!peer) {
+                    console.warn('Peer not found for offer from:', fromUserId);
+                    return;
+                }
+                
+                console.log('Received offer from:', fromUserId, 'Peer state:', peer.signalingState);
+                
+                // Проверяем что мы можем установить remote description
+                // Мы можем установить remote offer только если:
+                // 1. Peer в состоянии 'stable' (еще нет local description)
+                // 2. Или в состоянии 'have-local-offer' (уже есть local offer, но мы можем заменить)
+                if (peer.signalingState === 'stable') {
+                    // Нормальный случай - устанавливаем remote offer, создаем answer
                     await peer.setRemoteDescription(new RTCSessionDescription(offer));
+                    console.log('Remote description (offer) set for:', fromUserId);
+                    
                     const answer = await peer.createAnswer();
                     await peer.setLocalDescription(answer);
+                    console.log('Local description (answer) set for:', fromUserId);
+                    
                     this.socket.emit('answer', { 
                         roomId: this.currentRoomId, 
                         answer, 
                         targetUserId: fromUserId, 
                         fromUserId: this.myUserId 
                     });
+                } else if (peer.signalingState === 'have-local-offer') {
+                    // У нас уже есть local offer, значит мы тоже создали offer одновременно
+                    // В этом случае устанавливаем remote offer и создаем answer (Rollback)
+                    console.log('Both peers created offer, handling rollback for:', fromUserId);
+                    await peer.setRemoteDescription(new RTCSessionDescription(offer));
+                    console.log('Remote description (offer) set for:', fromUserId);
+                    
+                    // Если у нас уже есть local offer, нужно создать answer
+                    if (peer.localDescription && peer.localDescription.type === 'offer') {
+                        const answer = await peer.createAnswer();
+                        await peer.setLocalDescription(answer);
+                        console.log('Local description (answer) set for:', fromUserId);
+                        
+                        this.socket.emit('answer', { 
+                            roomId: this.currentRoomId, 
+                            answer, 
+                            targetUserId: fromUserId, 
+                            fromUserId: this.myUserId 
+                        });
+                    }
+                } else {
+                    console.warn('Cannot set remote description, peer state:', peer.signalingState);
+                    return;
                 }
             } catch (error) {
                 console.error('Error handling offer:', error);
-                this.showNotification('Ошибка при установке соединения', 'error', 3000);
+                console.error('Error details:', {
+                    fromUserId,
+                    peerExists: !!this.peers.get(fromUserId),
+                    peerState: this.peers.get(fromUserId)?.signalingState
+                });
+                // Не показываем уведомление для каждой ошибки, только логируем
             }
         });
         
         this.socket.on('answer', async ({ answer, fromUserId }) => {
             try {
                 const peer = this.peers.get(fromUserId);
-                if (peer) {
-                    await peer.setRemoteDescription(new RTCSessionDescription(answer));
+                if (!peer) {
+                    console.warn('Peer not found for answer from:', fromUserId);
+                    return;
                 }
+                
+                console.log('Received answer from:', fromUserId, 'Peer state:', peer.signalingState);
+                
+                // Проверяем что мы можем установить remote description
+                // Answer можно установить только когда local description (offer) уже установлен
+                if (peer.signalingState !== 'have-local-offer') {
+                    console.warn('Cannot set remote answer, peer state:', peer.signalingState, 'Expected: have-local-offer');
+                    return;
+                }
+                
+                await peer.setRemoteDescription(new RTCSessionDescription(answer));
+                console.log('Remote description (answer) set for:', fromUserId);
             } catch (error) {
                 console.error('Error handling answer:', error);
+                console.error('Error details:', {
+                    fromUserId,
+                    peerExists: !!this.peers.get(fromUserId),
+                    peerState: this.peers.get(fromUserId)?.signalingState,
+                    errorName: error.name,
+                    errorMessage: error.message
+                });
+                // Не показываем уведомление, только логируем
             }
         });
         
