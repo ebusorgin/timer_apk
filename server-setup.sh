@@ -246,14 +246,14 @@ User=voice-room
 WorkingDirectory=/opt/voice-room
 Environment="NODE_ENV=production"
 Environment="PORT=3000"
-Environment="HOST=127.0.0.1"
+Environment="HOST=0.0.0.0"
 Environment="CORS_ORIGIN=https://aiternitas.ru"
 EnvironmentFile=-/opt/voice-room/.env
 ExecStart=/usr/bin/node server/server.mjs
 Restart=always
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=voice-room
 
 # Безопасность
