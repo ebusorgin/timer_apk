@@ -180,7 +180,33 @@
         })();
     </script>
     
-    <!-- Cordova script (загружается только в Cordova) -->
-    <script type="text/javascript" src="cordova.js"></script>
+    <!-- Cordova script (загружается только в Cordova окружении) -->
+    <script type="text/javascript">
+        // Загружаем cordova.js только если это действительно Cordova окружение
+        // Проверяем через протокол file:// или наличие специфичных для Cordova объектов
+        (function() {
+            // В браузере протокол будет http:// или https://
+            // В Cordova приложении может быть file:// или cordova://
+            const isCordova = window.location.protocol === 'file:' || 
+                             window.location.protocol === 'cordova:' ||
+                             (window.navigator && window.navigator.standalone) ||
+                             /Cordova/i.test(navigator.userAgent);
+            
+            if (isCordova) {
+                // В Cordova окружении cordova.js должен быть доступен локально
+                const cordovaScript = document.createElement('script');
+                cordovaScript.src = 'cordova.js';
+                cordovaScript.onerror = function() {
+                    // Игнорируем ошибку загрузки - это нормально если файл не найден
+                    console.log('Cordova.js загружается...');
+                };
+                document.head.appendChild(cordovaScript);
+            } else {
+                // В браузере не загружаем cordova.js вообще
+                // Сервер вернет пустой placeholder, чтобы избежать 404 ошибок
+                console.log('Браузерное окружение - cordova.js не требуется');
+            }
+        })();
+    </script>
 </body>
 </html>

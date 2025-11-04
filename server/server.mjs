@@ -33,6 +33,22 @@ if (!existsSync(wwwPath)) {
 }
 
 // Используем www папку как статические файлы (общая папка для веб и Cordova)
+// Обработка cordova.js - возвращаем пустой файл для браузера (в Cordova он будет доступен локально)
+app.get('/cordova.js', (req, res) => {
+    // Проверяем наличие реального файла cordova.js
+    const cordovaPath = path.join(wwwPath, 'cordova.js');
+    if (existsSync(cordovaPath)) {
+        // Если файл существует, отдаем его (для разработки)
+        res.type('application/javascript');
+        createReadStream(cordovaPath).pipe(res);
+    } else {
+        // Если файла нет (что нормально для веб-версии), возвращаем пустой JS файл
+        // Это предотвращает 404 ошибки и проблемы с MIME type
+        res.type('application/javascript');
+        res.send('// Cordova.js placeholder - этот файл доступен только в Cordova приложении\n');
+    }
+});
+
 app.use(express.static(wwwPath));
 
 // Эндпоинт для скачивания APK
