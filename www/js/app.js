@@ -19,34 +19,13 @@ const App = {
         return typeof window !== 'undefined' && !this.isCordova;
     },
     
-    // Получить сохраненный URL сервера
-    getServerUrl() {
-        const saved = localStorage.getItem('voiceRoomServerUrl');
-        if (saved) {
-            return saved;
-        }
-        return null;
-    },
-    
-    // Сохранить URL сервера
-    setServerUrl(url) {
-        localStorage.setItem('voiceRoomServerUrl', url);
-    },
-    
     // Определение URL для Socket.IO
     getSocketUrl() {
-        if (this.isCordova) {
-            // В Cordova используем сохраненный IP или localhost по умолчанию
-            const savedUrl = this.getServerUrl();
-            if (savedUrl) {
-                return savedUrl;
-            }
-            // Пробуем localhost (работает только в эмуляторе)
-            return 'http://localhost:3000';
-        } else {
-            // В браузере используем текущий хост
+        // Всегда используем текущий хост (работает и в браузере и в Cordova)
+        if (typeof window !== 'undefined') {
             return window.location.origin;
         }
+        return 'http://localhost:3000';
     },
     
     // Инициализация приложения

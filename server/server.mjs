@@ -3,8 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
-import { networkInterfaces } from 'os';
+import { existsSync, createReadStream } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,14 +57,21 @@ app.get('/download/apk', (req, res) => {
         return;
     }
     
-    res.download(apkPath, 'voice-room.apk', (err) => {
-        if (err) {
-            console.error('Ошибка при скачивании APK:', err);
-            if (!res.headersSent) {
-                res.status(500).json({ error: 'Ошибка при скачивании APK' });
-            }
+    // Устанавливаем правильные заголовки для скачивания APK файла
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="voice-room.apk"');
+    
+    // Отправляем файл как бинарный поток
+    const fileStream = createReadStream(apkPath);
+    
+    fileStream.on('error', (err) => {
+        console.error('Ошибка при чтении APK файла:', err);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Ошибка при чтении APK файла' });
         }
     });
+    
+    fileStream.pipe(res);
 });
 
 const rooms = new Map();
@@ -370,38 +376,9 @@ io.on('connection', (socket) => {
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Получаем IP адреса интерфейсов
-function getLocalIPs() {
-    const interfaces = networkInterfaces();
-    const ips = [];
-    
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            // Пропускаем внутренние (не 127.0.0.1) и не IPv6 адреса
-            if (iface.family === 'IPv4' && !iface.internal) {
-                ips.push(iface.address);
-            }
-        }
-    }
-    
-    return ips;
-}
-
-const localIPs = getLocalIPs();
-
 server.listen(PORT, HOST, () => {
     console.log(`✅ Сервер запущен на порту ${PORT}`);
-    console.log(`📱 Веб-версия доступна:`);
-    console.log(`   - http://localhost:${PORT}`);
-    if (localIPs.length > 0) {
-        console.log(`   - Доступен по сети:`);
-        localIPs.forEach(ip => {
-            console.log(`     http://${ip}:${PORT}`);
-        });
-        console.log(`\n💡 Для подключения с телефона используйте один из IP адресов выше`);
-    } else {
-        console.log(`\n⚠️  Не удалось определить IP адрес в локальной сети`);
-    }
+    console.log(`📱 Веб-версия доступна: http://localhost:${PORT}`);
 }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`❌ Порт ${PORT} уже занят!`);

@@ -444,43 +444,6 @@ const VoiceRoom = {
         }
     },
     
-    saveServerUrl() {
-        if (!this.elements.serverUrlInput) return;
-        
-        let url = this.elements.serverUrlInput.value.trim();
-        
-        // Добавляем http:// если не указан протокол
-        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
-            url = 'http://' + url;
-        }
-        
-        // Проверяем формат
-        if (url && !url.match(/^http:\/\/[\d\.]+:\d+$/)) {
-            this.showNotification('Неверный формат адреса. Используйте: 192.168.x.x:3000', 'error', 5000);
-            return;
-        }
-        
-        if (url) {
-            App.setServerUrl(url);
-            this.showNotification('IP адрес сервера сохранен! Переподключение...', 'success', 3000);
-            
-            // Переподключаемся к новому серверу
-            if (this.socket) {
-                this.socket.disconnect();
-                this.socket = null;
-            }
-            
-            // Переинициализируем соединение
-            setTimeout(() => {
-                this.initSocket();
-            }, 500);
-        } else {
-            // Очищаем сохраненный URL
-            localStorage.removeItem('voiceRoomServerUrl');
-            this.showNotification('Настройки сервера сброшены', 'info', 3000);
-        }
-    },
-    
     handleUrlParams() {
         const urlParams = new URLSearchParams(window.location.search);
         const roomParam = urlParams.get('room');
