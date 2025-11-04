@@ -78,7 +78,10 @@ fi
 
 # Установка зависимостей
 echo -e "${YELLOW}📦 Установка зависимостей...${NC}"
-sudo -u "$APP_USER" npm ci --production
+sudo -u "$APP_USER" npm ci --production || sudo -u "$APP_USER" npm install --production || {
+    echo -e "${RED}❌ Ошибка при установке зависимостей${NC}"
+    exit 1
+}
 
 # Сборка (если есть скрипт build)
 if grep -q "\"build\"" package.json; then

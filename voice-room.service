@@ -12,6 +12,7 @@ Environment="HOST=127.0.0.1"
 Environment="CORS_ORIGIN=https://aiternitas.ru"
 EnvironmentFile=-/opt/voice-room/.env
 ExecStart=/usr/bin/node server/server.mjs
+ExecStartPre=/bin/sleep 3
 Restart=always
 RestartSec=10
 StandardOutput=syslog
