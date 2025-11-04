@@ -21,7 +21,7 @@
                 </div>
 
                 <div class="button-group">
-                    <button id="btnCreateRoom" class="btn btn-primary">
+                    <button id="btnCreateRoom" class="btn btn-primary" onclick="console.log('Button clicked from inline handler'); if (typeof VoiceRoom !== 'undefined' && VoiceRoom.createRoom) VoiceRoom.createRoom();">
                         <span>➕</span>
                         <span>Создать комнату</span>
                     </button>
