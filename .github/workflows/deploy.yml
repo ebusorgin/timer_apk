@@ -57,12 +57,53 @@ jobs:
               bash server-setup.sh
             else
               # Минимальная настройка если скрипты отсутствуют
+              echo "Выполнение минимальной настройки..."
               sudo -u voice-room npm ci --production || sudo -u voice-room npm install --production || true
-              cp nginx.conf /etc/nginx/sites-available/aiternitas.ru 2>/dev/null || true
-              ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/ 2>/dev/null || true
-              cp voice-room.service /etc/systemd/system/ 2>/dev/null || true
-              systemctl daemon-reload || true
-              systemctl restart voice-room || systemctl start voice-room || true
+              
+              # Настройка nginx
+              if [ -f "nginx.conf" ]; then
+                cp nginx.conf /etc/nginx/sites-available/aiternitas.ru
+                ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
+                rm -f /etc/nginx/sites-enabled/default
+                nginx -t && systemctl reload nginx || true
+              fi
+              
+              # Настройка systemd service
+              if [ -f "voice-room.service" ]; then
+                cp voice-room.service /etc/systemd/system/
+                systemctl daemon-reload
+                systemctl enable voice-room || true
+                systemctl start voice-room || systemctl restart voice-room || true
+              else
+                echo "⚠️ voice-room.service не найден, создаю базовый..."
+                cat > /etc/systemd/system/voice-room.service << 'SERVICE_EOF'
+[Unit]
+Description=Voice Room Application
+After=network.target
+
+[Service]
+Type=simple
+User=voice-room
+WorkingDirectory=/opt/voice-room
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+Environment="HOST=127.0.0.1"
+Environment="CORS_ORIGIN=https://aiternitas.ru"
+EnvironmentFile=-/opt/voice-room/.env
+ExecStart=/usr/bin/node server/server.mjs
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=voice-room
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+                systemctl daemon-reload
+                systemctl enable voice-room
+                systemctl start voice-room || true
+              fi
             fi
             
       - name: Verify deployment
@@ -81,6 +122,34 @@ jobs:
                 cp voice-room.service /etc/systemd/system/
                 systemctl daemon-reload
                 systemctl enable voice-room || true
+              else
+                echo "⚠️ voice-room.service не найден в репозитории, создаю базовый..."
+                cat > /etc/systemd/system/voice-room.service << 'SERVICE_EOF'
+[Unit]
+Description=Voice Room Application
+After=network.target
+
+[Service]
+Type=simple
+User=voice-room
+WorkingDirectory=/opt/voice-room
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+Environment="HOST=127.0.0.1"
+Environment="CORS_ORIGIN=https://aiternitas.ru"
+EnvironmentFile=-/opt/voice-room/.env
+ExecStart=/usr/bin/node server/server.mjs
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=voice-room
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+                systemctl daemon-reload
+                systemctl enable voice-room
               fi
             fi
             
