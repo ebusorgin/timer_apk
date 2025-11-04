@@ -844,10 +844,18 @@ const VoiceRoom = {
         // Проверяем, не существует ли уже соединение
         if (this.peers.has(targetUserId)) {
             console.warn('Peer connection already exists for:', targetUserId);
+            const existingPeer = this.peers.get(targetUserId);
+            console.log('Existing peer state:', existingPeer.signalingState);
             return;
         }
         
         console.log('Creating peer with:', targetUserId);
+        console.log('My userId:', this.myUserId, 'Target userId:', targetUserId);
+        
+        // Определяем кто создает offer первым (чтобы избежать race condition)
+        // Пользователь с меньшим userId создает offer
+        const shouldCreateOffer = this.myUserId < targetUserId;
+        console.log('Should create offer:', shouldCreateOffer);
         
         try {
             const peer = new RTCPeerConnection({
@@ -944,26 +952,39 @@ const VoiceRoom = {
             
             this.peers.set(targetUserId, peer);
             
-            // Создаем offer
-            peer.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: false
-            }).then(offer => {
-                return peer.setLocalDescription(offer);
-            }).then(() => {
-                if (this.socket && this.socket.connected) {
-                    this.socket.emit('offer', { 
-                        roomId: this.currentRoomId, 
-                        offer: peer.localDescription, 
-                        targetUserId, 
-                        fromUserId: this.myUserId 
-                    });
-                }
-            }).catch(error => {
-                console.error('Error creating offer:', error);
-                this.peers.delete(targetUserId);
-                this.showNotification('Ошибка при создании соединения', 'error', 3000);
-            });
+            // Создаем offer только если мы должны инициировать соединение
+            if (shouldCreateOffer) {
+                console.log('Creating offer for:', targetUserId);
+                peer.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: false
+                }).then(offer => {
+                    console.log('Offer created, setting local description...');
+                    return peer.setLocalDescription(offer);
+                }).then(() => {
+                    console.log('Local description set, sending offer to:', targetUserId);
+                    if (this.socket && this.socket.connected && peer.signalingState === 'have-local-offer') {
+                        this.socket.emit('offer', { 
+                            roomId: this.currentRoomId, 
+                            offer: peer.localDescription, 
+                            targetUserId, 
+                            fromUserId: this.myUserId 
+                        });
+                    } else {
+                        console.warn('Cannot send offer:', {
+                            socketConnected: this.socket?.connected,
+                            peerState: peer.signalingState
+                        });
+                    }
+                }).catch(error => {
+                    console.error('Error creating offer:', error);
+                    this.peers.delete(targetUserId);
+                    this.showNotification('Ошибка при создании соединения', 'error', 3000);
+                });
+            } else {
+                console.log('Waiting for offer from:', targetUserId);
+                // Если мы не создаем offer, просто ждем offer от другого пользователя
+            }
         } catch (error) {
             console.error('Error creating peer connection:', error);
             this.showNotification('Ошибка при создании соединения', 'error', 3000);
