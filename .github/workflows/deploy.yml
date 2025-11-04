@@ -72,9 +72,39 @@ jobs:
           username: ${{ env.SERVER_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
+            sleep 10
+            # Проверка и установка systemd service если нужно
+            if [ ! -f "/etc/systemd/system/voice-room.service" ]; then
+              echo "⚠️ Service file not found, installing..."
+              cd /opt/voice-room
+              if [ -f "voice-room.service" ]; then
+                cp voice-room.service /etc/systemd/system/
+                systemctl daemon-reload
+                systemctl enable voice-room || true
+              fi
+            fi
+            
+            # Проверка статуса сервиса
+            if systemctl is-active --quiet voice-room; then
+              echo "✅ Service is running"
+              systemctl status voice-room --no-pager | head -10
+            else
+              echo "⚠️ Service not running, attempting to start..."
+              systemctl start voice-room || systemctl restart voice-room || true
+              sleep 5
+              systemctl status voice-room --no-pager | head -20 || true
+            fi
+            
+            # Проверка доступности приложения
             sleep 5
-            systemctl status voice-room --no-pager || exit 1
-            curl -f http://127.0.0.1:3000 || exit 1
+            if curl -f http://127.0.0.1:3000 > /dev/null 2>&1; then
+              echo "✅ Application is accessible"
+            else
+              echo "⚠️ Application not responding, checking logs..."
+              journalctl -u voice-room -n 30 --no-pager || true
+              ps aux | grep node | grep -v grep || echo "No node process found"
+              exit 1
+            fi
             echo "✅ Deployment verified successfully"
             
       - name: Check SSL certificate

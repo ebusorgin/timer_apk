@@ -177,21 +177,41 @@ ufw allow 'Nginx Full' || true
 ufw allow 3000/tcp || true
 
 # Проверка статуса
-sleep 5
+sleep 10
 echo "🔍 Проверка статуса..."
 if systemctl is-active --quiet voice-room; then
     echo "✅ Сервис запущен"
+    systemctl status voice-room --no-pager | head -10
 else
     echo "⚠️ Проблемы с запуском сервиса, проверяю логи..."
-    journalctl -u voice-room -n 20 --no-pager
+    journalctl -u voice-room -n 30 --no-pager || true
+    echo "Попытка перезапуска..."
+    systemctl restart voice-room || systemctl start voice-room || true
+    sleep 5
+    if systemctl is-active --quiet voice-room; then
+        echo "✅ Сервис запущен после перезапуска"
+    else
+        echo "❌ Сервис не запускается, проверяю процесс..."
+        ps aux | grep node | grep -v grep || echo "Node процесс не найден"
+        echo "Попытка запуска напрямую..."
+        cd "$APP_DIR"
+        sudo -u voice-room nohup node server/server.mjs > /tmp/voice-room.log 2>&1 &
+        sleep 3
+    fi
 fi
 
 # Проверка доступности
+sleep 5
 if curl -f http://127.0.0.1:3000 > /dev/null 2>&1; then
     echo "✅ Приложение отвечает на порту 3000"
 else
     echo "⚠️ Приложение не отвечает, проверяю процесс..."
     ps aux | grep node | grep -v grep || echo "Node процесс не найден"
+    netstat -tulpn | grep 3000 || ss -tulpn | grep 3000 || echo "Порт 3000 не прослушивается"
+    if [ -f "/tmp/voice-room.log" ]; then
+        echo "Логи приложения:"
+        tail -20 /tmp/voice-room.log || true
+    fi
 fi
 
 echo ""
