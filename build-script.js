@@ -135,9 +135,46 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
     process.chdir(originalDir);
 } else {
     console.error('❌ Gradle Wrapper не найден!');
-    console.log('Попробуйте пересоздать платформу:');
-    console.log('  npm run platform:rebuild');
-    console.log('Или установите Android Studio с Gradle.');
-    process.exit(1);
+    console.log('Попытка использования системного Gradle...');
+    
+    // Проверяем наличие системного Gradle
+    try {
+        execSync('gradle --version', { stdio: 'pipe' });
+        console.log('✅ Системный Gradle найден');
+        
+        const originalDir = process.cwd();
+        process.chdir(platformsPath);
+        try {
+            const isRelease = process.argv.includes('--release');
+            const buildType = isRelease ? 'assembleRelease' : 'assembleDebug';
+            
+            console.log(`Запуск сборки через системный Gradle (${buildType})...`);
+            execSync(`gradle ${buildType}`, { stdio: 'inherit' });
+            console.log('\n✓ Сборка завершена успешно!');
+            
+            const outputPath = isRelease 
+                ? 'app\\build\\outputs\\apk\\release\\app-release-unsigned.apk'
+                : 'app\\build\\outputs\\apk\\debug\\app-debug.apk';
+            const apkSource = path.join(platformsPath, outputPath.replace(/\\/g, path.sep));
+            const apkDestination = path.join(__dirname, isRelease ? 'app-release.apk' : 'app-debug.apk');
+            
+            if (fs.existsSync(apkSource)) {
+                fs.copyFileSync(apkSource, apkDestination);
+                console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+            }
+        } catch (error) {
+            console.error('Ошибка при сборке через Gradle:', error.message);
+            process.exit(1);
+        }
+        process.chdir(originalDir);
+    } catch (gradleError) {
+        console.error('❌ Системный Gradle не найден!');
+        console.log('\nВарианты решения:');
+        console.log('1. Установите Android Studio (включает Gradle)');
+        console.log('2. Установите Gradle отдельно: https://gradle.org/install/');
+        console.log('3. Пересоздайте платформу: npm run platform:rebuild');
+        console.log('\nПосле установки Gradle добавьте его в PATH или установите Android Studio.');
+        process.exit(1);
+    }
 }
 
