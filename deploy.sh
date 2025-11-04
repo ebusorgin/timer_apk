@@ -136,8 +136,18 @@ fi
 # Проверка и запуск nginx
 if nginx -t 2>/dev/null; then
     echo -e "${GREEN}✅ Конфигурация nginx корректна${NC}"
+    # Убеждаемся что конфигурация применена
+    if [ -f "nginx.conf" ]; then
+        cp nginx.conf /etc/nginx/sites-available/aiternitas.ru
+        ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
+        rm -f /etc/nginx/sites-enabled/default
+        nginx -t
+    fi
     systemctl enable nginx || true
-    systemctl start nginx || systemctl restart nginx || systemctl reload nginx || true
+    systemctl start nginx || systemctl restart nginx || true
+    sleep 2
+    systemctl reload nginx || true
+    echo -e "${GREEN}✅ Nginx перезапущен${NC}"
 else
     echo -e "${RED}❌ Ошибка в конфигурации nginx!${NC}"
     nginx -t
