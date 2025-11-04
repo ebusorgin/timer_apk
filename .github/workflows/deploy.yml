@@ -168,6 +168,10 @@ jobs:
               ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
               rm -f /etc/nginx/sites-enabled/default
               echo "✅ Конфигурация скопирована"
+              
+              # Проверяем что конфигурация применена
+              echo "Проверка активных конфигураций:"
+              ls -la /etc/nginx/sites-enabled/
             fi
             
             # Проверка и запуск nginx
@@ -195,7 +199,11 @@ jobs:
             
             # Проверка через домен
             echo "Проверка через домен..."
-            curl -v http://aiternitas.ru 2>&1 | head -20 || echo "Домен не доступен"
+            curl -v -H "Host: aiternitas.ru" http://127.0.0.1 2>&1 | head -30 || echo "Домен не доступен"
+            
+            # Проверка какой server block используется
+            echo "Проверка активных server blocks:"
+            nginx -T 2>/dev/null | grep -A 5 "server_name" | head -20 || true
             
             # Проверка SSL сертификатов
             certbot certificates 2>/dev/null | grep aiternitas.ru || echo "⚠️  SSL certificate not found (optional - can be configured later)"
