@@ -55,53 +55,38 @@ if (!fs.existsSync(platformsPath)) {
 }
 
 // Подготавливаем файлы (копируем www в platforms)
+// Пропускаем cordova prepare из-за проблем с API, используем прямой вызов Gradle
 console.log('Подготовка файлов...');
-let prepareFailed = false;
-try {
-    execSync('npx cordova prepare android', { stdio: 'inherit' });
-    console.log('Файлы подготовлены.');
-} catch (error) {
-    console.warn('⚠️  Ошибка при подготовке файлов через Cordova:', error.message);
-    console.log('Попытка восстановления платформы Android...');
-    
-    // Пробуем пересоздать платформу
-    try {
-        console.log('Удаление поврежденной платформы...');
-        if (fs.existsSync(platformsPath)) {
-            execSync('npx cordova platform remove android', { stdio: 'pipe' });
-        }
-        console.log('Добавление платформы заново...');
-        execSync('npx cordova platform add android', { stdio: 'inherit' });
-        console.log('Платформа восстановлена. Повторная попытка prepare...');
-        execSync('npx cordova prepare android', { stdio: 'inherit' });
-        console.log('✅ Файлы подготовлены после восстановления.');
-    } catch (recoveryError) {
-        console.warn('⚠️  Восстановление не удалось:', recoveryError.message);
-        console.log('Продолжаем сборку без prepare (файлы могут быть устаревшими)...');
-        prepareFailed = true;
-        
-        // Проверяем, есть ли хотя бы основные файлы
-        const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
-        if (!fs.existsSync(wwwDest)) {
-            console.log('Копирование www файлов вручную...');
-            const wwwSrc = path.join(__dirname, 'www');
-            if (fs.existsSync(wwwSrc)) {
-                // Создаем директорию если её нет
-                fs.mkdirSync(wwwDest, { recursive: true });
-                // Копируем файлы
-                copyDirSync(wwwSrc, wwwDest);
-                console.log('✅ www файлы скопированы вручную.');
-            }
-        }
+const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
+
+// Всегда копируем www файлы вручную для надежности
+if (fs.existsSync(wwwPath)) {
+    if (!fs.existsSync(wwwDest)) {
+        fs.mkdirSync(wwwDest, { recursive: true });
     }
+    console.log('Копирование www файлов в платформу...');
+    copyDirSync(wwwPath, wwwDest);
+    console.log('✅ www файлы скопированы.');
+} else {
+    console.error('❌ Папка www не найдена!');
+    process.exit(1);
 }
 
 // Проверяем наличие Gradle Wrapper и используем его напрямую для сборки
 const gradlewPath = path.join(platformsPath, 'gradlew.bat');
 const gradleWrapperJar = path.join(platformsPath, 'gradle', 'wrapper', 'gradle-wrapper.jar');
 
+// Проверяем наличие www файлов в платформе, если нет - копируем вручную
+const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
+if (!fs.existsSync(wwwDest) && fs.existsSync(wwwPath)) {
+    console.log('Копирование www файлов в платформу...');
+    fs.mkdirSync(wwwDest, { recursive: true });
+    copyDirSync(wwwPath, wwwDest);
+    console.log('✅ www файлы скопированы.');
+}
+
 if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
-    console.log('Использование Gradle Wrapper для сборки...');
+    console.log('✅ Использование Gradle Wrapper для сборки (обход Cordova API)...');
     const originalDir = process.cwd();
     process.chdir(platformsPath);
     try {
@@ -109,6 +94,7 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
         const isRelease = process.argv.includes('--release');
         const buildType = isRelease ? 'assembleRelease' : 'assembleDebug';
         
+        console.log(`Запуск Gradle сборки (${buildType})...`);
         // Используем gradlew напрямую для сборки APK
         execSync(`.\\gradlew.bat ${buildType}`, { stdio: 'inherit' });
         console.log('\n✓ Сборка завершена успешно!');
@@ -123,25 +109,35 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
         if (fs.existsSync(apkSource)) {
             fs.copyFileSync(apkSource, apkDestination);
             console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+        } else {
+            console.warn(`⚠️  APK файл не найден по пути: ${apkSource}`);
+            // Пробуем найти альтернативные пути
+            const alternativePaths = [
+                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
+                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
+            ];
+            for (const altPath of alternativePaths) {
+                if (fs.existsSync(altPath)) {
+                    fs.copyFileSync(altPath, apkDestination);
+                    console.log(`✅ APK найден и скопирован: ${altPath}`);
+                    break;
+                }
+            }
         }
     } catch (error) {
-        console.error('Ошибка при сборке:', error.message);
+        console.error('Ошибка при сборке через Gradle:', error.message);
+        console.log('\nУбедитесь, что:');
+        console.log('1. Установлен Java JDK (v11+)');
+        console.log('2. Установлен Android SDK');
+        console.log('3. Переменные окружения ANDROID_HOME или ANDROID_SDK_ROOT настроены');
         process.exit(1);
     }
     process.chdir(originalDir);
 } else {
-    console.log('Gradle Wrapper не найден. Используется стандартная сборка Cordova...');
-    // Если wrapper нет, пробуем стандартную сборку
-    try {
-        execSync('npx cordova build android', { stdio: 'inherit' });
-    } catch (error) {
-        console.error('Ошибка при сборке:', error.message);
-        console.log('\nВНИМАНИЕ: Для сборки нужен Gradle.');
-        console.log('Варианты решения:');
-        console.log('1. Установите Android Studio (включает Gradle)');
-        console.log('2. Установите Gradle отдельно и добавьте в PATH');
-        console.log('3. Используйте команду: gradlew.bat assembleDebug из папки platforms/android');
-        process.exit(1);
-    }
+    console.error('❌ Gradle Wrapper не найден!');
+    console.log('Попробуйте пересоздать платформу:');
+    console.log('  npm run platform:rebuild');
+    console.log('Или установите Android Studio с Gradle.');
+    process.exit(1);
 }
 
