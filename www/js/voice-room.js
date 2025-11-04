@@ -398,23 +398,34 @@ const VoiceRoom = {
             console.log('btnCreateRoom found, adding click listener');
             console.log('Button element:', this.elements.btnCreateRoom);
             console.log('Button ID:', this.elements.btnCreateRoom.id);
+            console.log('Button current onclick:', this.elements.btnCreateRoom.onclick);
             
-            // Удаляем старый обработчик если есть
-            const newBtn = this.elements.btnCreateRoom.cloneNode(true);
-            this.elements.btnCreateRoom.parentNode.replaceChild(newBtn, this.elements.btnCreateRoom);
-            this.elements.btnCreateRoom = newBtn;
-            
-            this.elements.btnCreateRoom.addEventListener('click', (e) => {
+            // Добавляем обработчик через addEventListener
+            const clickHandler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('Create room button clicked via addEventListener');
                 console.log('Event:', e);
                 console.log('VoiceRoom.createRoom type:', typeof this.createRoom);
+                console.log('VoiceRoom object:', this);
                 this.createRoom();
-            });
+            };
             
-            // Также проверяем что обработчик установлен
-            console.log('Event listener added, button onclick:', this.elements.btnCreateRoom.onclick);
+            this.elements.btnCreateRoom.addEventListener('click', clickHandler);
+            
+            // Проверяем что обработчик установлен
+            console.log('Event listener added');
+            console.log('Button onclick after setup:', this.elements.btnCreateRoom.onclick);
+            
+            // Тестовый клик для проверки
+            console.log('Testing button click programmatically...');
+            setTimeout(() => {
+                if (this.elements.btnCreateRoom) {
+                    const testEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+                    // Не вызываем автоматически, только логируем
+                    console.log('Test event created, button ready for clicks');
+                }
+            }, 1000);
         } else {
             console.error('btnCreateRoom element not found!');
             console.error('Available elements:', Object.keys(this.elements));
