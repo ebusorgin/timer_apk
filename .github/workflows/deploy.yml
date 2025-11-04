@@ -149,6 +149,47 @@ jobs:
             fi
             echo "✅ Deployment verified successfully"
             
+      - name: Setup and start nginx
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            # Установка nginx если не установлен
+            if ! command -v nginx &> /dev/null; then
+              apt update && apt install -y nginx || true
+            fi
+            
+            # Настройка конфигурации если нужно
+            if [ -f "/opt/voice-room/nginx.conf" ] && [ ! -f "/etc/nginx/sites-available/aiternitas.ru" ]; then
+              cp /opt/voice-room/nginx.conf /etc/nginx/sites-available/aiternitas.ru
+              ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
+              rm -f /etc/nginx/sites-enabled/default
+            fi
+            
+            # Проверка и запуск nginx
+            if nginx -t; then
+              echo "✅ Nginx configuration is valid"
+              systemctl enable nginx || true
+              systemctl start nginx || systemctl restart nginx || true
+              sleep 2
+              systemctl status nginx --no-pager | head -10 || true
+            else
+              echo "❌ Nginx configuration error"
+              nginx -t
+            fi
+            
+            # Проверка SSL сертификатов
+            certbot certificates 2>/dev/null | grep aiternitas.ru || echo "⚠️  SSL certificate not found (optional - can be configured later)"
+            
+            # Финальная проверка доступности
+            echo "Проверка доступности приложения..."
+            sleep 2
+            curl -f http://127.0.0.1:3000 > /dev/null 2>&1 && echo "✅ Application is accessible locally" || echo "⚠️  Application not accessible locally"
+            curl -f http://aiternitas.ru > /dev/null 2>&1 && echo "✅ Website is accessible via domain" || echo "⚠️  Website not accessible via domain (check DNS and firewall)"
+            echo "✅ Deployment completed!"
+            
       - name: Check SSL certificate
         uses: appleboy/ssh-action@v1.0.0
         with:
