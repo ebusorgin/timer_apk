@@ -30,22 +30,33 @@ const App = {
     
     // Инициализация приложения
     init() {
+        console.log('App.init() called');
         console.log('App initialized in:', this.isCordova ? 'Cordova' : 'Browser');
+        console.log('Document ready state:', document.readyState);
         
-        // Для Cordova ждем deviceready, для браузера - сразу готов
+        // Для Cordova ждем deviceready, для браузера - проверяем готовность документа
         if (this.isCordova) {
             document.addEventListener('deviceready', () => {
                 this.onDeviceReady();
             }, false);
         } else {
-            window.addEventListener('load', () => {
-                this.onDeviceReady();
-            });
+            // Если документ уже загружен, сразу вызываем onDeviceReady
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                console.log('Document already loaded, calling onDeviceReady immediately');
+                setTimeout(() => this.onDeviceReady(), 0);
+            } else {
+                // Если документ еще загружается, ждем события load
+                window.addEventListener('load', () => {
+                    console.log('Window load event fired');
+                    this.onDeviceReady();
+                });
+            }
         }
     },
     
     onDeviceReady() {
-        console.log('Device ready');
+        console.log('App.onDeviceReady() called');
+        console.log('VoiceRoom available:', typeof VoiceRoom !== 'undefined');
         
         // Скрываем splash screen если есть
         if (this.isCordova && navigator.splashscreen) {
@@ -53,15 +64,34 @@ const App = {
         }
         
         // Инициализируем Voice Room после загрузки всех скриптов
-        // Небольшая задержка для гарантии загрузки Socket.IO
-        setTimeout(() => {
-            if (typeof VoiceRoom !== 'undefined') {
-                console.log('Initializing VoiceRoom...');
+        // Проверяем что VoiceRoom действительно доступен
+        if (typeof VoiceRoom !== 'undefined') {
+            console.log('Initializing VoiceRoom...');
+            try {
                 VoiceRoom.init();
-            } else {
-                console.error('VoiceRoom module not found!');
+                console.log('VoiceRoom.init() completed');
+            } catch (error) {
+                console.error('Error initializing VoiceRoom:', error);
+                // Повторяем попытку через некоторое время
+                setTimeout(() => {
+                    if (typeof VoiceRoom !== 'undefined') {
+                        console.log('Retrying VoiceRoom.init()...');
+                        VoiceRoom.init();
+                    }
+                }, 500);
             }
-        }, 100);
+        } else {
+            console.error('VoiceRoom module not found! Waiting...');
+            // Повторяем попытку через некоторое время
+            setTimeout(() => {
+                if (typeof VoiceRoom !== 'undefined') {
+                    console.log('VoiceRoom found, initializing...');
+                    VoiceRoom.init();
+                } else {
+                    console.error('VoiceRoom still not found after delay');
+                }
+            }, 500);
+        }
     }
 };
 
