@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, createReadStream } from 'fs';
+import { existsSync, createReadStream, statSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,13 +53,24 @@ app.get('/download/apk', (req, res) => {
     }
     
     if (!apkPath) {
-        res.status(404).json({ error: 'APK файл не найден. Выполните сборку: npm run build' });
+        // Если файл не найден, отправляем простой HTML ответ вместо JSON
+        res.status(404).type('text/html');
+        res.send(`
+            <html>
+                <head><meta charset="UTF-8"><title>APK не найден</title></head>
+                <body>
+                    <h1>APK файл не найден</h1>
+                    <p>Выполните сборку: <code>npm run build</code></p>
+                </body>
+            </html>
+        `);
         return;
     }
     
     // Устанавливаем правильные заголовки для скачивания APK файла
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Content-Disposition', 'attachment; filename="voice-room.apk"');
+    res.setHeader('Content-Length', statSync(apkPath).size);
     
     // Отправляем файл как бинарный поток
     const fileStream = createReadStream(apkPath);
@@ -67,7 +78,15 @@ app.get('/download/apk', (req, res) => {
     fileStream.on('error', (err) => {
         console.error('Ошибка при чтении APK файла:', err);
         if (!res.headersSent) {
-            res.status(500).json({ error: 'Ошибка при чтении APK файла' });
+            res.status(500).type('text/html');
+            res.send(`
+                <html>
+                    <head><meta charset="UTF-8"><title>Ошибка</title></head>
+                    <body>
+                        <h1>Ошибка при чтении APK файла</h1>
+                    </body>
+                </html>
+            `);
         }
     });
     
