@@ -350,6 +350,7 @@ const VoiceRoom = {
     },
     
     initElements() {
+        console.log('Initializing DOM elements...');
         this.elements = {
             loginScreen: document.getElementById('loginScreen'),
             roomScreen: document.getElementById('roomScreen'),
@@ -369,6 +370,17 @@ const VoiceRoom = {
             joinContainer: document.getElementById('joinContainer'),
             userCount: document.getElementById('userCount')
         };
+        
+        // Проверяем критические элементы
+        const criticalElements = ['usernameInput', 'btnCreateRoom', 'loginScreen', 'roomScreen'];
+        const missingElements = criticalElements.filter(key => !this.elements[key]);
+        
+        if (missingElements.length > 0) {
+            console.error('❌ Missing critical elements:', missingElements);
+            console.error('Available elements:', Object.keys(this.elements).filter(key => this.elements[key] !== null));
+        } else {
+            console.log('✅ All critical elements found');
+        }
     },
     
     loadSavedUsername() {
