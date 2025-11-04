@@ -76,6 +76,47 @@ if (fs.existsSync(wwwPath)) {
 const gradlewPath = path.join(platformsPath, 'gradlew.bat');
 const gradleWrapperJar = path.join(platformsPath, 'gradle', 'wrapper', 'gradle-wrapper.jar');
 
+// Если wrapper не найден, пробуем создать его используя Gradle из Android SDK или системный
+if (!fs.existsSync(gradlewPath) || !fs.existsSync(gradleWrapperJar)) {
+    console.log('⚠️  Gradle Wrapper не найден, пытаемся создать...');
+    
+    // Читаем версию Gradle из конфигурации Cordova
+    const configPath = path.join(platformsPath, 'cdv-gradle-config.json');
+    let gradleVersion = '8.13'; // версия по умолчанию
+    
+    if (fs.existsSync(configPath)) {
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            if (config.GRADLE_VERSION) {
+                gradleVersion = config.GRADLE_VERSION;
+                console.log(`Требуемая версия Gradle: ${gradleVersion}`);
+            }
+        } catch (e) {
+            console.warn('Не удалось прочитать конфигурацию Gradle, используем версию по умолчанию');
+        }
+    }
+    
+    // Пробуем использовать системный Gradle для создания wrapper
+    try {
+        execSync('gradle --version', { stdio: 'pipe' });
+        console.log('✅ Системный Gradle найден, создание Wrapper...');
+        
+        const originalDir = process.cwd();
+        process.chdir(platformsPath);
+        try {
+            // Создаем wrapper с нужной версией
+            execSync(`gradle wrapper --gradle-version ${gradleVersion}`, { stdio: 'inherit' });
+            console.log('✅ Gradle Wrapper создан!');
+        } catch (error) {
+            console.warn('Не удалось создать wrapper через системный Gradle:', error.message);
+            // Продолжаем попытку создать wrapper через другие методы
+        }
+        process.chdir(originalDir);
+    } catch (gradleError) {
+        console.log('Системный Gradle не найден, проверяем другие варианты...');
+    }
+}
+
 if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
     console.log('✅ Использование Gradle Wrapper для сборки (обход Cordova API)...');
     const originalDir = process.cwd();
