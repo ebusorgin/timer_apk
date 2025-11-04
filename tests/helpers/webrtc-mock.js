@@ -63,6 +63,7 @@ class MockRTCPeerConnection {
     this.id = `peer_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.localDescription = null;
     this.remoteDescription = null;
+    this.signalingState = 'stable'; // Добавляем signalingState
     this.iceConnectionState = 'new';
     this.connectionState = 'new';
     this.iceGatheringState = 'new';
@@ -78,10 +79,40 @@ class MockRTCPeerConnection {
   async setLocalDescription(description) {
     this.localDescription = description;
     this.iceGatheringState = 'complete';
+    // Обновляем signalingState в зависимости от типа description и текущего состояния
+    if (description && description.type === 'offer') {
+      this.signalingState = 'have-local-offer';
+    } else if (description && description.type === 'answer') {
+      // Если уже есть remote offer, то после local answer состояние становится stable
+      if (this.signalingState === 'have-remote-offer') {
+        this.signalingState = 'stable';
+      } else {
+        this.signalingState = 'have-local-pranswer';
+      }
+    }
     return Promise.resolve();
   }
 
   async setRemoteDescription(description) {
+    // Проверяем состояние перед установкой
+    if (description && description.type === 'offer') {
+      if (this.signalingState !== 'stable' && this.signalingState !== 'have-local-offer') {
+        throw new Error(`InvalidStateError: Failed to set remote offer sdp: Called in wrong state: ${this.signalingState}`);
+      }
+      // Если уже есть local offer, устанавливаем remote offer и создаем answer
+      if (this.signalingState === 'have-local-offer') {
+        this.signalingState = 'have-remote-offer';
+      } else {
+        this.signalingState = 'have-remote-offer';
+      }
+    } else if (description && description.type === 'answer') {
+      if (this.signalingState !== 'have-local-offer' && this.signalingState !== 'have-local-pranswer') {
+        throw new Error(`InvalidStateError: Failed to set remote answer sdp: Called in wrong state: ${this.signalingState}`);
+      }
+      // После установки remote answer состояние становится stable
+      this.signalingState = 'stable';
+    }
+    
     this.remoteDescription = description;
     if (this._onTrack) {
       // Симулируем получение трека
