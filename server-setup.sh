@@ -126,7 +126,18 @@ ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 # Проверка и перезапуск nginx
-nginx -t && systemctl reload nginx
+if nginx -t; then
+    echo "✅ Конфигурация nginx корректна"
+    systemctl enable nginx || true
+    systemctl start nginx || systemctl restart nginx || true
+    sleep 2
+    systemctl reload nginx || true
+    echo "✅ Nginx запущен и перезагружен"
+else
+    echo "❌ Ошибка в конфигурации nginx!"
+    nginx -t
+    exit 1
+fi
 
 # Настройка systemd service
 echo "⚙️ Настройка systemd service..."
