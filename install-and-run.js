@@ -2,6 +2,16 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// Проверка наличия ADB
+try {
+    execSync('adb version', { stdio: 'ignore' });
+} catch (e) {
+    console.error('❌ Ошибка: ADB не найден!');
+    console.log('Установите Android SDK Platform Tools');
+    console.log('Или добавьте путь к ADB в переменную PATH');
+    process.exit(1);
+}
+
 const apkPath = path.join(__dirname, 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
 
 console.log('Проверка подключенных устройств...\n');
@@ -59,10 +69,58 @@ try {
     }
     
     console.log(`✓ Найдено авторизованных устройств: ${authorizedDevices.length}`);
-    authorizedDevices.forEach((line, index) => {
-        const deviceId = line.split('\t')[0];
-        console.log(`  ${index + 1}. ${deviceId}`);
-    });
+    
+    // Определяем устройство для установки
+    let selectedDevice = null;
+    
+    if (authorizedDevices.length === 1) {
+        // Только одно устройство
+        selectedDevice = authorizedDevices[0].split('\t')[0];
+        console.log(`Используется устройство: ${selectedDevice}`);
+    } else {
+        // Несколько устройств - выбираем приоритет: физическое устройство > эмулятор
+        const deviceIds = authorizedDevices.map(line => line.split('\t')[0]);
+        
+        // Ищем физическое устройство (не эмулятор)
+        const physicalDevice = deviceIds.find(id => !id.startsWith('emulator-'));
+        
+        if (physicalDevice) {
+            selectedDevice = physicalDevice;
+            console.log(`Найдено несколько устройств. Используется физическое устройство: ${selectedDevice}`);
+        } else {
+            // Используем первый эмулятор
+            selectedDevice = deviceIds[0];
+            console.log(`Найдено несколько устройств. Используется эмулятор: ${selectedDevice}`);
+        }
+        
+        console.log('\nВсе доступные устройства:');
+        deviceIds.forEach((deviceId, index) => {
+            const marker = deviceId === selectedDevice ? '← будет использовано' : '';
+            console.log(`  ${index + 1}. ${deviceId} ${marker}`);
+        });
+        
+        console.log('\n💡 Совет: Чтобы указать конкретное устройство, используйте:');
+        console.log('   npm run install:device -- --device <device_id>');
+    }
+    
+    // Проверяем аргумент командной строки для выбора устройства
+    const args = process.argv.slice(2);
+    const deviceIndex = args.indexOf('--device');
+    if (deviceIndex !== -1 && args[deviceIndex + 1]) {
+        const requestedDevice = args[deviceIndex + 1];
+        if (authorizedDevices.some(line => line.split('\t')[0] === requestedDevice)) {
+            selectedDevice = requestedDevice;
+            console.log(`\n✓ Используется указанное устройство: ${selectedDevice}`);
+        } else {
+            console.error(`\n❌ Устройство "${requestedDevice}" не найдено!`);
+            process.exit(1);
+        }
+    }
+    
+    // Функция для выполнения команд ADB с указанием устройства
+    const adbCmd = (command) => {
+        return `adb -s ${selectedDevice} ${command}`;
+    };
     
     // Проверяем наличие APK
     if (!fs.existsSync(apkPath)) {
@@ -76,13 +134,13 @@ try {
         // Сначала удаляем старое приложение (если установлено)
         try {
             console.log('Удаление старой версии (если установлена)...');
-            execSync('adb uninstall com.example.timeapp', { stdio: 'ignore' });
+            execSync(adbCmd('uninstall com.example.timeapp'), { stdio: 'ignore' });
         } catch (e) {
             // Игнорируем ошибку, если приложение не установлено
         }
         
         // Устанавливаем новую версию
-        execSync(`adb install -r "${apkPath}"`, { stdio: 'inherit' });
+        execSync(adbCmd(`install -r "${apkPath}"`), { stdio: 'inherit' });
         console.log('\n✓ Приложение установлено!');
     } catch (error) {
         console.error('\n❌ Ошибка при установке:', error.message);
@@ -91,7 +149,7 @@ try {
     
     console.log('\nЗапуск приложения...');
     try {
-        execSync('adb shell am start -n com.example.timeapp/.MainActivity', { stdio: 'inherit' });
+        execSync(adbCmd('shell am start -n com.example.timeapp/.MainActivity'), { stdio: 'inherit' });
         console.log('\n✓ Приложение запущено на устройстве!');
     } catch (error) {
         console.error('\n❌ Ошибка при запуске:', error.message);

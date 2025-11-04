@@ -19,12 +19,6 @@ out/
 .gradle/
 local.properties
 
-# iOS build files
-*.xcworkspace
-*.xcuserdata
-.xccheckout
-DerivedData/
-
 # IDE
 .idea/
 .vscode/
@@ -54,13 +48,34 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Allow .env.example
-!.env.example
+# Git
+.git/
+.gitignore
+.gitattributes
 
-# Config files with API keys
-www/js/config.js
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
 
-# Build scripts cache
-build/
-dist/
+# Documentation
+README.md
+*.md
+
+# Scripts (not needed in container)
+build-script.js
+install-and-run.js
+run-emulator.js
+check-device.js
+*.bat
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.js
+*.spec.js
+
+# Misc
+create-assets.html
 

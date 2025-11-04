@@ -1,27 +1,44 @@
 {
-  "name": "gpt-chat-app",
+  "name": "voice-room-app",
   "version": "1.0.0",
-  "description": "Простое Android приложение для общения с GPT",
+  "description": "Голосовые комнаты для общения в реальном времени - веб и Android приложение",
+  "type": "module",
   "scripts": {
     "init": "npx cordova platform add android",
     "build": "node build-script.js",
     "build:release": "node build-script.js --release",
-    "install": "node install-and-run.js",
-    "run": "npm run build && npm run install",
-    "deploy": "npm run build && npm run install",
-    "check-device": "node check-device.js"
+    "install:device": "node install-and-run.js",
+    "run": "npm run build && npm run install:device",
+    "run:emulator": "npm run build && node run-emulator.js",
+    "deploy": "npm run build && npm run install:device",
+    "check-device": "node check-device.js",
+    "server": "node server/server.mjs",
+    "dev": "node server/server.mjs",
+    "start": "node server/server.mjs",
+    "lint": "eslint . --ext .js,.mjs",
+    "docker:build": "docker build -t voice-room .",
+    "docker:run": "docker-compose up -d",
+    "docker:stop": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   },
   "keywords": [
     "android",
     "cordova",
-    "gpt",
-    "chat",
-    "openai"
+    "voice",
+    "room",
+    "webrtc",
+    "socket.io",
+    "realtime"
   ],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
   "devDependencies": {
-    "cordova-android": "^14.0.1"
+    "cordova-android": "^14.0.1",
+    "eslint": "^8.57.0"
   },
   "cordova": {
     "platforms": [

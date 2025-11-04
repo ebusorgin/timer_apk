@@ -2,6 +2,21 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// Проверка наличия необходимых папок
+const wwwPath = path.join(__dirname, 'www');
+if (!fs.existsSync(wwwPath)) {
+    console.error('❌ Ошибка: Папка www не найдена!');
+    process.exit(1);
+}
+
+// Проверка наличия node_modules
+const nodeModulesPath = path.join(__dirname, 'node_modules');
+if (!fs.existsSync(nodeModulesPath)) {
+    console.error('❌ Ошибка: Папка node_modules не найдена!');
+    console.log('Выполните: npm install');
+    process.exit(1);
+}
+
 // Проверяем, существует ли платформа Android
 const platformsPath = path.join(__dirname, 'platforms', 'android');
 
@@ -16,6 +31,16 @@ if (!fs.existsSync(platformsPath)) {
     }
 } else {
     console.log('Платформа Android уже добавлена.');
+}
+
+// Подготавливаем файлы (копируем www в platforms)
+console.log('Подготовка файлов...');
+try {
+    execSync('npx cordova prepare android', { stdio: 'inherit' });
+    console.log('Файлы подготовлены.');
+} catch (error) {
+    console.error('Ошибка при подготовке файлов:', error.message);
+    process.exit(1);
 }
 
 // Проверяем наличие Gradle Wrapper и используем его напрямую для сборки

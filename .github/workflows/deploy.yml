@@ -1,0 +1,58 @@
+name: Deploy to Production Server
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+env:
+  SERVER_HOST: 82.146.44.126
+  SERVER_USER: root
+
+jobs:
+  deploy:
+    name: Deploy to aiternitas.ru
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            cd /opt/voice-room
+            export GIT_REPO_URL="${{ secrets.GIT_REPO_URL || 'https://github.com/ebusorgin/timer_apk.git' }}"
+            BRANCH="${{ github.ref_name }}"
+            bash deploy.sh $BRANCH
+            
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            sleep 5
+            systemctl status voice-room --no-pager || exit 1
+            curl -f http://127.0.0.1:3000 || exit 1
+            echo "✅ Deployment verified successfully"
+            
+      - name: Check SSL certificate
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            certbot certificates | grep aiternitas.ru || echo "⚠️  SSL certificate not found"
+            nginx -t || exit 1
+            echo "✅ Nginx configuration verified"
+
