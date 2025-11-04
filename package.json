@@ -8,6 +8,7 @@
     "platform:rebuild": "npx cordova platform remove android && npx cordova platform add android",
     "build": "node build-script.js",
     "build:release": "node build-script.js --release",
+    "upload:apk": "powershell -ExecutionPolicy Bypass -File upload-apk.ps1",
     "install:device": "node install-and-run.js",
     "run": "npm run build && npm run install:device",
     "run:emulator": "npm run build && node run-emulator.js",
