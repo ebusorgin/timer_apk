@@ -379,10 +379,7 @@ const VoiceRoom = {
             roomLinkContainer: document.getElementById('roomLinkContainer'),
             btnCopyLink: document.getElementById('btnCopyLink'),
             joinContainer: document.getElementById('joinContainer'),
-            userCount: document.getElementById('userCount'),
-            serverConfigContainer: document.getElementById('serverConfigContainer'),
-            serverUrlInput: document.getElementById('serverUrl'),
-            btnSaveServer: document.getElementById('btnSaveServer')
+            userCount: document.getElementById('userCount')
         };
     },
     
