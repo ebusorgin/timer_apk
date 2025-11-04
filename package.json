@@ -18,6 +18,20 @@
     "dev": "node server/server.mjs",
     "start": "node server/server.mjs",
     "lint": "eslint . --ext .js,.mjs",
+    "test": "vitest run",
+    "test:all": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest",
+    "test:multi-user": "vitest run tests/voice-room.multi-user.test.js",
+    "test:errors": "vitest run tests/voice-room.error.test.js",
+    "test:edge-cases": "vitest run tests/voice-room.edge-cases.test.js",
+    "test:cleanup": "vitest run tests/voice-room.cleanup.test.js",
+    "test:connection-states": "vitest run tests/voice-room.connection-states.test.js",
+    "test:scenarios": "vitest run tests/voice-room.scenarios.test.js",
+    "test:mobile": "vitest run tests/voice-room.mobile.test.js",
+    "test:race-conditions": "vitest run tests/voice-room.race-conditions.test.js",
+    "test:security": "vitest run tests/voice-room.security.test.js",
+    "test:performance": "vitest run tests/voice-room.performance.test.js",
     "docker:build": "docker build -t voice-room .",
     "docker:run": "docker-compose up -d",
     "docker:stop": "docker-compose down",
@@ -41,7 +55,10 @@
   "devDependencies": {
     "cordova": "^12.0.0",
     "cordova-android": "^14.0.1",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+    "vitest": "^2.0.0",
+    "@vitest/ui": "^2.0.0",
+    "jsdom": "^24.0.0"
   },
   "cordova": {
     "platforms": [

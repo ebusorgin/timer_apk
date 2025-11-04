@@ -119,9 +119,11 @@ platforms/android/app/build/outputs/apk/debug/app-debug.apk
 
 После сборки APK также копируется в корень проекта:
 ```
-app-release.apk  (для release сборки)
-app-debug.apk    (для debug сборки)
+app-debug.apk    (для debug сборки - подписан автоматически, готов к установке)
+app-release.apk  (для release сборки - может быть неподписанным)
 ```
+
+**Важно:** Для установки на устройства рекомендуется использовать debug APK, так как он автоматически подписывается debug keystore. Release APK требует дополнительной настройки подписи.
 
 3. **Релизная сборка:**
 ```bash
@@ -138,22 +140,33 @@ npm run build:release
 # Linux: sudo apt-get install sshpass
 # macOS: brew install hudochenkov/sshpass/sshpass
 
-# Загрузите APK на сервер
+# Загрузите APK на сервер (автоматически найдет debug APK если доступен)
 bash upload-apk.sh
 ```
 
-**Вариант 2: Загрузка вручную через scp**
+**Вариант 2: Использовать PowerShell скрипт (Windows)**
+```powershell
+npm run upload:apk
+# Или напрямую:
+.\upload-apk.ps1
+```
+
+**Вариант 3: Загрузка вручную через scp**
 ```bash
+# Debug APK (рекомендуется для тестирования)
+scp app-debug.apk root@82.146.44.126:/opt/voice-room/app-debug.apk
+
+# Release APK
 scp app-release.apk root@82.146.44.126:/opt/voice-room/app-release.apk
 # Пароль: carFds43
 ```
 
-**Вариант 3: Загрузка через GitHub Actions**
+**Вариант 4: Загрузка через GitHub Actions**
 Если APK файл есть в репозитории, он автоматически будет скопирован при деплое.
 
 После загрузки APK будет доступен по адресу: `https://aiternitas.ru/download/apk`
 
-**Примечание:** Сборка APK на сервере не выполняется автоматически, так как требует установки Android SDK и Gradle. Рекомендуется собирать APK локально и загружать на сервер.
+**Примечание:** Сборка APK на сервере не выполняется автоматически, так как требует установки Android SDK и Gradle. Рекомендуется собирать APK локально и загружать на сервер. Используйте debug APK для тестирования - он автоматически подписывается и готов к установке.
 
 ### Установка на устройство
 

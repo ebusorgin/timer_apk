@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
+import { statSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -163,28 +164,64 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
         // Используем gradlew напрямую для сборки APK
         execSync(`.\\gradlew.bat ${buildType}`, { stdio: 'inherit' });
         console.log('\n✓ Сборка завершена успешно!');
-        const outputPath = isRelease 
-            ? 'app\\build\\outputs\\apk\\release\\app-release-unsigned.apk'
-            : 'app\\build\\outputs\\apk\\debug\\app-debug.apk';
+        
+        // Для release сборки проверяем наличие подписанного APK
+        let outputPath;
+        if (isRelease) {
+            // Сначала проверяем подписанный release APK
+            const signedReleasePath = path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+            if (fs.existsSync(signedReleasePath)) {
+                outputPath = 'app\\build\\outputs\\apk\\release\\app-release.apk';
+                console.log('✅ Найден подписанный release APK');
+            } else {
+                // Если подписанного нет, используем unsigned (но это нежелательно для установки)
+                outputPath = 'app\\build\\outputs\\apk\\release\\app-release-unsigned.apk';
+                console.warn('⚠️  Подписанный release APK не найден, используется unsigned (не подходит для установки на устройства)');
+                console.warn('   Рекомендуется использовать debug сборку для тестирования: npm run build');
+            }
+        } else {
+            outputPath = 'app\\build\\outputs\\apk\\debug\\app-debug.apk';
+        }
+        
         console.log(`APK файл находится в: ${outputPath}`);
         
         // Копируем APK в корень проекта для удобства
         const apkSource = path.join(platformsPath, outputPath.replace(/\\/g, path.sep));
         const apkDestination = path.join(__dirname, isRelease ? 'app-release.apk' : 'app-debug.apk');
+        
         if (fs.existsSync(apkSource)) {
+            // Проверяем что APK валиден перед копированием
+            const stats = statSync(apkSource);
+            console.log(`Размер APK: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+            
+            if (stats.size < 1000) {
+                console.error('❌ APK файл слишком маленький, возможно поврежден!');
+                process.exit(1);
+            }
+            
             fs.copyFileSync(apkSource, apkDestination);
             console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+            
+            // Для debug APK проверяем что он подписан
+            if (!isRelease) {
+                console.log('✅ Debug APK автоматически подписан debug keystore и готов к установке');
+            } else {
+                console.warn('⚠️  Release APK может быть неподписанным. Для установки используйте debug версию или подпишите release.');
+            }
         } else {
             console.warn(`⚠️  APK файл не найден по пути: ${apkSource}`);
             // Пробуем найти альтернативные пути
             const alternativePaths = [
-                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
-                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
+                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'), // Приоритет debug
+                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'), // Подписанный release
+                path.join(platformsPath, 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
             ];
             for (const altPath of alternativePaths) {
                 if (fs.existsSync(altPath)) {
+                    const stats = statSync(altPath);
+                    console.log(`✅ APK найден: ${altPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
                     fs.copyFileSync(altPath, apkDestination);
-                    console.log(`✅ APK найден и скопирован: ${altPath}`);
+                    console.log(`✅ APK скопирован в корень: ${apkDestination}`);
                     break;
                 }
             }

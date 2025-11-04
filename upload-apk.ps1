@@ -8,43 +8,61 @@ $SERVER_USER = "root"
 $APP_DIR = "/opt/voice-room"
 $SSH_PASSWORD = if ($env:SSH_PASSWORD) { $env:SSH_PASSWORD } else { "carFds43" }
 
-Write-Host "Searching for APK file..." -ForegroundColor Cyan
+Write-Host "🔍 Поиск локального APK файла..." -ForegroundColor Cyan
 
 $LOCAL_APK = $null
-if (Test-Path "app-release.apk") {
-    $LOCAL_APK = "app-release.apk"
+# Приоритет debug APK - он подписан и готов к установке
+if (Test-Path "app-debug.apk") {
+    $LOCAL_APK = "app-debug.apk"
 }
-elseif (Test-Path "platforms\android\app\build\outputs\apk\release\app-release-unsigned.apk") {
-    $LOCAL_APK = "platforms\android\app\build\outputs\apk\release\app-release-unsigned.apk"
+elseif (Test-Path "app-release.apk") {
+    $LOCAL_APK = "app-release.apk"
 }
 elseif (Test-Path "platforms\android\app\build\outputs\apk\debug\app-debug.apk") {
     $LOCAL_APK = "platforms\android\app\build\outputs\apk\debug\app-debug.apk"
 }
+elseif (Test-Path "platforms\android\app\build\outputs\apk\release\app-release-unsigned.apk") {
+    $LOCAL_APK = "platforms\android\app\build\outputs\apk\release\app-release-unsigned.apk"
+}
 
 if (-not $LOCAL_APK) {
-    Write-Host "APK file not found locally!" -ForegroundColor Red
-    Write-Host "Run: npm run build" -ForegroundColor Yellow
+    Write-Host "❌ APK файл не найден локально!" -ForegroundColor Red
+    Write-Host "Выполните сборку: npm run build" -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "Found APK file: $LOCAL_APK" -ForegroundColor Green
+# Определяем имя файла на сервере - для debug используем app-debug.apk
+$serverFileName = if ($LOCAL_APK -like "*debug*") { "app-debug.apk" } else { "app-release.apk" }
+
+Write-Host "✅ Найден APK файл: $LOCAL_APK" -ForegroundColor Green
 $apkSize = (Get-Item $LOCAL_APK).Length
-Write-Host "File size: $([math]::Round($apkSize / 1MB, 2)) MB" -ForegroundColor Yellow
+
+# Проверка размера APK перед загрузкой
+if ($apkSize -lt 1000) {
+    Write-Host "❌ APK файл слишком маленький ($apkSize байт), возможно поврежден!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "📦 Размер APK: $([math]::Round($apkSize / 1MB, 2)) MB" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Uploading to server..." -ForegroundColor Cyan
-Write-Host "When prompted for password, enter: $SSH_PASSWORD" -ForegroundColor Yellow
+$uploadTarget = "${SERVER_USER}@${SERVER_HOST}:${APP_DIR}/${serverFileName}"
+Write-Host "📤 Загрузка на сервер ${uploadTarget}..." -ForegroundColor Cyan
+Write-Host "Пароль: $SSH_PASSWORD" -ForegroundColor Yellow
 Write-Host ""
 
 # Use scp directly - user will need to enter password
-scp -o StrictHostKeyChecking=no "$LOCAL_APK" "${SERVER_USER}@${SERVER_HOST}:${APP_DIR}/app-release.apk"
+scp -o StrictHostKeyChecking=no "$LOCAL_APK" "$uploadTarget"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
-    Write-Host "APK file uploaded successfully!" -ForegroundColor Green
-    Write-Host "Available at: https://aiternitas.ru/download/apk" -ForegroundColor Cyan
+    Write-Host "✅ APK файл успешно загружен на сервер!" -ForegroundColor Green
+    Write-Host "🌐 Файл доступен по адресу: https://aiternitas.ru/download/apk" -ForegroundColor Cyan
 }
 else {
     Write-Host ""
-    Write-Host "Upload failed. Try manually:" -ForegroundColor Red
-    Write-Host "scp $LOCAL_APK ${SERVER_USER}@${SERVER_HOST}:${APP_DIR}/app-release.apk" -ForegroundColor White
+    Write-Host "❌ Ошибка при загрузке APK файла" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Попробуйте вручную:"
+    Write-Host "scp `"$LOCAL_APK`" `"$uploadTarget`"" -ForegroundColor White
+    exit 1
 }

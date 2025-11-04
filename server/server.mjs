@@ -38,18 +38,24 @@ app.use(express.static(wwwPath));
 // Эндпоинт для скачивания APK
 app.get('/download/apk', (req, res) => {
     const apkPaths = [
-        path.join(__dirname, '..', 'app-release.apk'), // Главный путь - сюда копируется APK после сборки
-        path.join(__dirname, '..', 'app-debug.apk'),
-        path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
+        path.join(__dirname, '..', 'app-debug.apk'), // Приоритет debug APK - он подписан и готов к установке
+        path.join(__dirname, '..', 'app-release.apk'),
         path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
-        path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'), // Если есть подписанный
+        path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'), // Подписанный release
+        path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
     ];
     
     let apkPath = null;
     for (const testPath of apkPaths) {
         if (existsSync(testPath)) {
+            const stats = statSync(testPath);
+            // Проверка валидности APK - размер должен быть больше 1KB
+            if (stats.size < 1000) {
+                console.warn(`⚠️  APK файл слишком маленький (${stats.size} байт), пропускаем: ${testPath}`);
+                continue;
+            }
             apkPath = testPath;
-            console.log(`✅ Найден APK файл: ${apkPath}`);
+            console.log(`✅ Найден APK файл: ${apkPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
             break;
         }
     }
@@ -164,9 +170,17 @@ app.get('/download/apk', (req, res) => {
     }
     
     // Устанавливаем правильные заголовки для скачивания APK файла
+    const fileStats = statSync(apkPath);
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Content-Disposition', 'attachment; filename="voice-room.apk"');
-    res.setHeader('Content-Length', statSync(apkPath).size);
+    res.setHeader('Content-Length', fileStats.size);
+    
+    // Добавляем заголовки для предотвращения кеширования и повреждения файла
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    console.log(`Отправка APK файла: ${apkPath} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
     
     // Отправляем файл как бинарный поток
     const fileStream = createReadStream(apkPath);
