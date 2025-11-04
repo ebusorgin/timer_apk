@@ -61,7 +61,7 @@ chown -R voice-room:voice-room "$APP_DIR"
 echo "📝 Настройка переменных окружения..."
 cat > "$APP_DIR/.env" << EOF
 PORT=3000
-HOST=127.0.0.1
+HOST=0.0.0.0
 CORS_ORIGIN=https://aiternitas.ru
 NODE_ENV=production
 MAX_USERS_PER_ROOM=10
