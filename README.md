@@ -125,6 +125,16 @@ npm run check-device
 npm run run:emulator
 ```
 
+## Автоматический деплой
+
+При каждом push в ветку `master` автоматически запускается деплой на сервер через GitHub Actions.
+
+**Настройка GitHub Secrets:**
+1. Перейдите в Settings → Secrets → Actions
+2. Добавьте секреты:
+   - `SSH_PASSWORD` = пароль для SSH (carFds43)
+   - `GIT_REPO_URL` = https://github.com/ebusorgin/timer_apk.git (опционально)
+
 ## Деплой на production сервер
 
 Подробные инструкции по деплою на сервер aiternitas.ru смотрите в [DEPLOY.md](DEPLOY.md)
