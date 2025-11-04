@@ -78,6 +78,10 @@ fi
 
 # Установка зависимостей
 echo -e "${YELLOW}📦 Установка зависимостей...${NC}"
+# Очистка npm кеша если есть проблемы
+if [ -d ".npm/_cacache" ]; then
+    rm -rf .npm/_cacache || true
+fi
 sudo -u "$APP_USER" npm ci --production || sudo -u "$APP_USER" npm install --production || {
     echo -e "${RED}❌ Ошибка при установке зависимостей${NC}"
     exit 1
@@ -133,24 +137,32 @@ else
     echo -e "${YELLOW}⚠️  Приложение не отвечает на порту 3000 (возможно, еще запускается)${NC}"
 fi
 
-# Проверка и запуск nginx
-if nginx -t 2>/dev/null; then
-    echo -e "${GREEN}✅ Конфигурация nginx корректна${NC}"
-    # Убеждаемся что конфигурация применена
-    if [ -f "nginx.conf" ]; then
-        cp nginx.conf /etc/nginx/sites-available/aiternitas.ru
-        ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
-        rm -f /etc/nginx/sites-enabled/default
+# Принудительное применение конфигурации nginx
+echo -e "${YELLOW}🌐 Настройка nginx...${NC}"
+if [ -f "nginx.conf" ]; then
+    # Удаляем старую конфигурацию если есть
+    rm -f /etc/nginx/sites-enabled/aiternitas.ru
+    rm -f /etc/nginx/sites-enabled/default
+    
+    # Копируем новую конфигурацию
+    cp nginx.conf /etc/nginx/sites-available/aiternitas.ru
+    ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
+    
+    # Проверяем конфигурацию
+    if nginx -t; then
+        echo -e "${GREEN}✅ Конфигурация nginx корректна${NC}"
+        systemctl enable nginx || true
+        systemctl start nginx || systemctl restart nginx || true
+        sleep 2
+        systemctl reload nginx || true
+        echo -e "${GREEN}✅ Nginx перезапущен${NC}"
+    else
+        echo -e "${RED}❌ Ошибка в конфигурации nginx!${NC}"
         nginx -t
+        exit 1
     fi
-    systemctl enable nginx || true
-    systemctl start nginx || systemctl restart nginx || true
-    sleep 2
-    systemctl reload nginx || true
-    echo -e "${GREEN}✅ Nginx перезапущен${NC}"
 else
-    echo -e "${RED}❌ Ошибка в конфигурации nginx!${NC}"
-    nginx -t
+    echo -e "${YELLOW}⚠️  Файл nginx.conf не найден${NC}"
 fi
 
 echo ""

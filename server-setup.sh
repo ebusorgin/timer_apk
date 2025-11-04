@@ -77,16 +77,36 @@ sudo -u voice-room npm ci --production || sudo -u voice-room npm install --produ
 # Настройка nginx
 echo "🌐 Настройка nginx..."
 cat > /etc/nginx/sites-available/aiternitas.ru << 'NGINX_EOF'
-# HTTP сервер
+# HTTPS сервер
 server {
-    listen 80;
-    listen [::]:80;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
     server_name aiternitas.ru www.aiternitas.ru;
 
-    # Для Let's Encrypt
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
+    # SSL сертификаты
+    ssl_certificate /etc/letsencrypt/live/aiternitas.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aiternitas.ru/privkey.pem;
+    
+    # SSL настройки безопасности
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    # Логи
+    access_log /var/log/nginx/aiternitas.ru-access.log;
+    error_log /var/log/nginx/aiternitas.ru-error.log;
+
+    # Максимальный размер загружаемых файлов
+    client_max_body_size 10M;
+
+    # Таймауты для WebSocket
+    proxy_connect_timeout 7d;
+    proxy_send_timeout 7d;
+    proxy_read_timeout 7d;
 
     # Проксирование на Node.js приложение
     location / {
@@ -119,11 +139,85 @@ server {
         proxy_cache_bypass $http_upgrade;
         proxy_buffering off;
     }
+
+    # Безопасность заголовков
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval' wss: ws:; frame-ancestors 'self';" always;
+}
+
+# Редирект HTTP на HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name aiternitas.ru www.aiternitas.ru;
+
+    # Для Let's Encrypt
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    # Редирект на HTTPS
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
 }
 NGINX_EOF
 
 ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
+
+# Проверка SSL сертификатов перед применением конфигурации
+if [ -f "/etc/letsencrypt/live/aiternitas.ru/fullchain.pem" ]; then
+    echo "✅ SSL сертификаты найдены"
+else
+    echo "⚠️  SSL сертификаты не найдены, создаю базовую конфигурацию..."
+    # Если сертификатов нет, создаем HTTP-only конфигурацию временно
+    cat > /etc/nginx/sites-available/aiternitas.ru << 'NGINX_HTTP_EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name aiternitas.ru www.aiternitas.ru;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering off;
+    }
+
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering off;
+    }
+}
+NGINX_HTTP_EOF
+    ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
+fi
 
 # Проверка и перезапуск nginx
 if nginx -t; then
