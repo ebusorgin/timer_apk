@@ -67,6 +67,14 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
             ? 'app\\build\\outputs\\apk\\release\\app-release-unsigned.apk'
             : 'app\\build\\outputs\\apk\\debug\\app-debug.apk';
         console.log(`APK файл находится в: ${outputPath}`);
+        
+        // Копируем APK в корень проекта для удобства
+        const apkSource = path.join(platformsPath, outputPath.replace(/\\/g, path.sep));
+        const apkDestination = path.join(__dirname, isRelease ? 'app-release.apk' : 'app-debug.apk');
+        if (fs.existsSync(apkSource)) {
+            fs.copyFileSync(apkSource, apkDestination);
+            console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+        }
     } catch (error) {
         console.error('Ошибка при сборке:', error.message);
         process.exit(1);
