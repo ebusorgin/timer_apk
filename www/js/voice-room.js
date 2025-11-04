@@ -72,9 +72,13 @@ const VoiceRoom = {
     
     init() {
         console.log('VoiceRoom initializing...');
+        console.log('Document ready state:', document.readyState);
+        console.log('Socket.IO available:', typeof io !== 'undefined');
         
         // Инициализация DOM элементов
         this.initElements();
+        const foundElements = Object.keys(this.elements).filter(key => this.elements[key] !== null).length;
+        console.log('Elements initialized:', foundElements, 'elements found');
         
         // Инициализация настроек сервера (для Cordova)
         // Загрузка сохраненного имени
@@ -88,6 +92,8 @@ const VoiceRoom = {
         
         // Автоподключение по URL параметру
         this.handleUrlParams();
+        
+        console.log('VoiceRoom.init() completed');
     },
     
     initSocket() {
@@ -357,8 +363,16 @@ const VoiceRoom = {
     },
     
     setupEventListeners() {
+        console.log('Setting up event listeners...');
+        
         if (this.elements.btnCreateRoom) {
-            this.elements.btnCreateRoom.addEventListener('click', () => this.createRoom());
+            console.log('btnCreateRoom found, adding click listener');
+            this.elements.btnCreateRoom.addEventListener('click', () => {
+                console.log('Create room button clicked');
+                this.createRoom();
+            });
+        } else {
+            console.error('btnCreateRoom element not found!');
         }
         
         if (this.elements.btnJoinRoom) {
@@ -369,7 +383,10 @@ const VoiceRoom = {
         }
         
         if (this.elements.btnJoinRoomNow) {
-            this.elements.btnJoinRoomNow.addEventListener('click', () => this.joinExistingRoom());
+            this.elements.btnJoinRoomNow.addEventListener('click', () => {
+                console.log('Join room button clicked');
+                this.joinExistingRoom();
+            });
         }
         
         if (this.elements.btnLeaveRoom) {
@@ -396,9 +413,14 @@ const VoiceRoom = {
         
         if (this.elements.usernameInput) {
             this.elements.usernameInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !this.currentRoomId) this.createRoom();
+                if (e.key === 'Enter' && !this.currentRoomId) {
+                    console.log('Enter pressed in username input, creating room');
+                    this.createRoom();
+                }
             });
         }
+        
+        console.log('Event listeners set up');
     },
     
     handleUrlParams() {
@@ -418,13 +440,25 @@ const VoiceRoom = {
     },
     
     async createRoom() {
+        console.log('createRoom() called');
+        console.log('Current state:', {
+            hasUsernameInput: !!this.elements.usernameInput,
+            hasSocket: !!this.socket,
+            socketConnected: this.socket?.connected,
+            connectionStatus: this.connectionStatus
+        });
+        
         if (!this.elements.usernameInput) {
             console.error('Username input not found');
+            this.showNotification('Ошибка: поле ввода имени не найдено', 'error', 3000);
             return;
         }
         
         const username = this.sanitizeString(this.elements.usernameInput.value);
+        console.log('Username value:', username);
+        
         if (!username || username.length < 1) {
+            console.log('Username is empty, showing notification');
             this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
             return;
         }
@@ -432,12 +466,40 @@ const VoiceRoom = {
         if (!this.socket) {
             console.error('Socket not initialized');
             this.showNotification('Ошибка подключения к серверу. Проверьте, что сервер запущен.', 'error', 5000);
+            // Попробуем инициализировать socket
+            console.log('Attempting to initialize socket...');
+            this.initSocket();
+            // Ждем немного и проверяем снова
+            setTimeout(() => {
+                if (!this.socket || !this.socket.connected) {
+                    this.showNotification('Не удалось подключиться к серверу. Проверьте консоль браузера для деталей.', 'error', 5000);
+                } else {
+                    // Повторяем попытку создания комнаты
+                    this.createRoom();
+                }
+            }, 2000);
             return;
         }
         
         if (!this.socket.connected) {
             console.warn('Socket not connected yet, waiting...');
             this.showNotification('Подключение к серверу... Пожалуйста, подождите.', 'info', 3000);
+            // Ждем подключения
+            const checkConnection = setInterval(() => {
+                if (this.socket && this.socket.connected) {
+                    clearInterval(checkConnection);
+                    console.log('Socket connected, retrying createRoom...');
+                    this.createRoom();
+                }
+            }, 500);
+            
+            // Таймаут на ожидание подключения
+            setTimeout(() => {
+                clearInterval(checkConnection);
+                if (!this.socket || !this.socket.connected) {
+                    this.showNotification('Таймаут подключения к серверу. Проверьте, что сервер запущен.', 'error', 5000);
+                }
+            }, 10000);
             return;
         }
         
@@ -445,59 +507,85 @@ const VoiceRoom = {
         this.myUsername = username;
         localStorage.setItem('voiceRoomUsername', username);
         
-        this.socket.emit('create-room', { username }, (response) => {
-            if (!response) {
-                console.error('No response from server');
-                this.showNotification('Ошибка при создании комнаты. Попробуйте снова.', 'error', 5000);
-                return;
-            }
-            
-            if (response.error) {
-                console.error('Server error:', response.error);
-                this.showNotification('Ошибка: ' + response.error, 'error', 5000);
-                return;
-            }
-            
-            const { roomId, userId } = response;
-            this.currentRoomId = roomId;
-            this.myUserId = userId;
-            console.log('✅ Room created:', roomId, 'User ID:', userId);
-            
-            this.showNotification('Комната создана!', 'success', 2000);
-            
-            this.initMedia().then(() => {
-                this.addUserToGrid(this.myUserId, username, true);
+        // Добавляем визуальную обратную связь
+        if (this.elements.btnCreateRoom) {
+            this.elements.btnCreateRoom.disabled = true;
+            const originalText = this.elements.btnCreateRoom.innerHTML;
+            this.elements.btnCreateRoom.innerHTML = '<span>⏳</span><span>Создание...</span>';
+        }
+        
+        try {
+            this.socket.emit('create-room', { username }, (response) => {
+                console.log('create-room response:', response);
                 
-                if (this.elements.currentRoomIdSpan) {
-                    this.elements.currentRoomIdSpan.textContent = roomId;
+                // Восстанавливаем кнопку
+                if (this.elements.btnCreateRoom) {
+                    this.elements.btnCreateRoom.disabled = false;
+                    this.elements.btnCreateRoom.innerHTML = '<span>➕</span><span>Создать комнату</span>';
                 }
                 
-                const roomUrl = App.isCordova 
-                    ? `voice-room://room?${roomId}` 
-                    : `${window.location.origin}?room=${roomId}`;
-                
-                if (this.elements.roomLinkInput) {
-                    this.elements.roomLinkInput.value = roomUrl;
+                if (!response) {
+                    console.error('No response from server');
+                    this.showNotification('Ошибка при создании комнаты. Попробуйте снова.', 'error', 5000);
+                    return;
                 }
                 
-                if (this.elements.roomLinkContainer) {
-                    this.elements.roomLinkContainer.style.display = 'block';
+                if (response.error) {
+                    console.error('Server error:', response.error);
+                    this.showNotification('Ошибка: ' + response.error, 'error', 5000);
+                    return;
                 }
                 
-                this.showRoomScreen();
-            }).catch(error => {
-                console.error('Error initializing media:', error);
-                let errorMessage = 'Не удалось получить доступ к микрофону. ';
-                if (error.name === 'NotAllowedError') {
-                    errorMessage += 'Разрешите доступ к микрофону в настройках браузера.';
-                } else if (error.name === 'NotFoundError') {
-                    errorMessage += 'Микрофон не найден.';
-                } else {
-                    errorMessage += error.message;
-                }
-                this.showNotification(errorMessage, 'error', 7000);
+                const { roomId, userId } = response;
+                this.currentRoomId = roomId;
+                this.myUserId = userId;
+                console.log('✅ Room created:', roomId, 'User ID:', userId);
+                
+                this.showNotification('Комната создана!', 'success', 2000);
+                
+                this.initMedia().then(() => {
+                    this.addUserToGrid(this.myUserId, username, true);
+                    
+                    if (this.elements.currentRoomIdSpan) {
+                        this.elements.currentRoomIdSpan.textContent = roomId;
+                    }
+                    
+                    const roomUrl = App.isCordova 
+                        ? `voice-room://room?${roomId}` 
+                        : `${window.location.origin}?room=${roomId}`;
+                    
+                    if (this.elements.roomLinkInput) {
+                        this.elements.roomLinkInput.value = roomUrl;
+                    }
+                    
+                    if (this.elements.roomLinkContainer) {
+                        this.elements.roomLinkContainer.style.display = 'block';
+                    }
+                    
+                    this.showRoomScreen();
+                }).catch(error => {
+                    console.error('Error initializing media:', error);
+                    let errorMessage = 'Не удалось получить доступ к микрофону. ';
+                    if (error.name === 'NotAllowedError') {
+                        errorMessage += 'Разрешите доступ к микрофону в настройках браузера.';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMessage += 'Микрофон не найден.';
+                    } else {
+                        errorMessage += error.message;
+                    }
+                    this.showNotification(errorMessage, 'error', 7000);
+                });
             });
-        });
+        } catch (error) {
+            console.error('Error emitting create-room:', error);
+            this.showNotification('Ошибка при отправке запроса на создание комнаты', 'error', 5000);
+            
+            // Восстанавливаем кнопку
+            if (this.elements.btnCreateRoom) {
+                this.elements.btnCreateRoom.disabled = false;
+                this.elements.btnCreateRoom.innerHTML = '<span>➕</span><span>Создать комнату</span>';
+            }
+        }
     },
     
     async joinExistingRoom() {
