@@ -76,15 +76,6 @@ if (fs.existsSync(wwwPath)) {
 const gradlewPath = path.join(platformsPath, 'gradlew.bat');
 const gradleWrapperJar = path.join(platformsPath, 'gradle', 'wrapper', 'gradle-wrapper.jar');
 
-// Проверяем наличие www файлов в платформе, если нет - копируем вручную
-const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
-if (!fs.existsSync(wwwDest) && fs.existsSync(wwwPath)) {
-    console.log('Копирование www файлов в платформу...');
-    fs.mkdirSync(wwwDest, { recursive: true });
-    copyDirSync(wwwPath, wwwDest);
-    console.log('✅ www файлы скопированы.');
-}
-
 if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
     console.log('✅ Использование Gradle Wrapper для сборки (обход Cordova API)...');
     const originalDir = process.cwd();
