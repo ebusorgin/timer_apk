@@ -96,6 +96,8 @@ if grep -q "\"build\"" package.json; then
     APK_SOURCE=""
     if [ -f "platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
         APK_SOURCE="platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+    elif [ -f "platforms/android/app/build/outputs/apk/release/app-release.apk" ]; then
+        APK_SOURCE="platforms/android/app/build/outputs/apk/release/app-release.apk"
     elif [ -f "platforms/android/app/build/outputs/apk/debug/app-debug.apk" ]; then
         APK_SOURCE="platforms/android/app/build/outputs/apk/debug/app-debug.apk"
     fi
@@ -103,7 +105,17 @@ if grep -q "\"build\"" package.json; then
     if [ -n "$APK_SOURCE" ]; then
         echo -e "${YELLOW}📱 Копирование APK для скачивания...${NC}"
         sudo -u "$APP_USER" cp "$APK_SOURCE" "$APP_DIR/app-release.apk" 2>/dev/null || true
-        echo -e "${GREEN}✅ APK готов для скачивания${NC}"
+        if [ -f "$APP_DIR/app-release.apk" ]; then
+            echo -e "${GREEN}✅ APK готов для скачивания: $APP_DIR/app-release.apk${NC}"
+            ls -lh "$APP_DIR/app-release.apk" || true
+        else
+            echo -e "${YELLOW}⚠️  Не удалось скопировать APK файл${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  APK файл не найден после сборки${NC}"
+        echo -e "${YELLOW}   Проверьте пути:${NC}"
+        echo -e "${YELLOW}   - platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk${NC}"
+        echo -e "${YELLOW}   - platforms/android/app/build/outputs/apk/debug/app-debug.apk${NC}"
     fi
 fi
 

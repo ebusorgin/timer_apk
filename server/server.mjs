@@ -38,21 +38,27 @@ app.use(express.static(wwwPath));
 // Эндпоинт для скачивания APK
 app.get('/download/apk', (req, res) => {
     const apkPaths = [
+        path.join(__dirname, '..', 'app-release.apk'), // Главный путь - сюда копируется APK после сборки
+        path.join(__dirname, '..', 'app-debug.apk'),
         path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
         path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
-        path.join(__dirname, '..', 'app-release.apk'),
-        path.join(__dirname, '..', 'app-debug.apk')
+        path.join(__dirname, '..', 'platforms', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'), // Если есть подписанный
     ];
     
     let apkPath = null;
     for (const testPath of apkPaths) {
         if (existsSync(testPath)) {
             apkPath = testPath;
+            console.log(`✅ Найден APK файл: ${apkPath}`);
             break;
         }
     }
     
     if (!apkPath) {
+        // Логируем для отладки
+        console.log('❌ APK файл не найден. Проверяемые пути:');
+        apkPaths.forEach(p => console.log(`   - ${p}`));
+        
         // Если файл не найден, отправляем простой HTML ответ вместо JSON
         res.status(404).type('text/html');
         res.send(`
@@ -61,6 +67,11 @@ app.get('/download/apk', (req, res) => {
                 <body>
                     <h1>APK файл не найден</h1>
                     <p>Выполните сборку: <code>npm run build</code></p>
+                    <p><small>Проверьте что файл существует в одном из путей:</small></p>
+                    <ul>
+                        <li><code>app-release.apk</code></li>
+                        <li><code>platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk</code></li>
+                    </ul>
                 </body>
             </html>
         `);
