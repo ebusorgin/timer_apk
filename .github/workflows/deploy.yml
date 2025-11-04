@@ -30,15 +30,40 @@ jobs:
           script: |
             export GIT_REPO_URL="${{ secrets.GIT_REPO_URL || 'https://github.com/ebusorgin/timer_apk.git' }}"
             BRANCH="${{ github.ref_name }}"
-            if [ ! -d "/opt/voice-room" ]; then
-              mkdir -p /opt/voice-room
-              cd /opt/voice-room
-              git clone $GIT_REPO_URL .
-              chown -R voice-room:voice-room /opt/voice-room || useradd -r -s /bin/bash -d /opt/voice-room -m voice-room
-            else
-              cd /opt/voice-room
+            
+            # Создание директории и пользователя
+            if ! id "voice-room" &>/dev/null; then
+              useradd -r -s /bin/bash -d /opt/voice-room -m voice-room || true
             fi
-            bash deploy.sh $BRANCH || bash deploy.sh master || bash deploy.sh main
+            mkdir -p /opt/voice-room
+            chown -R voice-room:voice-room /opt/voice-room || true
+            
+            # Клонирование или обновление репозитория
+            cd /opt/voice-room
+            if [ -d ".git" ]; then
+              sudo -u voice-room git fetch origin || true
+              sudo -u voice-room git reset --hard origin/$BRANCH || sudo -u voice-room git reset --hard origin/master || true
+              sudo -u voice-room git clean -fd || true
+            else
+              rm -rf /opt/voice-room/*
+              sudo -u voice-room git clone $GIT_REPO_URL .
+            fi
+            chown -R voice-room:voice-room /opt/voice-room
+            
+            # Выполнение скрипта настройки или деплоя
+            if [ -f "deploy.sh" ]; then
+              bash deploy.sh $BRANCH || bash deploy.sh master || bash deploy.sh main
+            elif [ -f "server-setup.sh" ]; then
+              bash server-setup.sh
+            else
+              # Минимальная настройка если скрипты отсутствуют
+              sudo -u voice-room npm ci --production || sudo -u voice-room npm install --production || true
+              cp nginx.conf /etc/nginx/sites-available/aiternitas.ru 2>/dev/null || true
+              ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/ 2>/dev/null || true
+              cp voice-room.service /etc/systemd/system/ 2>/dev/null || true
+              systemctl daemon-reload || true
+              systemctl restart voice-room || systemctl start voice-room || true
+            fi
             
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.0

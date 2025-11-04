@@ -43,8 +43,16 @@ chown -R voice-room:voice-room "$APP_DIR"
 echo "📥 Клонирование репозитория..."
 cd "$APP_DIR"
 if [ -d ".git" ]; then
-    sudo -u voice-room git pull origin master || sudo -u voice-room git pull origin main || true
+    echo "Обновление существующего репозитория..."
+    sudo -u voice-room git fetch origin || true
+    sudo -u voice-room git reset --hard origin/master || sudo -u voice-room git reset --hard origin/main || true
+    sudo -u voice-room git clean -fd || true
 else
+    echo "Клонирование нового репозитория..."
+    if [ "$(ls -A $APP_DIR)" ]; then
+        echo "Директория не пустая, очищаю..."
+        rm -rf "$APP_DIR"/* "$APP_DIR"/.[!.]* 2>/dev/null || true
+    fi
     sudo -u voice-room git clone "$REPO_URL" .
 fi
 chown -R voice-room:voice-room "$APP_DIR"
