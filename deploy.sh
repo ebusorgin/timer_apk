@@ -133,10 +133,11 @@ else
     echo -e "${YELLOW}⚠️  Приложение не отвечает на порту 3000 (возможно, еще запускается)${NC}"
 fi
 
-# Проверка nginx
+# Проверка и запуск nginx
 if nginx -t 2>/dev/null; then
     echo -e "${GREEN}✅ Конфигурация nginx корректна${NC}"
-    systemctl reload nginx
+    systemctl enable nginx || true
+    systemctl start nginx || systemctl restart nginx || systemctl reload nginx || true
 else
     echo -e "${RED}❌ Ошибка в конфигурации nginx!${NC}"
     nginx -t
