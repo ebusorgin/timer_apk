@@ -392,15 +392,33 @@ const VoiceRoom = {
     
     setupEventListeners() {
         console.log('Setting up event listeners...');
+        console.log('Document ready state:', document.readyState);
         
         if (this.elements.btnCreateRoom) {
             console.log('btnCreateRoom found, adding click listener');
-            this.elements.btnCreateRoom.addEventListener('click', () => {
-                console.log('Create room button clicked');
+            console.log('Button element:', this.elements.btnCreateRoom);
+            console.log('Button ID:', this.elements.btnCreateRoom.id);
+            
+            // Удаляем старый обработчик если есть
+            const newBtn = this.elements.btnCreateRoom.cloneNode(true);
+            this.elements.btnCreateRoom.parentNode.replaceChild(newBtn, this.elements.btnCreateRoom);
+            this.elements.btnCreateRoom = newBtn;
+            
+            this.elements.btnCreateRoom.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Create room button clicked via addEventListener');
+                console.log('Event:', e);
+                console.log('VoiceRoom.createRoom type:', typeof this.createRoom);
                 this.createRoom();
             });
+            
+            // Также проверяем что обработчик установлен
+            console.log('Event listener added, button onclick:', this.elements.btnCreateRoom.onclick);
         } else {
             console.error('btnCreateRoom element not found!');
+            console.error('Available elements:', Object.keys(this.elements));
+            console.error('Document body:', document.body.innerHTML.substring(0, 500));
         }
         
         if (this.elements.btnJoinRoom) {
