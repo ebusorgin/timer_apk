@@ -59,20 +59,105 @@ app.get('/download/apk', (req, res) => {
         console.log('❌ APK файл не найден. Проверяемые пути:');
         apkPaths.forEach(p => console.log(`   - ${p}`));
         
-        // Если файл не найден, отправляем простой HTML ответ вместо JSON
+        // Если файл не найден, отправляем понятное HTML сообщение с инструкциями
         res.status(404).type('text/html');
         res.send(`
-            <html>
-                <head><meta charset="UTF-8"><title>APK не найден</title></head>
-                <body>
-                    <h1>APK файл не найден</h1>
-                    <p>Выполните сборку: <code>npm run build</code></p>
-                    <p><small>Проверьте что файл существует в одном из путей:</small></p>
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>APK не найден</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                        max-width: 600px;
+                        margin: 50px auto;
+                        padding: 20px;
+                        background: #f5f5f5;
+                    }
+                    .container {
+                        background: white;
+                        padding: 30px;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    h1 {
+                        color: #e74c3c;
+                        margin-top: 0;
+                    }
+                    .info {
+                        background: #fff3cd;
+                        border-left: 4px solid #ffc107;
+                        padding: 15px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    }
+                    code {
+                        background: #f4f4f4;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        font-family: 'Courier New', monospace;
+                        color: #c7254e;
+                    }
+                    .steps {
+                        background: #e7f3ff;
+                        border-left: 4px solid #2196F3;
+                        padding: 15px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    }
+                    .steps ol {
+                        margin: 10px 0;
+                        padding-left: 20px;
+                    }
+                    .steps li {
+                        margin: 8px 0;
+                    }
+                    a {
+                        color: #2196F3;
+                        text-decoration: none;
+                    }
+                    a:hover {
+                        text-decoration: underline;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>📱 APK файл не найден</h1>
+                    
+                    <div class="info">
+                        <strong>Причина:</strong> APK файл еще не собран или не загружен на сервер.
+                        Сборка APK требует Android SDK и Gradle, которые обычно не устанавливаются на сервере.
+                    </div>
+                    
+                    <div class="steps">
+                        <strong>Как загрузить APK на сервер:</strong>
+                        <ol>
+                            <li><strong>Соберите APK локально:</strong><br>
+                                <code>npm run build</code><br>
+                                APK будет в папке <code>platforms/android/app/build/outputs/apk/</code>
+                            </li>
+                            <li><strong>Загрузите APK на сервер:</strong><br>
+                                <code>scp app-release.apk root@82.146.44.126:/opt/voice-room/app-release.apk</code><br>
+                                Или используйте скрипт: <code>bash upload-apk.sh</code>
+                            </li>
+                            <li><strong>Проверьте доступность:</strong><br>
+                                После загрузки файл будет доступен по ссылке:<br>
+                                <a href="/download/apk">https://aiternitas.ru/download/apk</a>
+                            </li>
+                        </ol>
+                    </div>
+                    
+                    <p><small>Проверяемые пути на сервере:</small></p>
                     <ul>
-                        <li><code>app-release.apk</code></li>
+                        <li><code>app-release.apk</code> (главный путь)</li>
                         <li><code>platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk</code></li>
+                        <li><code>platforms/android/app/build/outputs/apk/debug/app-debug.apk</code></li>
                     </ul>
-                </body>
+                </div>
+            </body>
             </html>
         `);
         return;
@@ -279,7 +364,7 @@ io.on('connection', (socket) => {
         console.log('✅ User joined room:', sanitizedRoomId, 'User ID:', userId);
         
         if (callback && typeof callback === 'function') {
-            callback({ userId, users: existingUsers });
+        callback({ userId, users: existingUsers });
         }
         
         socket.to(sanitizedRoomId).emit('user-joined', { userId, username: sanitizedUsername });

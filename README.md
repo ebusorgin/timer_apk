@@ -93,10 +93,43 @@ APK файл будет находиться в:
 platforms/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+После сборки APK также копируется в корень проекта:
+```
+app-release.apk  (для release сборки)
+app-debug.apk    (для debug сборки)
+```
+
 3. **Релизная сборка:**
 ```bash
 npm run build:release
 ```
+
+### Загрузка APK на сервер
+
+После сборки APK локально, его нужно загрузить на сервер для скачивания через сайт:
+
+**Вариант 1: Использовать скрипт upload-apk.sh**
+```bash
+# Установите sshpass для автоматической загрузки (опционально)
+# Linux: sudo apt-get install sshpass
+# macOS: brew install hudochenkov/sshpass/sshpass
+
+# Загрузите APK на сервер
+bash upload-apk.sh
+```
+
+**Вариант 2: Загрузка вручную через scp**
+```bash
+scp app-release.apk root@82.146.44.126:/opt/voice-room/app-release.apk
+# Пароль: carFds43
+```
+
+**Вариант 3: Загрузка через GitHub Actions**
+Если APK файл есть в репозитории, он автоматически будет скопирован при деплое.
+
+После загрузки APK будет доступен по адресу: `https://aiternitas.ru/download/apk`
+
+**Примечание:** Сборка APK на сервере не выполняется автоматически, так как требует установки Android SDK и Gradle. Рекомендуется собирать APK локально и загружать на сервер.
 
 ### Установка на устройство
 
@@ -134,6 +167,11 @@ npm run run:emulator
 2. Добавьте секреты:
    - `SSH_PASSWORD` = пароль для SSH (carFds43)
    - `GIT_REPO_URL` = https://github.com/ebusorgin/timer_apk.git (опционально)
+
+**Важно:** APK файл не собирается автоматически на сервере. Если нужен APK для скачивания:
+1. Соберите APK локально: `npm run build`
+2. Загрузите на сервер: `bash upload-apk.sh`
+3. Или добавьте APK файл в репозиторий для автоматического деплоя
 
 ## Деплой на production сервер
 

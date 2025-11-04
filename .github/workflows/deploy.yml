@@ -20,6 +20,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Upload APK if exists
+        if: hashFiles('app-release.apk') != '' || hashFiles('app-debug.apk') != '' || hashFiles('platforms/android/app/build/outputs/apk/**/*.apk') != ''
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          source: |
+            "app-release.apk"
+            "app-debug.apk"
+            "platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+            "platforms/android/app/build/outputs/apk/debug/app-debug.apk"
+          target: "/opt/voice-room"
+          strip_components: 0
+          overwrite: true
+
       - name: Deploy to production server
         uses: appleboy/ssh-action@v1.0.0
         with:
