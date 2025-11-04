@@ -76,30 +76,7 @@ jobs:
                 systemctl start voice-room || systemctl restart voice-room || true
               else
                 echo "⚠️ voice-room.service не найден, создаю базовый..."
-                cat > /etc/systemd/system/voice-room.service << 'SERVICE_EOF'
-[Unit]
-Description=Voice Room Application
-After=network.target
-
-[Service]
-Type=simple
-User=voice-room
-WorkingDirectory=/opt/voice-room
-Environment="NODE_ENV=production"
-Environment="PORT=3000"
-Environment="HOST=127.0.0.1"
-Environment="CORS_ORIGIN=https://aiternitas.ru"
-EnvironmentFile=-/opt/voice-room/.env
-ExecStart=/usr/bin/node server/server.mjs
-Restart=always
-RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=voice-room
-
-[Install]
-WantedBy=multi-user.target
-SERVICE_EOF
+                printf '%s\n' '[Unit]' 'Description=Voice Room Application' 'After=network.target' '' '[Service]' 'Type=simple' 'User=voice-room' 'WorkingDirectory=/opt/voice-room' 'Environment="NODE_ENV=production"' 'Environment="PORT=3000"' 'Environment="HOST=127.0.0.1"' 'Environment="CORS_ORIGIN=https://aiternitas.ru"' 'EnvironmentFile=-/opt/voice-room/.env' 'ExecStart=/usr/bin/node server/server.mjs' 'Restart=always' 'RestartSec=10' 'StandardOutput=syslog' 'StandardError=syslog' 'SyslogIdentifier=voice-room' '' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/voice-room.service
                 systemctl daemon-reload
                 systemctl enable voice-room
                 systemctl start voice-room || true
@@ -124,30 +101,7 @@ SERVICE_EOF
                 systemctl enable voice-room || true
               else
                 echo "⚠️ voice-room.service не найден в репозитории, создаю базовый..."
-                cat > /etc/systemd/system/voice-room.service << 'SERVICE_EOF'
-[Unit]
-Description=Voice Room Application
-After=network.target
-
-[Service]
-Type=simple
-User=voice-room
-WorkingDirectory=/opt/voice-room
-Environment="NODE_ENV=production"
-Environment="PORT=3000"
-Environment="HOST=127.0.0.1"
-Environment="CORS_ORIGIN=https://aiternitas.ru"
-EnvironmentFile=-/opt/voice-room/.env
-ExecStart=/usr/bin/node server/server.mjs
-Restart=always
-RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=voice-room
-
-[Install]
-WantedBy=multi-user.target
-SERVICE_EOF
+                printf '%s\n' '[Unit]' 'Description=Voice Room Application' 'After=network.target' '' '[Service]' 'Type=simple' 'User=voice-room' 'WorkingDirectory=/opt/voice-room' 'Environment="NODE_ENV=production"' 'Environment="PORT=3000"' 'Environment="HOST=127.0.0.1"' 'Environment="CORS_ORIGIN=https://aiternitas.ru"' 'EnvironmentFile=-/opt/voice-room/.env' 'ExecStart=/usr/bin/node server/server.mjs' 'Restart=always' 'RestartSec=10' 'StandardOutput=syslog' 'StandardError=syslog' 'SyslogIdentifier=voice-room' '' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/voice-room.service
                 systemctl daemon-reload
                 systemctl enable voice-room
               fi
