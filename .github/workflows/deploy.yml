@@ -161,34 +161,46 @@ jobs:
               apt update && apt install -y nginx || true
             fi
             
-            # Настройка конфигурации если нужно
-            if [ -f "/opt/voice-room/nginx.conf" ] && [ ! -f "/etc/nginx/sites-available/aiternitas.ru" ]; then
+            # Настройка конфигурации (принудительно обновляем)
+            if [ -f "/opt/voice-room/nginx.conf" ]; then
+              echo "Копирование конфигурации nginx..."
               cp /opt/voice-room/nginx.conf /etc/nginx/sites-available/aiternitas.ru
               ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
               rm -f /etc/nginx/sites-enabled/default
+              echo "✅ Конфигурация скопирована"
             fi
             
             # Проверка и запуск nginx
+            echo "Проверка конфигурации nginx..."
             if nginx -t; then
               echo "✅ Nginx configuration is valid"
               systemctl enable nginx || true
               systemctl start nginx || systemctl restart nginx || true
-              sleep 2
-              systemctl status nginx --no-pager | head -10 || true
+              sleep 3
+              echo "Статус nginx:"
+              systemctl status nginx --no-pager | head -15 || true
+              
+              # Проверка что nginx прослушивает порты
+              echo "Проверка портов nginx:"
+              netstat -tulpn | grep nginx || ss -tulpn | grep nginx || echo "Nginx порты не найдены"
             else
               echo "❌ Nginx configuration error"
               nginx -t
+              exit 1
             fi
+            
+            # Проверка что приложение доступно
+            echo "Проверка доступности приложения на порту 3000..."
+            curl -v http://127.0.0.1:3000 2>&1 | head -20 || echo "Приложение не доступно"
+            
+            # Проверка через домен
+            echo "Проверка через домен..."
+            curl -v http://aiternitas.ru 2>&1 | head -20 || echo "Домен не доступен"
             
             # Проверка SSL сертификатов
             certbot certificates 2>/dev/null | grep aiternitas.ru || echo "⚠️  SSL certificate not found (optional - can be configured later)"
             
-            # Финальная проверка доступности
-            echo "Проверка доступности приложения..."
-            sleep 2
-            curl -f http://127.0.0.1:3000 > /dev/null 2>&1 && echo "✅ Application is accessible locally" || echo "⚠️  Application not accessible locally"
-            curl -f http://aiternitas.ru > /dev/null 2>&1 && echo "✅ Website is accessible via domain" || echo "⚠️  Website not accessible via domain (check DNS and firewall)"
-            echo "✅ Deployment completed!"
+            echo "✅ Nginx setup completed"
             
       - name: Check SSL certificate
         uses: appleboy/ssh-action@v1.0.0
