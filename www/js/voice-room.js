@@ -179,9 +179,25 @@ const VoiceRoom = {
         
         this.socket.on('connect_error', (error) => {
             console.error('❌ Socket connection error:', error);
+            console.error('Error details:', {
+                message: error.message,
+                type: error.type,
+                description: error.description
+            });
             this.connectionStatus = 'error';
             this.updateConnectionStatus();
             this.showNotification('Ошибка подключения к серверу', 'error', 5000);
+        });
+        
+        this.socket.on('room-created-error', (data) => {
+            console.error('❌ Room creation error from server:', data);
+            this.showNotification('Ошибка сервера: ' + (data.error || 'Неизвестная ошибка'), 'error', 5000);
+            
+            // Восстанавливаем кнопку
+            if (this.elements.btnCreateRoom) {
+                this.elements.btnCreateRoom.disabled = false;
+                this.elements.btnCreateRoom.innerHTML = '<span>➕</span><span>Создать комнату</span>';
+            }
         });
         
         this.socket.on('disconnect', (reason) => {
