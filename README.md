@@ -76,6 +76,30 @@ ROOM_TIMEOUT_MINUTES=30
 - Android SDK и Gradle
 - Cordova CLI (устанавливается автоматически)
 
+**Важно:** Для сборки APK требуется установка Gradle. Рекомендуется установить Android Studio, который включает все необходимые инструменты.
+
+### Установка Gradle
+
+**Вариант 1: Android Studio (рекомендуется)**
+1. Скачайте и установите [Android Studio](https://developer.android.com/studio)
+2. После установки Gradle будет автоматически доступен в PATH
+3. Android Studio также включает Android SDK и эмулятор
+
+**Вариант 2: Gradle отдельно**
+1. Скачайте Gradle с [официального сайта](https://gradle.org/releases/)
+2. Распакуйте архив
+3. Добавьте `bin` папку в PATH системных переменных
+   - Пример: `C:\gradle\bin`
+
+**Вариант 3: Через пакетные менеджеры Windows**
+```powershell
+# Chocolatey
+choco install gradle
+
+# Scoop
+scoop install gradle
+```
+
 ### Сборка
 
 1. **Добавьте Android платформу (если еще не добавлена):**
