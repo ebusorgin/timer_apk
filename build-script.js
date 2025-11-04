@@ -7,20 +7,62 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Функция для рекурсивного копирования директории
+// Функция для рекурсивного копирования директории с обработкой ошибок
 function copyDirSync(src, dest) {
-    if (!fs.existsSync(dest)) {
-        fs.mkdirSync(dest, { recursive: true });
-    }
-    const entries = fs.readdirSync(src, { withFileTypes: true });
-    for (const entry of entries) {
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-        if (entry.isDirectory()) {
-            copyDirSync(srcPath, destPath);
-        } else {
-            fs.copyFileSync(srcPath, destPath);
+    try {
+        if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
         }
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+            const srcPath = path.join(src, entry.name);
+            const destPath = path.join(dest, entry.name);
+            try {
+                if (entry.isDirectory()) {
+                    copyDirSync(srcPath, destPath);
+                } else {
+                    fs.copyFileSync(srcPath, destPath);
+                }
+            } catch (fileError) {
+                console.warn(`⚠️  Предупреждение при копировании ${entry.name}: ${fileError.message}`);
+                // Продолжаем копирование других файлов
+            }
+        }
+    } catch (error) {
+        throw new Error(`Ошибка при копировании директории ${src} → ${dest}: ${error.message}`);
+    }
+}
+
+// Функция для валидации APK файла
+function validateAPK(apkPath) {
+    try {
+        if (!fs.existsSync(apkPath)) {
+            return { valid: false, error: 'Файл не существует' };
+        }
+        
+        const stats = statSync(apkPath);
+        const sizeMB = stats.size / 1024 / 1024;
+        const minSizeBytes = 100 * 1024; // Минимум 100KB
+        
+        if (stats.size < minSizeBytes) {
+            return { 
+                valid: false, 
+                error: `APK файл слишком маленький (${stats.size} байт, минимум ${minSizeBytes} байт)` 
+            };
+        }
+        
+        // Проверка расширения файла
+        if (!apkPath.toLowerCase().endsWith('.apk')) {
+            return { valid: false, error: 'Файл не является APK (нет расширения .apk)' };
+        }
+        
+        return { 
+            valid: true, 
+            size: stats.size, 
+            sizeMB: sizeMB.toFixed(2) 
+        };
+    } catch (error) {
+        return { valid: false, error: `Ошибка при проверке файла: ${error.message}` };
     }
 }
 
@@ -62,12 +104,22 @@ const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
 
 // Всегда копируем www файлы вручную для надежности
 if (fs.existsSync(wwwPath)) {
-    if (!fs.existsSync(wwwDest)) {
-        fs.mkdirSync(wwwDest, { recursive: true });
+    try {
+        if (!fs.existsSync(wwwDest)) {
+            fs.mkdirSync(wwwDest, { recursive: true });
+        }
+        console.log('Копирование www файлов в платформу...');
+        copyDirSync(wwwPath, wwwDest);
+        console.log('✅ www файлы скопированы.');
+        
+        // Проверяем что файлы действительно скопировались
+        if (!fs.existsSync(wwwDest) || fs.readdirSync(wwwDest).length === 0) {
+            console.warn('⚠️  Предупреждение: папка www пуста или файлы не скопировались');
+        }
+    } catch (error) {
+        console.error(`❌ Ошибка при копировании www файлов: ${error.message}`);
+        process.exit(1);
     }
-    console.log('Копирование www файлов в платформу...');
-    copyDirSync(wwwPath, wwwDest);
-    console.log('✅ www файлы скопированы.');
 } else {
     console.error('❌ Папка www не найдена!');
     process.exit(1);
@@ -190,17 +242,30 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
         const apkDestination = path.join(__dirname, isRelease ? 'app-release.apk' : 'app-debug.apk');
         
         if (fs.existsSync(apkSource)) {
-            // Проверяем что APK валиден перед копированием
-            const stats = statSync(apkSource);
-            console.log(`Размер APK: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+            // Валидация APK перед копированием
+            const validation = validateAPK(apkSource);
             
-            if (stats.size < 1000) {
-                console.error('❌ APK файл слишком маленький, возможно поврежден!');
+            if (!validation.valid) {
+                console.error(`❌ APK файл невалиден: ${validation.error}`);
                 process.exit(1);
             }
             
-            fs.copyFileSync(apkSource, apkDestination);
-            console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+            console.log(`Размер APK: ${validation.sizeMB} MB`);
+            
+            try {
+                fs.copyFileSync(apkSource, apkDestination);
+                console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+                
+                // Проверяем что файл успешно скопирован
+                const copiedValidation = validateAPK(apkDestination);
+                if (!copiedValidation.valid) {
+                    console.error(`❌ Ошибка: скопированный APK файл невалиден: ${copiedValidation.error}`);
+                    process.exit(1);
+                }
+            } catch (copyError) {
+                console.error(`❌ Ошибка при копировании APK: ${copyError.message}`);
+                process.exit(1);
+            }
             
             // Для debug APK проверяем что он подписан
             if (!isRelease) {
@@ -218,11 +283,27 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
             ];
             for (const altPath of alternativePaths) {
                 if (fs.existsSync(altPath)) {
-                    const stats = statSync(altPath);
-                    console.log(`✅ APK найден: ${altPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-                    fs.copyFileSync(altPath, apkDestination);
-                    console.log(`✅ APK скопирован в корень: ${apkDestination}`);
-                    break;
+                    const validation = validateAPK(altPath);
+                    if (!validation.valid) {
+                        console.warn(`⚠️  Пропущен невалидный APK: ${altPath} (${validation.error})`);
+                        continue;
+                    }
+                    console.log(`✅ APK найден: ${altPath} (${validation.sizeMB} MB)`);
+                    try {
+                        fs.copyFileSync(altPath, apkDestination);
+                        console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+                        
+                        // Проверяем скопированный файл
+                        const copiedValidation = validateAPK(apkDestination);
+                        if (!copiedValidation.valid) {
+                            console.error(`❌ Ошибка: скопированный APK невалиден: ${copiedValidation.error}`);
+                            continue;
+                        }
+                        break;
+                    } catch (copyError) {
+                        console.error(`❌ Ошибка при копировании альтернативного APK: ${copyError.message}`);
+                        continue;
+                    }
                 }
             }
         }
@@ -266,8 +347,25 @@ if (fs.existsSync(gradlewPath) && fs.existsSync(gradleWrapperJar)) {
                 const apkDestination = path.join(__dirname, isRelease ? 'app-release.apk' : 'app-debug.apk');
                 
                 if (fs.existsSync(apkSource)) {
-                    fs.copyFileSync(apkSource, apkDestination);
-                    console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+                    const validation = validateAPK(apkSource);
+                    if (!validation.valid) {
+                        console.error(`❌ APK файл невалиден: ${validation.error}`);
+                        process.exit(1);
+                    }
+                    try {
+                        fs.copyFileSync(apkSource, apkDestination);
+                        console.log(`✅ APK скопирован в корень: ${apkDestination}`);
+                        
+                        // Проверяем скопированный файл
+                        const copiedValidation = validateAPK(apkDestination);
+                        if (!copiedValidation.valid) {
+                            console.error(`❌ Ошибка: скопированный APK невалиден: ${copiedValidation.error}`);
+                            process.exit(1);
+                        }
+                    } catch (copyError) {
+                        console.error(`❌ Ошибка при копировании APK: ${copyError.message}`);
+                        process.exit(1);
+                    }
                 }
             } else {
                 throw new Error('Gradle Wrapper не был создан');
