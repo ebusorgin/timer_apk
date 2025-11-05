@@ -384,6 +384,24 @@ const VoiceRoom = {
             this.removeUser(userId);
         });
         
+        this.socket.on('microphone-status', ({ userId, enabled }) => {
+            console.log('Microphone status update:', userId, enabled);
+            this.updateMicrophoneStatusUI(userId, enabled);
+        });
+        
+        this.socket.on('request-microphone-status', () => {
+            // Отправляем текущий статус микрофона запросившему пользователю
+            if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+                const tracks = this.localStream.getAudioTracks();
+                const enabled = tracks[0]?.enabled ?? true;
+                this.socket.emit('microphone-status', {
+                    roomId: this.currentRoomId,
+                    enabled: enabled,
+                    userId: this.myUserId
+                });
+            }
+        });
+        
         this.socket.on('offer', async ({ offer, fromUserId }) => {
             try {
                 const peer = this.peers.get(fromUserId);
@@ -524,6 +542,24 @@ const VoiceRoom = {
                     response.users.forEach(user => {
                         this.addUserToGrid(user.userId, user.username);
                         this.createPeerConnection(user.userId);
+                        // Запрашиваем статус микрофона у существующих участников
+                        if (this.socket && this.socket.connected) {
+                            this.socket.emit('request-microphone-status', {
+                                roomId: this.currentRoomId,
+                                targetUserId: user.userId
+                            });
+                        }
+                    });
+                }
+                
+                // Отправляем свой статус микрофона всем участникам комнаты
+                if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+                    const tracks = this.localStream.getAudioTracks();
+                    const enabled = tracks[0]?.enabled ?? true;
+                    this.socket.emit('microphone-status', {
+                        roomId: this.currentRoomId,
+                        enabled: enabled,
+                        userId: this.myUserId
                     });
                 }
             }
@@ -829,6 +865,17 @@ const VoiceRoom = {
                         this.elements.roomLinkContainer.style.display = 'block';
                     }
                     
+                    // Отправляем начальный статус микрофона (для будущих участников)
+                    if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+                        const tracks = this.localStream.getAudioTracks();
+                        const enabled = tracks[0]?.enabled ?? true;
+                        this.socket.emit('microphone-status', {
+                            roomId: this.currentRoomId,
+                            enabled: enabled,
+                            userId: this.myUserId
+                        });
+                    }
+                    
                     this.showRoomScreen();
                 }).catch(error => {
                     console.error('Error initializing media:', error);
@@ -911,6 +958,24 @@ const VoiceRoom = {
                         const sanitizedUsername = this.sanitizeString(user.username);
                         this.addUserToGrid(user.userId, sanitizedUsername);
                         this.createPeerConnection(user.userId);
+                        // Запрашиваем статус микрофона у существующих участников
+                        if (this.socket && this.socket.connected) {
+                            this.socket.emit('request-microphone-status', {
+                                roomId: this.currentRoomId,
+                                targetUserId: user.userId
+                            });
+                        }
+                    });
+                }
+                
+                // Отправляем свой статус микрофона всем участникам комнаты
+                if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+                    const tracks = this.localStream.getAudioTracks();
+                    const enabled = tracks[0]?.enabled ?? true;
+                    this.socket.emit('microphone-status', {
+                        roomId: this.currentRoomId,
+                        enabled: enabled,
+                        userId: this.myUserId
                     });
                 }
                 
@@ -1185,6 +1250,26 @@ const VoiceRoom = {
         status.className = 'user-status';
         status.textContent = isMyself ? 'Подключен' : 'Подключение...';
         
+        // Добавляем иконку статуса микрофона (по умолчанию включен)
+        const micIcon = document.createElement('span');
+        micIcon.className = 'microphone-status-icon';
+        micIcon.textContent = ' 🎤';
+        micIcon.title = 'Микрофон включен';
+        status.appendChild(micIcon);
+        
+        // Устанавливаем начальный статус микрофона (по умолчанию включен)
+        if (isMyself) {
+            // Для себя проверяем реальный статус
+            if (this.localStream) {
+                const tracks = this.localStream.getAudioTracks();
+                const enabled = tracks[0]?.enabled ?? true;
+                this.updateMicrophoneStatusUI(userId, enabled);
+            }
+        } else {
+            // Для других участников по умолчанию считаем микрофон включенным
+            card.classList.add('microphone-active');
+        }
+        
         const video = document.createElement('video');
         video.id = `video-${userId}`;
         video.autoplay = true;
@@ -1234,6 +1319,40 @@ const VoiceRoom = {
                 icon.textContent = enabled ? '🎤' : '🔇';
             }
         }
+        
+        // Отправляем статус микрофона другим участникам
+        if (this.socket && this.socket.connected && this.currentRoomId) {
+            this.socket.emit('microphone-status', {
+                roomId: this.currentRoomId,
+                enabled: enabled,
+                userId: this.myUserId
+            });
+        }
+        
+        // Обновляем визуальный статус для себя
+        this.updateMicrophoneStatusUI(this.myUserId, enabled);
+    },
+    
+    updateMicrophoneStatusUI(userId, enabled) {
+        const card = document.getElementById(`user-${userId}`);
+        if (!card) return;
+        
+        // Добавляем или удаляем класс для отображения статуса
+        card.classList.toggle('microphone-muted', !enabled);
+        card.classList.toggle('microphone-active', enabled);
+        
+        // Обновляем иконку статуса микрофона в карточке пользователя
+        let micIcon = card.querySelector('.microphone-status-icon');
+        if (!micIcon) {
+            micIcon = document.createElement('span');
+            micIcon.className = 'microphone-status-icon';
+            const statusEl = card.querySelector('.user-status');
+            if (statusEl) {
+                statusEl.appendChild(micIcon);
+            }
+        }
+        micIcon.textContent = enabled ? ' 🎤' : ' 🔇';
+        micIcon.title = enabled ? 'Микрофон включен' : 'Микрофон выключен';
     },
     
     startMicrophoneMonitoring() {

@@ -507,6 +507,64 @@ io.on('connection', (socket) => {
         room.lastActivity = Date.now();
         socket.to(roomIdValidation.roomId).emit('ice-candidate', { candidate, targetUserId, fromUserId });
     });
+    
+    socket.on('microphone-status', (data) => {
+        if (!data || !data.roomId) return;
+        const { roomId, enabled, userId } = data;
+        
+        const roomIdValidation = validateRoomId(roomId);
+        if (!roomIdValidation.valid) {
+            console.error('❌ Invalid room ID in microphone-status:', roomId);
+            return;
+        }
+        
+        const room = rooms.get(roomIdValidation.roomId);
+        if (!room) {
+            console.error('❌ Room not found in microphone-status:', roomId);
+            return;
+        }
+        
+        // Проверяем, что пользователь в комнате
+        const userExists = room.users.has(userId);
+        if (!userExists) {
+            console.error('❌ User not found in room:', userId);
+            return;
+        }
+        
+        room.lastActivity = Date.now();
+        // Отправляем статус микрофона всем остальным участникам комнаты
+        socket.to(roomIdValidation.roomId).emit('microphone-status', { userId, enabled });
+    });
+    
+    socket.on('request-microphone-status', (data) => {
+        if (!data || !data.roomId) return;
+        const { roomId, targetUserId } = data;
+        
+        const roomIdValidation = validateRoomId(roomId);
+        if (!roomIdValidation.valid) {
+            console.error('❌ Invalid room ID in request-microphone-status:', roomId);
+            return;
+        }
+        
+        const room = rooms.get(roomIdValidation.roomId);
+        if (!room) {
+            console.error('❌ Room not found in request-microphone-status:', roomId);
+            return;
+        }
+        
+        // Проверяем, что оба пользователя в комнате
+        const targetUserExists = room.users.has(targetUserId);
+        if (!targetUserExists) {
+            console.error('❌ Target user not found in room:', targetUserId);
+            return;
+        }
+        
+        // Находим socket ID целевого пользователя и отправляем ему запрос
+        const targetUser = room.users.get(targetUserId);
+        if (targetUser && targetUser.socketId) {
+            io.to(targetUser.socketId).emit('request-microphone-status', {});
+        }
+    });
 
     socket.on('disconnect', () => {
         console.log('⚠️ Client disconnected:', socket.id);
