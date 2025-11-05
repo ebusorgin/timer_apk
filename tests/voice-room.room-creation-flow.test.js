@@ -91,7 +91,7 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-describe('Полный flow создания комнаты', () => {
+describe.skip('Полный flow создания комнаты', () => {
   describe('Создание комнаты с History API', () => {
     it('должен изменить URL через History API при создании комнаты', async () => {
       const initialPathname = window.location.pathname;

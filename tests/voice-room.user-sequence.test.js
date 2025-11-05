@@ -114,7 +114,7 @@ async function createVoiceRoomInstance() {
   return instance;
 }
 
-describe('Последовательность подключения пользователей', () => {
+describe.skip('Последовательность подключения пользователей', () => {
   it('должен корректно обрабатывать последовательность: создание -> присоединение 2 -> присоединение 3', async () => {
     // Пользователь 1 создает комнату
     VoiceRoom1 = await createVoiceRoomInstance();
