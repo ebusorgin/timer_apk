@@ -42,39 +42,75 @@ beforeEach(async () => {
   
   mockIO();
   
-  // VoiceRoom создается через script тег в реальном приложении
-  // В тестах мы используем мок, который создается через setupDOM
-  // Проверяем что VoiceRoom доступен глобально
+  // VoiceRoom должен быть загружен из реального файла
+  // Загружаем модуль через динамический импорт или используем глобальный
   if (typeof window.VoiceRoom === 'undefined') {
-    // Если VoiceRoom еще не создан, создаем базовый мок
-    VoiceRoom = {
-      socket: null,
-      localStream: null,
-      peers: new Map(),
-      currentRoomId: null,
-      myUserId: null,
-      myUsername: null,
-      elements: {},
-      init() {},
-      validateUsernameInput() { return true; },
-      validateUsername() { return { valid: true }; },
-      updateCreateButtonState() {},
-      showUsernameHint() {},
-      createRoom() {},
-      joinExistingRoom() {},
-      confirmLeaveRoom() {},
-      leaveRoom() {},
-      showNotification() {},
-      initMedia() { return Promise.resolve(); }
-    };
-    window.VoiceRoom = VoiceRoom;
+    // Пытаемся загрузить через eval или создаем мок с правильной структурой
+    try {
+      // В тестах VoiceRoom может быть не загружен, создаем мок с правильной структурой
+      const fs = await import('fs');
+      const path = await import('path');
+      const { fileURLToPath } = await import('url');
+      const voiceRoomPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../www/js/voice-room.js');
+      const voiceRoomCode = fs.readFileSync(voiceRoomPath, 'utf-8');
+      eval(voiceRoomCode);
+      VoiceRoom = window.VoiceRoom;
+    } catch (e) {
+      // Если не удалось загрузить, создаем минимальный мок
+      console.warn('Could not load VoiceRoom module, using mock:', e);
+      VoiceRoom = {
+        socket: null,
+        localStream: null,
+        peers: new Map(),
+        currentRoomId: null,
+        myUserId: null,
+        myUsername: null,
+        elements: {},
+        init() {},
+        validateUsernameInput() { return true; },
+        validateUsername() { return { valid: true }; },
+        updateCreateButtonState() {},
+        showUsernameHint() {},
+        createRoom() {},
+        joinExistingRoom() {},
+        confirmLeaveRoom() {},
+        leaveRoom() {},
+        showNotification() {},
+        initMedia() { return Promise.resolve(); }
+      };
+      window.VoiceRoom = VoiceRoom;
+    }
   } else {
     VoiceRoom = window.VoiceRoom;
   }
   
   // Инициализируем VoiceRoom если метод init существует
+  // Это должно создать все элементы из DOM
   if (VoiceRoom.init) {
     VoiceRoom.init();
+  }
+  
+  // Убеждаемся что элементы инициализированы
+  if (!VoiceRoom.elements || !VoiceRoom.elements.usernameInput) {
+    VoiceRoom.elements = {
+      usernameInput: document.getElementById('username'),
+      roomIdInput: document.getElementById('roomId'),
+      btnCreateRoom: document.getElementById('btnCreateRoom'),
+      btnJoinRoom: document.getElementById('btnJoinRoom'),
+      btnJoinRoomNow: document.getElementById('btnJoinRoomNow'),
+      btnLeaveRoom: document.getElementById('btnLeaveRoom'),
+      btnToggleMic: document.getElementById('btnToggleMic'),
+      usersGrid: document.getElementById('usersGrid'),
+      statusMessage: document.getElementById('statusMessage'),
+      currentRoomIdSpan: document.getElementById('currentRoomId'),
+      roomLinkInput: document.getElementById('roomLink'),
+      roomLinkContainer: document.getElementById('roomLinkContainer'),
+      btnCopyLink: document.getElementById('btnCopyLink'),
+      joinContainer: document.getElementById('joinContainer'),
+      userCount: document.getElementById('userCount'),
+      loginScreen: document.getElementById('loginScreen'),
+      roomScreen: document.getElementById('roomScreen')
+    };
   }
   
   // Ждем подключения socket
