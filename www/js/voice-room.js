@@ -717,17 +717,40 @@ const VoiceRoom = {
     },
     
     handleUrlParams() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomParam = urlParams.get('room');
-        if (roomParam && this.elements.roomIdInput) {
-            this.elements.roomIdInput.value = roomParam;
-            this.elements.joinContainer.style.display = 'block';
+        // Обрабатываем новый формат /room/:roomId
+        const pathname = window.location.pathname;
+        const roomMatch = pathname.match(/^\/room\/([A-Z0-9]{6})$/i);
+        
+        if (roomMatch) {
+            const roomId = roomMatch[1].toUpperCase();
             
+            if (this.elements.roomIdInput) {
+                this.elements.roomIdInput.value = roomId;
+            }
+            
+            // Показываем контейнер присоединения с плавной анимацией
+            if (this.elements.joinContainer) {
+                this.elements.joinContainer.style.display = 'block';
+                // Добавляем класс для плавной анимации
+                setTimeout(() => {
+                    this.elements.joinContainer.classList.add('show');
+                }, 10);
+            }
+            
+            // Проверяем есть ли сохраненное имя
             const savedUsername = localStorage.getItem('voiceRoomUsername');
-            if (savedUsername && this.elements.usernameInput && this.elements.usernameInput.value) {
+            if (savedUsername && this.elements.usernameInput) {
+                this.elements.usernameInput.value = savedUsername;
+                // Автоматически входим в комнату после небольшой задержки
                 setTimeout(() => {
                     this.joinExistingRoom();
                 }, 500);
+            } else {
+                // Показываем информационное сообщение для нового пользователя
+                if (this.elements.statusMessage) {
+                    this.elements.statusMessage.textContent = 'Введите ваше имя для присоединения к комнате';
+                    this.elements.statusMessage.className = 'status-message info show';
+                }
             }
         }
     },
@@ -855,7 +878,7 @@ const VoiceRoom = {
                     
                     const roomUrl = App.isCordova 
                         ? `voice-room://room?${roomId}` 
-                        : `${window.location.origin}?room=${roomId}`;
+                        : `${window.location.origin}/room/${roomId}`;
                     
                     if (this.elements.roomLinkInput) {
                         this.elements.roomLinkInput.value = roomUrl;
@@ -863,6 +886,9 @@ const VoiceRoom = {
                     
                     if (this.elements.roomLinkContainer) {
                         this.elements.roomLinkContainer.style.display = 'block';
+                        setTimeout(() => {
+                            this.elements.roomLinkContainer.classList.add('show');
+                        }, 10);
                     }
                     
                     // Отправляем начальный статус микрофона (для будущих участников)

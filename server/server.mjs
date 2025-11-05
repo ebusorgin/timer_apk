@@ -51,6 +51,66 @@ app.get('/cordova.js', (req, res) => {
 
 app.use(express.static(wwwPath));
 
+// Роут для комнат /room/:roomId - возвращает index.html для SPA роутинга
+app.get('/room/:roomId', (req, res) => {
+    const { roomId } = req.params;
+    const roomIdValidation = validateRoomId(roomId);
+    if (!roomIdValidation.valid) {
+        res.status(404).type('text/html');
+        res.send(`
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Комната не найдена</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                        max-width: 600px;
+                        margin: 50px auto;
+                        padding: 20px;
+                        background: #f5f5f5;
+                        text-align: center;
+                    }
+                    .container {
+                        background: white;
+                        padding: 40px;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    h1 {
+                        color: #e74c3c;
+                        margin-top: 0;
+                    }
+                    p {
+                        color: #666;
+                        margin: 20px 0;
+                    }
+                    a {
+                        color: #667eea;
+                        text-decoration: none;
+                    }
+                    a:hover {
+                        text-decoration: underline;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Комната не найдена</h1>
+                    <p>Комната с указанным кодом не существует или была удалена.</p>
+                    <p><a href="/">Вернуться на главную</a></p>
+                </div>
+            </body>
+            </html>
+        `);
+        return;
+    }
+    // Возвращаем index.html для SPA роутинга
+    res.sendFile(path.join(wwwPath, 'index.html'));
+});
+
 // Эндпоинт для скачивания APK
 app.get('/download/apk', (req, res) => {
     const apkPaths = [

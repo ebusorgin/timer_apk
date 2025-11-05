@@ -109,9 +109,53 @@ export function setupDOM() {
 
   // Настройка window для App модуля
   if (typeof window !== 'undefined') {
-    window.location = {
-      origin: 'http://localhost:3000',
-      search: ''
+    // Создаем объект location с возможностью изменения pathname
+    let currentPathname = '/';
+    let currentSearch = '';
+    
+    // Создаем функцию для обновления location
+    const updateLocation = () => {
+      Object.defineProperty(window, 'location', {
+        value: {
+          origin: 'http://localhost:3000',
+          href: `http://localhost:3000${currentPathname}${currentSearch}`,
+          get pathname() {
+            return currentPathname;
+          },
+          get search() {
+            return currentSearch;
+          },
+          get href() {
+            return `http://localhost:3000${currentPathname}${currentSearch ? '?' + currentSearch : ''}`;
+          }
+        },
+        writable: true,
+        configurable: true
+      });
+    };
+    
+    updateLocation();
+    
+    // Переопределяем replaceState для обновления нашего location
+    const originalReplaceState = window.history.replaceState.bind(window.history);
+    window.history.replaceState = function(state, title, url) {
+      if (url) {
+        try {
+          const urlObj = new URL(url, 'http://localhost:3000');
+          currentPathname = urlObj.pathname;
+          currentSearch = urlObj.search.substring(1); // Убираем '?'
+          updateLocation();
+        } catch (e) {
+          // Если URL относительный, парсим его вручную
+          if (url.startsWith('/')) {
+            const parts = url.split('?');
+            currentPathname = parts[0];
+            currentSearch = parts[1] || '';
+            updateLocation();
+          }
+        }
+      }
+      return originalReplaceState(state, title, url);
     };
   }
 }
