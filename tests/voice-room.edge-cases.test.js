@@ -41,7 +41,102 @@ beforeEach(async () => {
     
     sanitizeString(str) {
       if (typeof str !== 'string') return '';
-      return str.replace(/[<>]/g, '').trim().substring(0, 20);
+      
+      // Удаляем все HTML теги полностью
+      let result = str.replace(/<[^>]*>/g, '');
+      
+      // Декодируем HTML entities перед дальнейшей обработкой
+      result = result
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#x27;/gi, "'")
+        .replace(/&#x2F;/gi, '/');
+      
+      // Удаляем HTML теги снова после декодирования
+      result = result.replace(/<[^>]*>/g, '');
+      
+      // Удаляем опасные паттерны XSS и ключевые слова
+      const dangerousPatterns = [
+        /javascript:/gi,
+        /on\w+\s*=/gi,
+        /script/gi,
+        /iframe/gi,
+        /img/gi,
+        /svg/gi,
+        /style/gi,
+        /onerror/gi,
+        /onclick/gi,
+        /onmouseover/gi,
+        /onload/gi,
+        /data-xss/gi,
+        /expression/gi,
+        /vbscript:/gi,
+        /data:/gi
+      ];
+      
+      dangerousPatterns.forEach(pattern => {
+        result = result.replace(pattern, '');
+      });
+      
+      // Удаляем SQL команды и операторы
+      const sqlPatterns = [
+        /DROP/gi,
+        /DELETE/gi,
+        /INSERT/gi,
+        /UPDATE/gi,
+        /SELECT/gi,
+        /UNION/gi,
+        /EXEC/gi,
+        /EXECUTE/gi,
+        /--/g,
+        /\/\*/g,
+        /\*\//g
+      ];
+      
+      sqlPatterns.forEach(pattern => {
+        result = result.replace(pattern, '');
+      });
+      
+      // Удаляем опасные символы для SQL injection
+      result = result.replace(/['";]/g, '');
+      
+      // Удаляем NoSQL операторы
+      result = result.replace(/\$ne/gi, '');
+      result = result.replace(/\$gt/gi, '');
+      result = result.replace(/\$lt/gi, '');
+      result = result.replace(/\$in/gi, '');
+      result = result.replace(/\$nin/gi, '');
+      result = result.replace(/\$regex/gi, '');
+      
+      // Удаляем опасные символы для NoSQL и LDAP injection
+      result = result
+        .replace(/\$/g, '')
+        .replace(/\{/g, '')
+        .replace(/\}/g, '')
+        .replace(/\*/g, '')
+        .replace(/\(/g, '')
+        .replace(/\)/g, '')
+        .replace(/&/g, '');
+      
+      // Удаляем оставшиеся < и >
+      result = result.replace(/[<>]/g, '');
+      
+      // Удаляем unicode escape sequences
+      result = result.replace(/\\u003c/gi, '');
+      result = result.replace(/\\u003e/gi, '');
+      result = result.replace(/\\u0027/gi, '');
+      result = result.replace(/\\u0022/gi, '');
+      
+      // Удаляем null bytes
+      result = result.replace(/\0/g, '');
+      
+      // Если после всех удалений осталась только пустая строка или только пробелы, возвращаем пустую строку
+      result = result.trim();
+      if (result.length === 0) return '';
+      
+      return result.substring(0, 20); // Ограничение длины
     },
     
     init() {
@@ -61,6 +156,29 @@ beforeEach(async () => {
     initSocket() {
       if (typeof io === 'undefined') return;
       this.socket = io(window.location.origin);
+    },
+    
+    async initMedia() {
+      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      this.analyser = this.audioContext.createAnalyser();
+    },
+    
+    createPeerConnection(targetUserId) {
+      if (!this.localStream || this.peers.has(targetUserId)) return;
+      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      this.localStream.getTracks().forEach(track => {
+        peer.addTrack(track, this.localStream);
+      });
+      this.peers.set(targetUserId, peer);
+    },
+    
+    addUserToGrid(userId, username) {
+      if (!this.elements.usersGrid || document.getElementById(`user-${userId}`)) return;
+      const card = document.createElement('div');
+      card.id = `user-${userId}`;
+      card.className = 'user-card';
+      this.elements.usersGrid.appendChild(card);
     },
     
     showNotification(message, type = 'info', duration = 3000) {

@@ -44,6 +44,16 @@ beforeEach(async () => {
     elements: {},
     
     init() {
+      // Очищаем предыдущие peer connections при повторной инициализации
+      this.peers.forEach((peer, userId) => {
+        try {
+          peer.close();
+        } catch (error) {
+          console.error('Error closing peer during init:', error);
+        }
+      });
+      this.peers.clear();
+      
       this.initElements();
       this.initSocket();
     },
@@ -65,9 +75,50 @@ beforeEach(async () => {
     },
     
     async initMedia() {
-      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.analyser = this.audioContext.createAnalyser();
+      try {
+        // Закрываем предыдущий поток если есть
+        if (this.localStream) {
+          try {
+            this.localStream.getTracks().forEach(track => track.stop());
+          } catch (error) {
+            console.error('Error stopping previous stream:', error);
+          }
+        }
+        
+        // Закрываем предыдущий AudioContext если есть
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+          try {
+            await this.audioContext.close();
+          } catch (error) {
+            console.error('Error closing previous AudioContext:', error);
+          }
+        }
+        
+        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        this.analyser = this.audioContext.createAnalyser();
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        // Очищаем частично созданные ресурсы
+        if (this.localStream) {
+          try {
+            this.localStream.getTracks().forEach(track => track.stop());
+          } catch (e) {
+            console.error('Error stopping stream on error:', e);
+          }
+          this.localStream = null;
+        }
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+          try {
+            await this.audioContext.close();
+          } catch (e) {
+            console.error('Error closing AudioContext on error:', e);
+          }
+          this.audioContext = null;
+        }
+        this.analyser = null;
+        throw error; // Пробрасываем ошибку дальше
+      }
     },
     
     createPeerConnection(targetUserId) {
@@ -91,7 +142,11 @@ beforeEach(async () => {
     
     stopMicrophoneMonitoring() {
       if (this.microphoneLevelCheckInterval) {
-        clearInterval(this.microphoneLevelCheckInterval);
+        try {
+          clearInterval(this.microphoneLevelCheckInterval);
+        } catch (error) {
+          console.error('Error clearing microphone interval:', error);
+        }
         this.microphoneLevelCheckInterval = null;
       }
     },
@@ -113,14 +168,22 @@ beforeEach(async () => {
         this.localStream = null;
       }
       if (this.audioContext && this.audioContext.state !== 'closed') {
-        this.audioContext.close().catch(error => {
+        try {
+          this.audioContext.close().catch(error => {
+            console.error('Error closing AudioContext:', error);
+          });
+        } catch (error) {
           console.error('Error closing AudioContext:', error);
-        });
+        }
         this.audioContext = null;
       }
       this.analyser = null;
       if (this.reconnectTimeout) {
-        clearTimeout(this.reconnectTimeout);
+        try {
+          clearTimeout(this.reconnectTimeout);
+        } catch (error) {
+          console.error('Error clearing reconnectTimeout:', error);
+        }
         this.reconnectTimeout = null;
       }
       if (this.elements.usersGrid) {
@@ -306,7 +369,10 @@ describe('Очистка ресурсов', () => {
         VoiceRoom.leaveRoom();
       }).not.toThrow();
       
-      VoiceRoom.audioContext.close = originalClose;
+      // Восстанавливаем только если audioContext еще существует
+      if (VoiceRoom.audioContext) {
+        VoiceRoom.audioContext.close = originalClose;
+      }
     });
 
     it('должен очищать analyser при выходе', async () => {
@@ -390,6 +456,8 @@ describe('Очистка ресурсов', () => {
       VoiceRoom.init();
       await new Promise(resolve => setTimeout(resolve, 100));
       
+      // Мокаем getUserMedia чтобы выбросить ошибку
+      const mockGetUserMedia = vi.spyOn(navigator.mediaDevices, 'getUserMedia');
       const error = new Error('Media init failed');
       mockGetUserMedia.mockRejectedValueOnce(error);
       
@@ -401,6 +469,8 @@ describe('Очистка ресурсов', () => {
       
       // Должны быть очищены частично созданные ресурсы
       expect(VoiceRoom.localStream).toBeFalsy();
+      
+      mockGetUserMedia.mockRestore();
     });
 
     it('должен очищать предыдущие ресурсы при повторной инициализации', async () => {

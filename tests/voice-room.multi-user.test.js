@@ -108,16 +108,51 @@ beforeEach(async () => {
       this.socket.on('offer', async ({ offer, fromUserId }) => {
         try {
           const peer = this.peers.get(fromUserId);
-          if (peer) {
-            await peer.setRemoteDescription(offer);
+          if (!peer) {
+            console.warn('Peer not found for offer from:', fromUserId);
+            return;
+          }
+          
+          console.log('Received offer from:', fromUserId, 'Peer state:', peer.signalingState);
+          
+          // Проверяем что мы можем установить remote description
+          if (peer.signalingState === 'stable') {
+            // Нормальный случай - устанавливаем remote offer, создаем answer
+            await peer.setRemoteDescription(new RTCSessionDescription(offer));
+            console.log('Remote description (offer) set for:', fromUserId);
+            
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
+            console.log('Local description (answer) set for:', fromUserId);
+            
             this.socket.emit('answer', { 
               roomId: this.currentRoomId, 
               answer, 
               targetUserId: fromUserId, 
               fromUserId: this.myUserId 
             });
+          } else if (peer.signalingState === 'have-local-offer') {
+            // У нас уже есть local offer, значит мы тоже создали offer одновременно
+            console.log('Both peers created offer, handling rollback for:', fromUserId);
+            await peer.setRemoteDescription(new RTCSessionDescription(offer));
+            console.log('Remote description (offer) set for:', fromUserId);
+            
+            // Если у нас уже есть local offer, нужно создать answer
+            if (peer.localDescription && peer.localDescription.type === 'offer') {
+              const answer = await peer.createAnswer();
+              await peer.setLocalDescription(answer);
+              console.log('Local description (answer) set for:', fromUserId);
+              
+              this.socket.emit('answer', { 
+                roomId: this.currentRoomId, 
+                answer, 
+                targetUserId: fromUserId, 
+                fromUserId: this.myUserId 
+              });
+            }
+          } else {
+            console.warn('Cannot set remote description, peer state:', peer.signalingState);
+            return;
           }
         } catch (error) {
           console.error('Error handling offer:', error);
@@ -126,9 +161,22 @@ beforeEach(async () => {
       this.socket.on('answer', async ({ answer, fromUserId }) => {
         try {
           const peer = this.peers.get(fromUserId);
-          if (peer) {
-            await peer.setRemoteDescription(answer);
+          if (!peer) {
+            console.warn('Peer not found for answer from:', fromUserId);
+            return;
           }
+          
+          console.log('Received answer from:', fromUserId, 'Peer state:', peer.signalingState);
+          
+          // Проверяем что мы можем установить remote description
+          // Answer можно установить только когда local description (offer) уже установлен
+          if (peer.signalingState !== 'have-local-offer') {
+            console.warn('Cannot set remote answer, peer state:', peer.signalingState, 'Expected: have-local-offer');
+            return;
+          }
+          
+          await peer.setRemoteDescription(new RTCSessionDescription(answer));
+          console.log('Remote description (answer) set for:', fromUserId);
         } catch (error) {
           console.error('Error handling answer:', error);
         }
@@ -188,40 +236,119 @@ beforeEach(async () => {
     },
     
     createPeerConnection(targetUserId) {
-      if (!this.localStream || this.peers.has(targetUserId)) return;
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-      this.localStream.getTracks().forEach(track => {
-        peer.addTrack(track, this.localStream);
-      });
-      peer.ontrack = (event) => {
-        const audio = document.getElementById(`audio-${targetUserId}`);
-        if (audio) {
-          audio.srcObject = event.streams[0];
-        }
-      };
-      peer.onicecandidate = (event) => {
-        if (event.candidate && this.socket && this.socket.connected) {
-          this.socket.emit('ice-candidate', { 
-            roomId: this.currentRoomId, 
-            candidate: event.candidate, 
-            targetUserId, 
-            fromUserId: this.myUserId 
+      if (!this.localStream) {
+        console.error('Cannot create peer connection: no local stream');
+        return;
+      }
+      
+      // Проверяем, не существует ли уже соединение
+      if (this.peers.has(targetUserId)) {
+        console.warn('Peer connection already exists for:', targetUserId);
+        const existingPeer = this.peers.get(targetUserId);
+        console.log('Existing peer state:', existingPeer.signalingState);
+        return;
+      }
+      
+      console.log('Creating peer with:', targetUserId);
+      console.log('My userId:', this.myUserId, 'Target userId:', targetUserId);
+      
+      // Определяем кто создает offer первым (чтобы избежать race condition)
+      // Пользователь с меньшим userId создает offer
+      const shouldCreateOffer = this.myUserId < targetUserId;
+      console.log('Should create offer:', shouldCreateOffer);
+      
+      try {
+        const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        
+        // Добавляем локальные треки
+        this.localStream.getTracks().forEach(track => {
+          peer.addTrack(track, this.localStream);
+        });
+        
+        peer.ontrack = (event) => {
+          console.log('Received track from:', targetUserId);
+          const stream = event.streams[0];
+          
+          const audio = document.getElementById(`audio-${targetUserId}`);
+          if (audio) {
+            audio.srcObject = stream;
+            // Проверяем что audio.play существует перед вызовом
+            if (audio.play && typeof audio.play === 'function') {
+              try {
+                const playPromise = audio.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                  playPromise.catch(err => {
+                    console.error('Error playing audio:', err);
+                  });
+                }
+              } catch (err) {
+                // JSDOM не реализует HTMLMediaElement.prototype.play
+                // Игнорируем ошибку в тестовой среде
+                console.error('Error playing audio (caught):', err);
+              }
+            }
+          }
+        };
+        
+        peer.onicecandidate = (event) => {
+          if (event.candidate && this.socket && this.socket.connected) {
+            this.socket.emit('ice-candidate', { 
+              roomId: this.currentRoomId, 
+              candidate: event.candidate, 
+              targetUserId, 
+              fromUserId: this.myUserId 
+            });
+          }
+        };
+        
+        peer.oniceconnectionstatechange = () => {
+          console.log(`ICE connection state with ${targetUserId}:`, peer.iceConnectionState);
+        };
+        
+        peer.onconnectionstatechange = () => {
+          console.log(`Connection state with ${targetUserId}:`, peer.connectionState);
+        };
+        
+        peer.onerror = (error) => {
+          console.error('Peer connection error:', error);
+        };
+        
+        this.peers.set(targetUserId, peer);
+        
+        // Создаем offer только если мы должны инициировать соединение
+        if (shouldCreateOffer) {
+          console.log('Creating offer for:', targetUserId);
+          peer.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: false
+          }).then(offer => {
+            console.log('Offer created, setting local description...');
+            return peer.setLocalDescription(offer);
+          }).then(() => {
+            console.log('Local description set, sending offer to:', targetUserId);
+            if (this.socket && this.socket.connected && peer.signalingState === 'have-local-offer') {
+              this.socket.emit('offer', { 
+                roomId: this.currentRoomId, 
+                offer: peer.localDescription, 
+                targetUserId, 
+                fromUserId: this.myUserId 
+              });
+            } else {
+              console.warn('Cannot send offer:', {
+                socketConnected: this.socket?.connected,
+                peerState: peer.signalingState
+              });
+            }
+          }).catch(error => {
+            console.error('Error creating offer:', error);
+            this.peers.delete(targetUserId);
           });
+        } else {
+          console.log('Waiting for offer from:', targetUserId);
         }
-      };
-      this.peers.set(targetUserId, peer);
-      peer.createOffer({ offerToReceiveAudio: true }).then(offer => {
-        return peer.setLocalDescription(offer);
-      }).then(() => {
-        if (this.socket && this.socket.connected) {
-          this.socket.emit('offer', { 
-            roomId: this.currentRoomId, 
-            offer: peer.localDescription, 
-            targetUserId, 
-            fromUserId: this.myUserId 
-          });
-        }
-      });
+      } catch (error) {
+        console.error('Error creating peer connection:', error);
+      }
     },
     
     addUserToGrid(userId, username, isMyself = false) {

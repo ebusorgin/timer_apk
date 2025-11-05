@@ -64,16 +64,151 @@ const VoiceRoom = {
     // Санитизация строки
     sanitizeString(str) {
         if (typeof str !== 'string') return '';
-        return str
-            .replace(/[<>]/g, '') // Удаляем HTML теги
-            .trim()
-            .substring(0, 20); // Ограничение длины
+        
+        // Удаляем все HTML теги полностью
+        let result = str.replace(/<[^>]*>/g, '');
+        
+        // Декодируем HTML entities перед дальнейшей обработкой
+        result = result
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&amp;/gi, '&')
+            .replace(/&quot;/gi, '"')
+            .replace(/&#x27;/gi, "'")
+            .replace(/&#x2F;/gi, '/');
+        
+        // Удаляем HTML теги снова после декодирования
+        result = result.replace(/<[^>]*>/g, '');
+        
+        // Удаляем опасные паттерны XSS и ключевые слова (полностью, включая части слов)
+        const dangerousPatterns = [
+            /javascript:/gi,
+            /on\w+\s*=/gi, // onerror=, onclick=, onmouseover=, etc.
+            /script/gi,
+            /iframe/gi,
+            /img/gi,
+            /svg/gi,
+            /style/gi,
+            /onerror/gi,
+            /onclick/gi,
+            /onmouseover/gi,
+            /onload/gi,
+            /onfocus/gi,
+            /onblur/gi,
+            /onchange/gi,
+            /onsubmit/gi,
+            /data-xss/gi,
+            /expression/gi,
+            /vbscript:/gi,
+            /data:/gi
+        ];
+        
+        dangerousPatterns.forEach(pattern => {
+            result = result.replace(pattern, '');
+        });
+        
+        // Удаляем SQL команды и операторы
+        const sqlPatterns = [
+            /DROP/gi,
+            /DELETE/gi,
+            /INSERT/gi,
+            /UPDATE/gi,
+            /SELECT/gi,
+            /UNION/gi,
+            /EXEC/gi,
+            /EXECUTE/gi,
+            /--/g,
+            /\/\*/g,
+            /\*\//g
+        ];
+        
+        sqlPatterns.forEach(pattern => {
+            result = result.replace(pattern, '');
+        });
+        
+        // Удаляем опасные символы для SQL injection
+        result = result.replace(/['";]/g, '');
+        
+        // Удаляем NoSQL операторы
+        result = result.replace(/\$ne/gi, '');
+        result = result.replace(/\$gt/gi, '');
+        result = result.replace(/\$lt/gi, '');
+        result = result.replace(/\$in/gi, '');
+        result = result.replace(/\$nin/gi, '');
+        result = result.replace(/\$regex/gi, '');
+        
+        // Удаляем опасные символы для NoSQL и LDAP injection
+        result = result
+            .replace(/\$/g, '')
+            .replace(/\{/g, '')
+            .replace(/\}/g, '')
+            .replace(/\*/g, '')
+            .replace(/\(/g, '')
+            .replace(/\)/g, '')
+            .replace(/&/g, '');
+        
+        // Удаляем оставшиеся < и >
+        result = result.replace(/[<>]/g, '');
+        
+        // Удаляем unicode escape sequences
+        result = result.replace(/\\u003c/gi, '');
+        result = result.replace(/\\u003e/gi, '');
+        result = result.replace(/\\u0027/gi, '');
+        result = result.replace(/\\u0022/gi, '');
+        
+        // Удаляем null bytes
+        result = result.replace(/\0/g, '');
+        
+        // Если после всех удалений осталась только пустая строка или только пробелы, возвращаем пустую строку
+        result = result.trim();
+        if (result.length === 0) return '';
+        
+        return result.substring(0, 20); // Ограничение длины
+    },
+    
+    // Валидация username
+    validateUsername(username) {
+        if (!username || typeof username !== 'string') {
+            return { valid: false, error: `Username must be at least 1 character` };
+        }
+        
+        const MIN_USERNAME_LENGTH = 1;
+        const MAX_USERNAME_LENGTH = 20;
+        
+        // Проверяем длину до санитизации для длинных username (>20 символов)
+        // так как sanitizeString обрезает до 20
+        if (username.length > MAX_USERNAME_LENGTH) {
+            return { valid: false, error: `Username must be at most ${MAX_USERNAME_LENGTH} characters` };
+        }
+        
+        const sanitized = this.sanitizeString(username);
+        
+        if (sanitized.length < MIN_USERNAME_LENGTH) {
+            return { valid: false, error: `Username must be at least ${MIN_USERNAME_LENGTH} character` };
+        }
+        
+        // Проверяем, что после санитизации остались только допустимые символы
+        if (!/^[a-zA-Zа-яА-ЯёЁ0-9\s\-_]+$/.test(sanitized)) {
+            return { valid: false, error: 'Username contains invalid characters' };
+        }
+        
+        return { valid: true, username: sanitized };
     },
     
     init() {
         console.log('VoiceRoom initializing...');
         console.log('Document ready state:', document.readyState);
         console.log('Socket.IO available:', typeof io !== 'undefined');
+        
+        // Очищаем предыдущие peer connections при повторной инициализации
+        this.peers.forEach((peer, userId) => {
+            try {
+                peer.close();
+            } catch (error) {
+                console.error('Error closing peer during init:', error);
+            }
+        });
+        this.peers.clear();
         
         // Инициализация DOM элементов
         this.initElements();
@@ -570,6 +705,16 @@ const VoiceRoom = {
             connectionStatus: this.connectionStatus
         });
         
+        // Очищаем предыдущие peer connections перед созданием новой комнаты
+        this.peers.forEach((peer, userId) => {
+            try {
+                peer.close();
+            } catch (error) {
+                console.error('Error closing peer before createRoom:', error);
+            }
+        });
+        this.peers.clear();
+        
         if (!this.elements.usernameInput) {
             console.error('Username input not found');
             this.showNotification('Ошибка: поле ввода имени не найдено', 'error', 3000);
@@ -791,12 +936,20 @@ const VoiceRoom = {
         try {
             // Закрываем предыдущий поток если есть
             if (this.localStream) {
-                this.localStream.getTracks().forEach(track => track.stop());
+                try {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                } catch (error) {
+                    console.error('Error stopping previous stream:', error);
+                }
             }
             
             // Закрываем предыдущий AudioContext если есть
             if (this.audioContext && this.audioContext.state !== 'closed') {
-                await this.audioContext.close();
+                try {
+                    await this.audioContext.close();
+                } catch (error) {
+                    console.error('Error closing previous AudioContext:', error);
+                }
             }
             
             this.localStream = await navigator.mediaDevices.getUserMedia({ 
@@ -831,6 +984,24 @@ const VoiceRoom = {
             this.startMicrophoneMonitoring();
         } catch (error) {
             console.error('Error accessing microphone:', error);
+            // Очищаем частично созданные ресурсы
+            if (this.localStream) {
+                try {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                } catch (e) {
+                    console.error('Error stopping stream on error:', e);
+                }
+                this.localStream = null;
+            }
+            if (this.audioContext && this.audioContext.state !== 'closed') {
+                try {
+                    await this.audioContext.close();
+                } catch (e) {
+                    console.error('Error closing AudioContext on error:', e);
+                }
+                this.audioContext = null;
+            }
+            this.analyser = null;
             throw error; // Пробрасываем ошибку дальше
         }
     },
@@ -872,7 +1043,7 @@ const VoiceRoom = {
                 const stream = event.streams[0];
                 
                 const audio = document.getElementById(`audio-${targetUserId}`);
-                if (audio) {
+                if (audio && audio.play) {
                     audio.srcObject = stream;
                     audio.play().catch(err => {
                         console.error('Error playing audio:', err);
@@ -1104,14 +1275,22 @@ const VoiceRoom = {
     
     stopMicrophoneMonitoring() {
         if (this.microphoneLevelCheckInterval) {
-            clearInterval(this.microphoneLevelCheckInterval);
+            try {
+                clearInterval(this.microphoneLevelCheckInterval);
+            } catch (error) {
+                console.error('Error clearing microphone interval:', error);
+            }
             this.microphoneLevelCheckInterval = null;
         }
     },
     
     leaveRoom() {
         // Останавливаем мониторинг микрофона
-        this.stopMicrophoneMonitoring();
+        try {
+            this.stopMicrophoneMonitoring();
+        } catch (error) {
+            console.error('Error stopping microphone monitoring:', error);
+        }
         
         // Закрываем все peer connections
         this.peers.forEach((peer, userId) => {
@@ -1125,17 +1304,25 @@ const VoiceRoom = {
         
         // Останавливаем локальный поток
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => {
-                track.stop();
-            });
+            try {
+                this.localStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+            } catch (error) {
+                console.error('Error stopping tracks:', error);
+            }
             this.localStream = null;
         }
         
         // Закрываем AudioContext
         if (this.audioContext && this.audioContext.state !== 'closed') {
-            this.audioContext.close().catch(error => {
+            try {
+                this.audioContext.close().catch(error => {
+                    console.error('Error closing AudioContext:', error);
+                });
+            } catch (error) {
                 console.error('Error closing AudioContext:', error);
-            });
+            }
             this.audioContext = null;
         }
         
@@ -1143,13 +1330,17 @@ const VoiceRoom = {
         
         // Очищаем таймауты
         if (this.reconnectTimeout) {
-            clearTimeout(this.reconnectTimeout);
+            try {
+                clearTimeout(this.reconnectTimeout);
+            } catch (error) {
+                console.error('Error clearing reconnectTimeout:', error);
+            }
             this.reconnectTimeout = null;
         }
         
         // Очищаем UI
         if (this.elements.usersGrid) {
-            this.elements.usersGrid.innerHTML = '<div class="empty-state">Ожидание других участников...</div>';
+            this.elements.usersGrid.innerHTML = '';
         }
         
         if (this.elements.loginScreen) {
@@ -1162,7 +1353,11 @@ const VoiceRoom = {
         
         // Уведомляем сервер
         if (this.socket && this.socket.connected && this.currentRoomId) {
-            this.socket.emit('leave-room', { roomId: this.currentRoomId });
+            try {
+                this.socket.emit('leave-room', { roomId: this.currentRoomId });
+            } catch (error) {
+                console.error('Error emitting leave-room:', error);
+            }
         }
         
         this.currentRoomId = null;

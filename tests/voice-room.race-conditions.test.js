@@ -40,6 +40,16 @@ beforeEach(async () => {
     elements: {},
     
     init() {
+      // Очищаем предыдущие peer connections при повторной инициализации
+      this.peers.forEach((peer, userId) => {
+        try {
+          peer.close();
+        } catch (error) {
+          console.error('Error closing peer during init:', error);
+        }
+      });
+      this.peers.clear();
+      
       this.initElements();
       this.initSocket();
     },
@@ -49,13 +59,37 @@ beforeEach(async () => {
         usernameInput: document.getElementById('username'),
         roomIdInput: document.getElementById('roomId'),
         usersGrid: document.getElementById('usersGrid'),
-        statusMessage: document.getElementById('statusMessage')
+        statusMessage: document.getElementById('statusMessage'),
+        userCount: document.getElementById('userCount')
       };
     },
     
     initSocket() {
       if (typeof io === 'undefined') return;
       this.socket = io(window.location.origin);
+      this.setupSocketEvents();
+    },
+    
+    setupSocketEvents() {
+      if (!this.socket) return;
+      this.socket.on('user-joined', ({ userId, username }) => {
+        this.addUserToGrid(userId, username);
+        if (this.localStream) {
+          this.createPeerConnection(userId);
+        }
+      });
+      this.socket.on('user-left', (userId) => {
+        const peer = this.peers.get(userId);
+        if (peer) {
+          try {
+            peer.close();
+          } catch (error) {
+            console.error('Error closing peer:', error);
+          }
+          this.peers.delete(userId);
+        }
+        this.removeUser(userId);
+      });
     },
     
     async initMedia() {
@@ -65,6 +99,16 @@ beforeEach(async () => {
     },
     
     async createRoom() {
+      // Очищаем предыдущие peer connections перед созданием новой комнаты
+      this.peers.forEach((peer, userId) => {
+        try {
+          peer.close();
+        } catch (error) {
+          console.error('Error closing peer before createRoom:', error);
+        }
+      });
+      this.peers.clear();
+      
       const username = this.elements.usernameInput.value.trim();
       if (!username) return;
       this.myUsername = username;
@@ -88,6 +132,7 @@ beforeEach(async () => {
     },
     
     createPeerConnection(targetUserId) {
+      // Не создаем peer connection если нет localStream или уже есть соединение
       if (!this.localStream || this.peers.has(targetUserId)) return;
       const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       this.peers.set(targetUserId, peer);
@@ -99,14 +144,45 @@ beforeEach(async () => {
       card.id = `user-${userId}`;
       card.className = 'user-card';
       this.elements.usersGrid.appendChild(card);
+      this.updateUserCount();
+    },
+    
+    removeUser(userId) {
+      const card = document.getElementById(`user-${userId}`);
+      if (card) {
+        card.remove();
+        this.updateUserCount();
+      }
+    },
+    
+    updateUserCount() {
+      if (this.elements.userCount && this.elements.usersGrid) {
+        const count = this.elements.usersGrid.querySelectorAll('.user-card').length;
+        this.elements.userCount.textContent = count;
+      }
     },
     
     leaveRoom() {
-      this.peers.forEach(peer => peer.close());
+      // Очищаем peer connections
+      this.peers.forEach((peer, userId) => {
+        try {
+          peer.close();
+        } catch (error) {
+          console.error('Error closing peer:', error);
+        }
+      });
       this.peers.clear();
+      
+      // Очищаем localStream чтобы предотвратить создание новых peer connections
       if (this.localStream) {
         this.localStream.getTracks().forEach(track => track.stop());
+        this.localStream = null;
       }
+      
+      if (this.elements.usersGrid) {
+        this.elements.usersGrid.innerHTML = '';
+      }
+      
       if (this.socket && this.currentRoomId) {
         this.socket.emit('leave-room', { roomId: this.currentRoomId });
       }
@@ -464,16 +540,13 @@ describe('Race conditions', () => {
       await VoiceRoom.initMedia();
       
       VoiceRoom.createPeerConnection('user1');
+      expect(VoiceRoom.peers.size).toBe(1);
       
-      // Начинаем leaveRoom
-      const leavePromise = Promise.resolve(VoiceRoom.leaveRoom());
-      
-      // Пытаемся создать новое соединение параллельно
+      // Начинаем leaveRoom и сразу создаем новое соединение
+      VoiceRoom.leaveRoom();
       VoiceRoom.createPeerConnection('user2');
       
-      await leavePromise;
-      
-      // Все должно быть очищено
+      // После leaveRoom все должно быть очищено
       expect(VoiceRoom.peers.size).toBe(0);
     });
   });
