@@ -115,23 +115,46 @@ const VoiceRoom = {
                 const iceState = peer.iceConnectionState;
                 const connState = peer.connectionState;
                 
-                // Если соединение установлено, но статус еще "Подключение..."
-                if ((iceState === 'connected' || iceState === 'completed' || connState === 'connected') && 
-                    status.textContent === 'Подключение...') {
-                    console.log(`Global status check: Force updating status to "Подключен" for ${userId}`);
-                    status.textContent = 'Подключен';
-                    card.classList.add('connected');
-                    card.classList.remove('reconnecting', 'error');
-                }
-                
-                // Если соединение установлено и у нас есть remote и local descriptions
-                if (peer.remoteDescription && peer.localDescription &&
-                    (iceState === 'connected' || iceState === 'completed' || connState === 'connected') &&
-                    status.textContent === 'Подключение...') {
-                    console.log(`Global status check: Force updating status to "Подключен" for ${userId} (descriptions set)`);
-                    status.textContent = 'Подключен';
-                    card.classList.add('connected');
-                    card.classList.remove('reconnecting', 'error');
+                // Принудительно обновляем статус на основе текущего состояния
+                if (iceState === 'connected' || iceState === 'completed' || connState === 'connected') {
+                    // Если соединение установлено, но статус еще "Подключение..."
+                    if (status.textContent === 'Подключение...' || status.textContent === 'Отключен') {
+                        console.log(`Global status check: Force updating status to "Подключен" for ${userId}`);
+                        status.textContent = 'Подключен';
+                        card.classList.add('connected');
+                        card.classList.remove('reconnecting', 'error');
+                    }
+                    
+                    // Проверяем что аудио элемент существует и воспроизводится
+                    const audio = document.getElementById(`audio-${userId}`) || 
+                                 document.querySelector(`audio[data-user-id="${userId}"]`);
+                    if (audio && audio.srcObject && audio.paused) {
+                        console.log(`Global status check: Attempting to play audio for ${userId}`);
+                        audio.play().catch(err => {
+                            console.error(`Error playing audio for ${userId}:`, err);
+                        });
+                    }
+                } else if (iceState === 'connecting' || iceState === 'checking' || connState === 'connecting') {
+                    // Если соединение еще устанавливается
+                    if (status.textContent !== 'Подключение...') {
+                        status.textContent = 'Подключение...';
+                        card.classList.add('reconnecting');
+                        card.classList.remove('connected', 'error');
+                    }
+                } else if (iceState === 'failed' || connState === 'failed') {
+                    // Если соединение не удалось
+                    if (status.textContent !== 'Ошибка подключения') {
+                        status.textContent = 'Ошибка подключения';
+                        card.classList.add('error');
+                        card.classList.remove('reconnecting', 'connected');
+                    }
+                } else if (iceState === 'disconnected' || connState === 'disconnected') {
+                    // Если соединение разорвано
+                    if (status.textContent !== 'Отключен') {
+                        status.textContent = 'Отключен';
+                        card.classList.add('reconnecting');
+                        card.classList.remove('connected', 'error');
+                    }
                 }
             });
         }, 2000); // Проверяем каждые 2 секунды
@@ -285,18 +308,21 @@ const VoiceRoom = {
         });
         
         this.socket.on('offer', async (data) => {
-            console.log('Received offer from:', data.from);
-            await this.handleOffer(data);
+            const fromUserId = data.fromUserId;
+            console.log('Received offer from:', fromUserId);
+            await this.handleOffer({ ...data, from: fromUserId });
         });
         
         this.socket.on('answer', async (data) => {
-            console.log('Received answer from:', data.from);
-            await this.handleAnswer(data);
+            const fromUserId = data.fromUserId;
+            console.log('Received answer from:', fromUserId);
+            await this.handleAnswer({ ...data, from: fromUserId });
         });
         
         this.socket.on('ice-candidate', async (data) => {
-            console.log('Received ICE candidate from:', data.from);
-            await this.handleIceCandidate(data);
+            const fromUserId = data.fromUserId;
+            console.log('Received ICE candidate from:', fromUserId);
+            await this.handleIceCandidate({ ...data, from: fromUserId });
         });
         
         this.socket.on('microphone-status', (data) => {
@@ -586,8 +612,45 @@ const VoiceRoom = {
         }
     },
     
+    async requestMicrophonePermission() {
+        // Проверяем, есть ли плагин для разрешений
+        if (typeof cordova !== 'undefined' && cordova.plugins && cordova.plugins.permissions) {
+            return new Promise((resolve, reject) => {
+                const permissions = cordova.plugins.permissions;
+                permissions.checkPermission(permissions.RECORD_AUDIO, (status) => {
+                    if (status.hasPermission) {
+                        resolve(true);
+                    } else {
+                        permissions.requestPermission(permissions.RECORD_AUDIO, (status) => {
+                            if (status.hasPermission) {
+                                resolve(true);
+                            } else {
+                                reject(new Error('Permission denied'));
+                            }
+                        }, (error) => {
+                            reject(error);
+                        });
+                    }
+                }, (error) => {
+                    reject(error);
+                });
+            });
+        }
+        
+        // Если плагина нет, просто возвращаем успех - разрешение будет запрошено через getUserMedia
+        return Promise.resolve(true);
+    },
+    
     async initMedia() {
         try {
+            // Запрашиваем разрешение на микрофон перед доступом
+            try {
+                await this.requestMicrophonePermission();
+            } catch (permError) {
+                console.warn('Permission request failed, trying anyway:', permError);
+                // Продолжаем попытку доступа - браузер/Cordova может сам запросить разрешение
+            }
+            
             if (this.localStream) {
                 this.localStream.getTracks().forEach(track => track.stop());
             }
@@ -613,6 +676,22 @@ const VoiceRoom = {
             source.connect(this.analyser);
         } catch (error) {
             console.error('Error accessing microphone:', error);
+            let errorMessage = 'Не удалось получить доступ к микрофону';
+            
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                errorMessage = 'Доступ к микрофону запрещен. Пожалуйста, разрешите доступ к микрофону в настройках приложения.';
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                errorMessage = 'Микрофон не найден. Убедитесь, что устройство имеет микрофон.';
+            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                errorMessage = 'Микрофон используется другим приложением. Закройте другие приложения и попробуйте снова.';
+            } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+                errorMessage = 'Требования к микрофону не могут быть выполнены. Попробуйте другое устройство.';
+            } else if (error.name === 'TypeError' || error.name === 'NotSupportedError') {
+                errorMessage = 'Доступ к микрофону не поддерживается на этом устройстве.';
+            }
+            
+            this.showNotification(errorMessage, 'error', 5000);
+            
             if (this.localStream) {
                 this.localStream.getTracks().forEach(track => track.stop());
                 this.localStream = null;
@@ -646,14 +725,39 @@ const VoiceRoom = {
             peer.ontrack = (event) => {
                 console.log('Received track from:', targetUserId);
                 console.log('Updating status to connected for:', targetUserId);
-                const audio = document.createElement('audio');
-                audio.autoplay = true;
-                audio.srcObject = event.streams[0];
-                audio.setAttribute('data-user-id', targetUserId);
-                document.body.appendChild(audio);
+                const stream = event.streams[0];
+                
+                // Проверяем, существует ли уже audio элемент для этого пользователя
+                let audio = document.getElementById(`audio-${targetUserId}`) || 
+                           document.querySelector(`audio[data-user-id="${targetUserId}"]`);
+                
+                if (!audio) {
+                    // Создаем новый audio элемент если его нет
+                    audio = document.createElement('audio');
+                    audio.id = `audio-${targetUserId}`;
+                    audio.setAttribute('data-user-id', targetUserId);
+                    audio.autoplay = true;
+                    audio.playsInline = true;
+                    audio.muted = false;
+                    document.body.appendChild(audio);
+                    console.log('Created new audio element for:', targetUserId);
+                }
+                
+                // Устанавливаем поток и воспроизводим
+                audio.srcObject = stream;
+                
+                // Явно вызываем play() для надежности на мобильных устройствах
+                audio.play().catch(err => {
+                    console.error('Error playing audio for', targetUserId, ':', err);
+                    // Пробуем еще раз через небольшую задержку
+                    setTimeout(() => {
+                        audio.play().catch(err2 => {
+                            console.error('Second attempt to play audio failed:', err2);
+                        });
+                    }, 500);
+                });
                 
                 // Обновляем статус при получении трека
-                // Небольшая задержка для гарантии что карточка создана
                 setTimeout(() => {
                     const card = document.querySelector(`[data-user-id="${targetUserId}"]`);
                     console.log('Card found in ontrack for', targetUserId, ':', !!card);
@@ -669,8 +773,6 @@ const VoiceRoom = {
                         }
                     } else {
                         console.warn('Card not found in ontrack for', targetUserId);
-                        // Если карточка еще не создана, создаем ее
-                        // Но это не должно происходить, так как addUserToGrid вызывается перед createPeerConnection
                     }
                 }, 100);
             };
@@ -678,7 +780,8 @@ const VoiceRoom = {
             peer.onicecandidate = (event) => {
                 if (event.candidate && this.socket && this.socket.connected) {
                     this.socket.emit('ice-candidate', {
-                        to: targetUserId,
+                        targetUserId: targetUserId,
+                        fromUserId: this.myUserId,
                         candidate: event.candidate,
                         roomId: this.currentRoomId
                     });
@@ -834,11 +937,12 @@ const VoiceRoom = {
                 peer.createOffer().then(offer => {
                     peer.setLocalDescription(offer);
                     if (this.socket && this.socket.connected) {
-                        this.socket.emit('offer', {
-                            to: targetUserId,
-                            offer: offer,
-                            roomId: this.currentRoomId
-                        });
+                    this.socket.emit('offer', {
+                        targetUserId: targetUserId,
+                        fromUserId: this.myUserId,
+                        offer: offer,
+                        roomId: this.currentRoomId
+                    });
                     }
                     
                     // После создания offer проверяем статус
@@ -880,7 +984,8 @@ const VoiceRoom = {
                 await newPeer.setLocalDescription(answer);
                 if (this.socket && this.socket.connected) {
                     this.socket.emit('answer', {
-                        to: data.from,
+                        targetUserId: data.from,
+                        fromUserId: this.myUserId,
                         answer: answer,
                         roomId: this.currentRoomId
                     });

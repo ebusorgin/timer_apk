@@ -511,7 +511,16 @@ io.on('connection', (socket) => {
 
     socket.on('offer', (data) => {
         if (!data || !data.roomId) return;
-        const { roomId, offer, targetUserId, fromUserId } = data;
+        
+        const targetUserId = data.targetUserId;
+        const fromUserId = data.fromUserId;
+        
+        if (!targetUserId || !fromUserId) {
+            console.error('❌ Missing targetUserId or fromUserId in offer:', data);
+            return;
+        }
+        
+        const { roomId, offer } = data;
         
         const roomIdValidation = validateRoomId(roomId);
         if (!roomIdValidation.valid) {
@@ -540,7 +549,16 @@ io.on('connection', (socket) => {
 
     socket.on('answer', (data) => {
         if (!data || !data.roomId) return;
-        const { roomId, answer, targetUserId, fromUserId } = data;
+        
+        const targetUserId = data.targetUserId;
+        const fromUserId = data.fromUserId;
+        
+        if (!targetUserId || !fromUserId) {
+            console.error('❌ Missing targetUserId or fromUserId in answer:', data);
+            return;
+        }
+        
+        const { roomId, answer } = data;
         
         const roomIdValidation = validateRoomId(roomId);
         if (!roomIdValidation.valid) {
@@ -560,7 +578,16 @@ io.on('connection', (socket) => {
 
     socket.on('ice-candidate', (data) => {
         if (!data || !data.roomId) return;
-        const { roomId, candidate, targetUserId, fromUserId } = data;
+        
+        const targetUserId = data.targetUserId;
+        const fromUserId = data.fromUserId;
+        
+        if (!targetUserId || !fromUserId) {
+            console.error('❌ Missing targetUserId or fromUserId in ice-candidate:', data);
+            return;
+        }
+        
+        const { roomId, candidate } = data;
         
         const roomIdValidation = validateRoomId(roomId);
         if (!roomIdValidation.valid) {
