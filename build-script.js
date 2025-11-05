@@ -98,11 +98,22 @@ if (!fs.existsSync(platformsPath)) {
 }
 
 // Подготавливаем файлы (копируем www в platforms)
-// Пропускаем cordova prepare из-за проблем с API, используем прямой вызов Gradle
 console.log('Подготовка файлов...');
+
+// Сначала вызываем cordova prepare для правильной настройки платформы
+// Это копирует cordova.js и другие платформенные файлы
+console.log('Вызов cordova prepare...');
+try {
+    execSync('npx cordova prepare android', { stdio: 'inherit', cwd: __dirname });
+    console.log('✅ Cordova prepare выполнен успешно.');
+} catch (error) {
+    console.warn('⚠️  Предупреждение: cordova prepare завершился с ошибкой:', error.message);
+    console.log('Продолжаем сборку с ручным копированием файлов...');
+}
+
 const wwwDest = path.join(platformsPath, 'app', 'src', 'main', 'assets', 'www');
 
-// Всегда копируем www файлы вручную для надежности
+// Всегда копируем www файлы вручную для надежности (перезаписываем после prepare)
 if (fs.existsSync(wwwPath)) {
     try {
         if (!fs.existsSync(wwwDest)) {
@@ -115,6 +126,22 @@ if (fs.existsSync(wwwPath)) {
         // Проверяем что файлы действительно скопировались
         if (!fs.existsSync(wwwDest) || fs.readdirSync(wwwDest).length === 0) {
             console.warn('⚠️  Предупреждение: папка www пуста или файлы не скопировались');
+        }
+        
+        // Проверяем наличие cordova.js
+        const cordovaJsPath = path.join(wwwDest, 'cordova.js');
+        if (!fs.existsSync(cordovaJsPath)) {
+            // Пробуем скопировать из platform_www если не скопировался через prepare
+            const platformCordovaJs = path.join(platformsPath, 'platform_www', 'cordova.js');
+            if (fs.existsSync(platformCordovaJs)) {
+                console.log('Копирование cordova.js из platform_www...');
+                fs.copyFileSync(platformCordovaJs, cordovaJsPath);
+                console.log('✅ cordova.js скопирован.');
+            } else {
+                console.warn('⚠️  Предупреждение: cordova.js не найден в platform_www');
+            }
+        } else {
+            console.log('✅ cordova.js присутствует в assets/www');
         }
     } catch (error) {
         console.error(`❌ Ошибка при копировании www файлов: ${error.message}`);

@@ -14,6 +14,7 @@ const VoiceRoom = {
     isJoiningRoom: false, // Флаг для предотвращения повторных попыток присоединения
     isCreatingRoom: false, // Флаг для предотвращения повторных попыток создания комнаты
     lastProcessedUrl: null, // Последний обработанный URL для предотвращения повторной обработки
+    joinRoomTimeout: null, // Таймаут для сброса флага присоединения
     
     // Константы WebRTC
     ICE_SERVERS: [
@@ -781,8 +782,15 @@ const VoiceRoom = {
         }
         
         if (this.elements.btnJoinRoomNow) {
-            this.elements.btnJoinRoomNow.addEventListener('click', () => {
+            this.elements.btnJoinRoomNow.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 console.log('Join room button clicked');
+                console.log('Button element:', this.elements.btnJoinRoomNow);
+                console.log('Room ID input value:', this.elements.roomIdInput?.value);
+                console.log('Username input value:', this.elements.usernameInput?.value);
+                console.log('VoiceRoom object:', this);
+                console.log('joinExistingRoom method:', typeof this.joinExistingRoom);
                 this.joinExistingRoom();
             });
         }
@@ -979,6 +987,12 @@ const VoiceRoom = {
     waitForSocketAndJoin(roomId, username) {
         console.log('waitForSocketAndJoin called:', { roomId, username, hasSocket: !!this.socket, socketConnected: this.socket?.connected });
         
+        // Предотвращаем повторные вызовы если уже присоединяемся
+        if (this.isJoiningRoom) {
+            console.log('Already joining room, skipping waitForSocketAndJoin');
+            return;
+        }
+        
         // Проверяем подключение socket
         if (this.socket && this.socket.connected) {
             // Socket уже подключен, можно присоединяться сразу
@@ -990,49 +1004,61 @@ const VoiceRoom = {
         }
         
         // Ждем подключения socket
-        if (!this.socket) {
-            // Socket еще не инициализирован, ждем немного
-            console.log('Socket not initialized yet, waiting...');
-            setTimeout(() => {
-                this.waitForSocketAndJoin(roomId, username);
-            }, 200);
-            return;
-        }
+        let attempts = 0;
+        const MAX_ATTEMPTS = 25; // Максимум 5 секунд (25 * 200ms)
         
-        // Socket есть, но еще не подключен - ждем события connect
-        console.log('Socket exists but not connected, waiting for connect event');
-        let joined = false;
-        const joinRoom = () => {
-            if (joined) return;
-            joined = true;
-            console.log('Socket connected, joining room');
-            setTimeout(() => {
-                this.joinExistingRoom(true); // Передаем true чтобы указать что это автоматическое присоединение
-            }, 100);
-        };
-        
-        // Устанавливаем обработчик события connect
-        this.socket.once('connect', joinRoom);
-        
-        // Также запускаем проверку на случай если событие уже произошло
-        const checkConnection = () => {
+        const checkSocket = () => {
+            attempts++;
+            
+            // Проверяем подключение socket
             if (this.socket && this.socket.connected) {
-                joinRoom();
-            } else if (!joined) {
-                // Проверяем каждые 200ms
-                setTimeout(checkConnection, 200);
+                console.log('Socket connected, joining room');
+                setTimeout(() => {
+                    this.joinExistingRoom(true); // Передаем true чтобы указать что это автоматическое присоединение
+                }, 100);
+                return;
+            }
+            
+            // Если socket еще не инициализирован, ждем
+            if (!this.socket) {
+                if (attempts < MAX_ATTEMPTS) {
+                    setTimeout(checkSocket, 200);
+                } else {
+                    console.warn('Socket initialization timeout after', attempts, 'attempts');
+                    // Не присоединяемся если socket не инициализирован
+                }
+                return;
+            }
+            
+            // Socket есть, но еще не подключен - устанавливаем обработчик события connect
+            if (this.socket && !this.socket.connected) {
+                let joinHandler = null;
+                joinHandler = () => {
+                    if (this.socket) {
+                        this.socket.off('connect', joinHandler);
+                    }
+                    console.log('Socket connected via event, joining room');
+                    setTimeout(() => {
+                        this.joinExistingRoom(true);
+                    }, 100);
+                };
+                
+                this.socket.once('connect', joinHandler);
+                
+                // Также продолжаем проверку на случай если событие уже произошло
+                if (attempts < MAX_ATTEMPTS) {
+                    setTimeout(checkSocket, 200);
+                } else {
+                    console.warn('Socket connection timeout after', attempts, 'attempts');
+                    // Очищаем обработчик если таймаут
+                    if (this.socket && joinHandler) {
+                        this.socket.off('connect', joinHandler);
+                    }
+                }
             }
         };
         
-        setTimeout(checkConnection, 200);
-        
-        // Таймаут на случай если подключение не произойдет
-        setTimeout(() => {
-            if (!joined) {
-                console.warn('Socket connection timeout, trying to join anyway');
-                joinRoom();
-            }
-        }, 5000);
+        checkSocket();
     },
     
     async createRoom() {
@@ -1265,19 +1291,30 @@ const VoiceRoom = {
     },
     
     async joinExistingRoom(isAutoJoin = false) {
+        console.log('joinExistingRoom called', { isAutoJoin, isJoiningRoom: this.isJoiningRoom });
+        
         // Предотвращаем повторные попытки присоединения
         if (this.isJoiningRoom) {
             console.log('Already joining room, skipping duplicate call');
             return;
         }
         
-        if (!this.elements.roomIdInput || !this.elements.usernameInput) return;
+        if (!this.elements.roomIdInput || !this.elements.usernameInput) {
+            console.error('Missing elements:', {
+                roomIdInput: !!this.elements.roomIdInput,
+                usernameInput: !!this.elements.usernameInput
+            });
+            return;
+        }
         
         const roomId = this.elements.roomIdInput.value.trim().toUpperCase();
         const usernameValue = this.elements.usernameInput.value.trim();
         
+        console.log('Join room attempt:', { roomId, username: usernameValue });
+        
         // Валидация roomId
         if (!roomId || roomId.length !== 6 || !/^[A-Z0-9]{6}$/.test(roomId)) {
+            console.warn('Invalid roomId:', roomId);
             this.showNotification('Введите корректный код комнаты (6 символов)', 'error', 3000);
             if (this.elements.roomIdInput) {
                 this.elements.roomIdInput.classList.add('invalid');
@@ -1291,20 +1328,54 @@ const VoiceRoom = {
         }
         
         // Валидация username
-        if (!this.validateUsernameInput(usernameValue, true)) {
+        const usernameValid = this.validateUsernameInput(usernameValue, true);
+        console.log('Username validation result:', usernameValid);
+        if (!usernameValid) {
             // Ошибка уже показана через validateUsernameInput
+            console.warn('Username validation failed');
             return;
         }
         
         const username = this.sanitizeString(usernameValue);
+        console.log('Sanitized username:', username);
         
         if (!username || username.length < 1) {
+            console.warn('Username is empty after sanitization');
             this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
             return;
         }
         
+        console.log('Proceeding with join:', { roomId, username });
+        
+        // Очищаем предыдущий таймаут если есть
+        if (this.joinRoomTimeout) {
+            clearTimeout(this.joinRoomTimeout);
+            this.joinRoomTimeout = null;
+        }
+        
         // Устанавливаем флаг присоединения
         this.isJoiningRoom = true;
+        
+        // Устанавливаем таймаут для автоматического сброса флага (на случай если callback не вызовется)
+        const JOIN_ROOM_TIMEOUT = 10000; // 10 секунд
+        this.joinRoomTimeout = setTimeout(() => {
+            if (this.isJoiningRoom) {
+                console.warn('Join room timeout - resetting flag');
+                this.isJoiningRoom = false;
+                this.joinRoomTimeout = null;
+                
+                // Восстанавливаем кнопку
+                if (this.elements.btnJoinRoomNow) {
+                    this.elements.btnJoinRoomNow.disabled = false;
+                    this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
+                }
+                
+                // Показываем сообщение об ошибке только если это не автоматическое присоединение
+                if (!isAutoJoin) {
+                    this.showNotification('Таймаут присоединения к комнате. Попробуйте снова.', 'error', 5000);
+                }
+            }
+        }, JOIN_ROOM_TIMEOUT);
         
         // Визуальная обратная связь
         if (this.elements.btnJoinRoomNow) {
@@ -1314,108 +1385,149 @@ const VoiceRoom = {
         }
         
         if (!this.socket) {
-            this.isJoiningRoom = false;
+            console.error('Socket not initialized');
+            this.resetJoinRoomState();
             this.showNotification('Ошибка подключения к серверу', 'error', 5000);
             return;
         }
         
         if (!this.socket.connected) {
-            this.isJoiningRoom = false;
+            console.warn('Socket not connected');
+            this.resetJoinRoomState();
             this.showNotification('Подключение к серверу... Пожалуйста, подождите.', 'info', 3000);
             return;
         }
+        
+        console.log('Socket is ready, emitting join-room');
         
         this.myUsername = username;
         localStorage.setItem('voiceRoomUsername', username);
         this.currentRoomId = roomId;
         
-        this.socket.emit('join-room', { roomId, username }, async (response) => {
-            // Сбрасываем флаг присоединения
-            this.isJoiningRoom = false;
-            
-            // Восстанавливаем кнопку
-            if (this.elements.btnJoinRoomNow) {
-                this.elements.btnJoinRoomNow.disabled = false;
-                this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
-            }
-            
-            if (response.error) {
-                console.error('Join room error:', response.error);
-                if (response.error.includes('not found')) {
-                    // НЕ создаем новую комнату автоматически если это автоматическое присоединение через URL
-                    // Это предотвращает цикл перезагрузки
-                    if (isAutoJoin) {
-                        this.showNotification('Комната не найдена. Проверьте правильность кода комнаты.', 'error', 5000);
-                        // Очищаем URL чтобы предотвратить повторные попытки
-                        if (!App.isCordova) {
-                            window.history.replaceState({}, '', '/');
+        try {
+            this.socket.emit('join-room', { roomId, username }, async (response) => {
+                console.log('join-room callback received:', response);
+                
+                // Очищаем таймаут
+                if (this.joinRoomTimeout) {
+                    clearTimeout(this.joinRoomTimeout);
+                    this.joinRoomTimeout = null;
+                }
+                
+                // Сбрасываем флаг присоединения
+                this.isJoiningRoom = false;
+                
+                // Восстанавливаем кнопку
+                if (this.elements.btnJoinRoomNow) {
+                    this.elements.btnJoinRoomNow.disabled = false;
+                    this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
+                }
+                
+                if (!response) {
+                    console.error('No response from server');
+                    this.showNotification('Ошибка при присоединении к комнате. Попробуйте снова.', 'error', 5000);
+                    return;
+                }
+                
+                if (response.error) {
+                    console.error('Join room error:', response.error);
+                    if (response.error.includes('not found')) {
+                        // НЕ создаем новую комнату автоматически если это автоматическое присоединение через URL
+                        // Это предотвращает цикл перезагрузки
+                        if (isAutoJoin) {
+                            this.showNotification('Комната не найдена. Проверьте правильность кода комнаты.', 'error', 5000);
+                            // Очищаем URL чтобы предотвратить повторные попытки
+                            if (!App.isCordova) {
+                                window.history.replaceState({}, '', '/');
+                            }
+                            // Очищаем currentRoomId чтобы не было путаницы
+                            this.currentRoomId = null;
+                        } else {
+                            // Если это ручное присоединение пользователем, можно предложить создать новую
+                            this.showNotification('Комната не найдена. Создаем новую...', 'info', 3000);
+                            setTimeout(() => this.createRoom(), 1000);
                         }
-                        // Очищаем currentRoomId чтобы не было путаницы
-                        this.currentRoomId = null;
+                    } else if (response.error.includes('full')) {
+                        this.showNotification('Комната переполнена. Максимум участников: ' + (response.maxUsers || '10'), 'error', 5000);
                     } else {
-                        // Если это ручное присоединение пользователем, можно предложить создать новую
-                        this.showNotification('Комната не найдена. Создаем новую...', 'info', 3000);
-                        setTimeout(() => this.createRoom(), 1000);
+                        this.showNotification('Ошибка: ' + response.error, 'error', 5000);
                     }
-                } else if (response.error.includes('full')) {
-                    this.showNotification('Комната переполнена. Максимум участников: ' + (response.maxUsers || '10'), 'error', 5000);
-                } else {
-                    this.showNotification('Ошибка: ' + response.error, 'error', 5000);
-                }
-                return;
-            }
-            
-            const { userId, users } = response;
-            this.myUserId = userId;
-            console.log('Joined room:', roomId);
-            this.showNotification('Вы присоединились к комнате!', 'success', 2000);
-            
-            try {
-                await this.initMedia();
-                this.addUserToGrid(this.myUserId, username, true);
-                
-                if (users && users.length > 0) {
-                    users.forEach(user => {
-                        const sanitizedUsername = this.sanitizeString(user.username);
-                        this.addUserToGrid(user.userId, sanitizedUsername);
-                        this.createPeerConnection(user.userId);
-                        // Запрашиваем статус микрофона у существующих участников
-                        if (this.socket && this.socket.connected) {
-                            this.socket.emit('request-microphone-status', {
-                                roomId: this.currentRoomId,
-                                targetUserId: user.userId
-                            });
-                        }
-                    });
+                    return;
                 }
                 
-                // Отправляем свой статус микрофона всем участникам комнаты
-                if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
-                    const tracks = this.localStream.getAudioTracks();
-                    const enabled = tracks[0]?.enabled ?? true;
-                    this.socket.emit('microphone-status', {
-                        roomId: this.currentRoomId,
-                        enabled: enabled,
-                        userId: this.myUserId
-                    });
-                }
+                const { userId, users } = response;
+                this.myUserId = userId;
+                console.log('Joined room:', roomId);
+                this.showNotification('Вы присоединились к комнате!', 'success', 2000);
                 
-                if (this.elements.currentRoomIdSpan) {
-                    this.elements.currentRoomIdSpan.textContent = roomId;
+                try {
+                    await this.initMedia();
+                    this.addUserToGrid(this.myUserId, username, true);
+                    
+                    if (users && users.length > 0) {
+                        users.forEach(user => {
+                            const sanitizedUsername = this.sanitizeString(user.username);
+                            this.addUserToGrid(user.userId, sanitizedUsername);
+                            this.createPeerConnection(user.userId);
+                            // Запрашиваем статус микрофона у существующих участников
+                            if (this.socket && this.socket.connected) {
+                                this.socket.emit('request-microphone-status', {
+                                    roomId: this.currentRoomId,
+                                    targetUserId: user.userId
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Отправляем свой статус микрофона всем участникам комнаты
+                    if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+                        const tracks = this.localStream.getAudioTracks();
+                        const enabled = tracks[0]?.enabled ?? true;
+                        this.socket.emit('microphone-status', {
+                            roomId: this.currentRoomId,
+                            enabled: enabled,
+                            userId: this.myUserId
+                        });
+                    }
+                    
+                    if (this.elements.currentRoomIdSpan) {
+                        this.elements.currentRoomIdSpan.textContent = roomId;
+                    }
+                    
+                    this.showRoomScreen();
+                } catch (error) {
+                    console.error('Error joining room:', error);
+                    let errorMessage = 'Не удалось подключиться к комнате. ';
+                    if (error.name === 'NotAllowedError') {
+                        errorMessage += 'Разрешите доступ к микрофону в настройках браузера.';
+                    } else {
+                        errorMessage += error.message;
+                    }
+                    this.showNotification(errorMessage, 'error', 7000);
                 }
-                
-                this.showRoomScreen();
-            } catch (error) {
-                console.error('Error joining room:', error);
-                let errorMessage = 'Не удалось подключиться к комнате. ';
-                if (error.name === 'NotAllowedError') {
-                    errorMessage += 'Разрешите доступ к микрофону в настройках браузера.';
-                } else {
-                    errorMessage += error.message;
-                }
-                this.showNotification(errorMessage, 'error', 7000);
-            }
-        });
+            });
+        } catch (error) {
+            console.error('Error emitting join-room:', error);
+            this.resetJoinRoomState();
+            this.showNotification('Ошибка при отправке запроса на присоединение к комнате', 'error', 5000);
+        }
+    },
+    
+    resetJoinRoomState() {
+        // Очищаем таймаут
+        if (this.joinRoomTimeout) {
+            clearTimeout(this.joinRoomTimeout);
+            this.joinRoomTimeout = null;
+        }
+        
+        // Сбрасываем флаг
+        this.isJoiningRoom = false;
+        
+        // Восстанавливаем кнопку
+        if (this.elements.btnJoinRoomNow) {
+            this.elements.btnJoinRoomNow.disabled = false;
+            this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
+        }
     },
     
     async initMedia() {
@@ -1836,6 +1948,9 @@ const VoiceRoom = {
     },
     
     leaveRoom() {
+        // Очищаем флаги присоединения
+        this.resetJoinRoomState();
+        
         // Останавливаем мониторинг микрофона
         try {
             this.stopMicrophoneMonitoring();
