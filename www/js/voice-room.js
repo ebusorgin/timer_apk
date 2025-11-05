@@ -786,6 +786,16 @@ const VoiceRoom = {
             this.elements.btnCopyLink.addEventListener('click', () => this.copyRoomLink());
         }
         
+        // Копирование ссылки при клике на само поле ввода
+        if (this.elements.roomLinkInput) {
+            this.elements.roomLinkInput.addEventListener('click', () => {
+                this.copyRoomLink();
+            });
+            // Показываем курсор pointer для readonly поля
+            this.elements.roomLinkInput.style.cursor = 'pointer';
+            this.elements.roomLinkInput.title = 'Нажмите для копирования ссылки';
+        }
+        
         if (this.elements.btnSaveServer) {
             this.elements.btnSaveServer.addEventListener('click', () => this.saveServerUrl());
         }
@@ -1902,16 +1912,41 @@ const VoiceRoom = {
     },
     
     async copyRoomLink() {
-        if (!this.elements.roomLinkInput) return;
+        if (!this.elements.roomLinkInput || !this.elements.btnCopyLink) return;
+        
+        // Визуальная обратная связь
+        const btn = this.elements.btnCopyLink;
+        const originalContent = btn.innerHTML;
+        
         try {
             await navigator.clipboard.writeText(this.elements.roomLinkInput.value);
+            
+            // Показываем успешное копирование
+            btn.classList.add('copied');
+            btn.innerHTML = '<span>✅</span>';
             this.showNotification('Ссылка скопирована!', 'success', 2000);
+            
+            // Восстанавливаем через 2 секунды
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = originalContent;
+            }, 2000);
         } catch (err) {
             console.error('Failed to copy:', err);
             // Fallback для старых браузеров
             this.elements.roomLinkInput.select();
             document.execCommand('copy');
+            
+            // Показываем успешное копирование
+            btn.classList.add('copied');
+            btn.innerHTML = '<span>✅</span>';
             this.showNotification('Ссылка скопирована!', 'success', 2000);
+            
+            // Восстанавливаем через 2 секунды
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = originalContent;
+            }, 2000);
         }
     }
 };
