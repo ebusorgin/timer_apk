@@ -11,6 +11,9 @@ const VoiceRoom = {
     reconnectTimeout: null,
     microphoneLevelCheckInterval: null,
     connectionStatus: 'disconnected', // disconnected, connecting, connected, error
+    isJoiningRoom: false, // Флаг для предотвращения повторных попыток присоединения
+    isCreatingRoom: false, // Флаг для предотвращения повторных попыток создания комнаты
+    lastProcessedUrl: null, // Последний обработанный URL для предотвращения повторной обработки
     
     // Константы WebRTC
     ICE_SERVERS: [
@@ -289,6 +292,16 @@ const VoiceRoom = {
         
         // Автоподключение по URL параметру
         this.handleUrlParams();
+        
+        // Обработчик события popstate для навигации назад/вперед
+        window.addEventListener('popstate', (event) => {
+            console.log('popstate event:', event.state, window.location.pathname);
+            // Обрабатываем URL только если состояние изменилось
+            const currentPath = window.location.pathname;
+            if (this.lastProcessedUrl !== currentPath) {
+                this.handleUrlParams();
+            }
+        });
         
         console.log('VoiceRoom.init() completed');
     },
@@ -841,6 +854,19 @@ const VoiceRoom = {
         if (roomMatch) {
             const roomId = roomMatch[1].toUpperCase();
             
+            // Предотвращаем повторную обработку того же URL
+            if (this.lastProcessedUrl === pathname) {
+                console.log('URL already processed, skipping:', pathname);
+                return;
+            }
+            this.lastProcessedUrl = pathname;
+            
+            // Если мы уже в этой комнате, не обрабатываем URL снова
+            if (this.currentRoomId === roomId && this.localStream) {
+                console.log('Already in this room, skipping URL processing');
+                return;
+            }
+            
             if (this.elements.roomIdInput) {
                 this.elements.roomIdInput.value = roomId;
             }
@@ -921,6 +947,9 @@ const VoiceRoom = {
                     this.elements.statusMessage.className = 'status-message info show';
                 }
             }
+        } else {
+            // Если URL не содержит комнату, сбрасываем lastProcessedUrl
+            this.lastProcessedUrl = pathname;
         }
     },
     
@@ -932,7 +961,7 @@ const VoiceRoom = {
             // Socket уже подключен, можно присоединяться сразу
             console.log('Socket already connected, joining room');
             setTimeout(() => {
-                this.joinExistingRoom();
+                this.joinExistingRoom(true); // Передаем true чтобы указать что это автоматическое присоединение
             }, 100);
             return;
         }
@@ -955,7 +984,7 @@ const VoiceRoom = {
             joined = true;
             console.log('Socket connected, joining room');
             setTimeout(() => {
-                this.joinExistingRoom();
+                this.joinExistingRoom(true); // Передаем true чтобы указать что это автоматическое присоединение
             }, 100);
         };
         
@@ -984,6 +1013,12 @@ const VoiceRoom = {
     },
     
     async createRoom() {
+        // Предотвращаем повторные попытки создания комнаты
+        if (this.isCreatingRoom) {
+            console.log('Already creating room, skipping duplicate call');
+            return;
+        }
+        
         console.log('createRoom() called');
         console.log('Current state:', {
             hasUsernameInput: !!this.elements.usernameInput,
@@ -991,6 +1026,9 @@ const VoiceRoom = {
             socketConnected: this.socket?.connected,
             connectionStatus: this.connectionStatus
         });
+        
+        // Устанавливаем флаг создания комнаты
+        this.isCreatingRoom = true;
         
         // Очищаем предыдущие peer connections перед созданием новой комнаты
         this.peers.forEach((peer, userId) => {
@@ -1003,6 +1041,7 @@ const VoiceRoom = {
         this.peers.clear();
         
         if (!this.elements.usernameInput) {
+            this.isCreatingRoom = false;
             console.error('Username input not found');
             this.showNotification('Ошибка: поле ввода имени не найдено', 'error', 3000);
             return;
@@ -1011,6 +1050,7 @@ const VoiceRoom = {
         // Валидация перед отправкой
         const usernameValue = this.elements.usernameInput.value.trim();
         if (!this.validateUsernameInput(usernameValue, true)) {
+            this.isCreatingRoom = false;
             // Ошибка уже показана через validateUsernameInput
             return;
         }
@@ -1019,12 +1059,14 @@ const VoiceRoom = {
         console.log('Username value:', username);
         
         if (!username || username.length < 1) {
+            this.isCreatingRoom = false;
             console.log('Username is empty after sanitization, showing notification');
             this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
             return;
         }
         
         if (!this.socket) {
+            this.isCreatingRoom = false;
             console.error('Socket not initialized');
             this.showNotification('Ошибка подключения к серверу. Проверьте, что сервер запущен.', 'error', 5000);
             // Попробуем инициализировать socket
@@ -1043,6 +1085,7 @@ const VoiceRoom = {
         }
         
         if (!this.socket.connected) {
+            this.isCreatingRoom = false;
             console.warn('Socket not connected yet, waiting...');
             this.showNotification('Подключение к серверу... Пожалуйста, подождите.', 'info', 3000);
             // Ждем подключения
@@ -1077,6 +1120,9 @@ const VoiceRoom = {
         
         try {
             this.socket.emit('create-room', { username }, (response) => {
+                // Сбрасываем флаг создания комнаты
+                this.isCreatingRoom = false;
+                
                 console.log('create-room response:', response);
                 
                 // Восстанавливаем кнопку
@@ -1115,6 +1161,8 @@ const VoiceRoom = {
                 
                 // Изменяем URL через History API вместо полного редиректа (сохраняет socket соединение)
                 if (!App.isCordova) {
+                    // Обновляем lastProcessedUrl перед изменением URL чтобы предотвратить повторную обработку
+                    this.lastProcessedUrl = `/room/${roomId}`;
                     window.history.pushState({ roomId }, '', `/room/${roomId}`);
                     // Обновляем UI после изменения URL
                     if (this.elements.roomIdInput) {
@@ -1127,6 +1175,7 @@ const VoiceRoom = {
                             this.elements.joinContainer.classList.add('show');
                         }, 10);
                     }
+                    // НЕ вызываем handleUrlParams после создания комнаты - мы уже в комнате
                 }
                 
                 this.showNotification('Комната создана!', 'success', 2000);
@@ -1180,6 +1229,7 @@ const VoiceRoom = {
                 });
             });
         } catch (error) {
+            this.isCreatingRoom = false;
             console.error('Error emitting create-room:', error);
             this.showNotification('Ошибка при отправке запроса на создание комнаты', 'error', 5000);
             
@@ -1191,7 +1241,13 @@ const VoiceRoom = {
         }
     },
     
-    async joinExistingRoom() {
+    async joinExistingRoom(isAutoJoin = false) {
+        // Предотвращаем повторные попытки присоединения
+        if (this.isJoiningRoom) {
+            console.log('Already joining room, skipping duplicate call');
+            return;
+        }
+        
         if (!this.elements.roomIdInput || !this.elements.usernameInput) return;
         
         const roomId = this.elements.roomIdInput.value.trim().toUpperCase();
@@ -1224,6 +1280,9 @@ const VoiceRoom = {
             return;
         }
         
+        // Устанавливаем флаг присоединения
+        this.isJoiningRoom = true;
+        
         // Визуальная обратная связь
         if (this.elements.btnJoinRoomNow) {
             this.elements.btnJoinRoomNow.disabled = true;
@@ -1232,11 +1291,13 @@ const VoiceRoom = {
         }
         
         if (!this.socket) {
+            this.isJoiningRoom = false;
             this.showNotification('Ошибка подключения к серверу', 'error', 5000);
             return;
         }
         
         if (!this.socket.connected) {
+            this.isJoiningRoom = false;
             this.showNotification('Подключение к серверу... Пожалуйста, подождите.', 'info', 3000);
             return;
         }
@@ -1246,6 +1307,9 @@ const VoiceRoom = {
         this.currentRoomId = roomId;
         
         this.socket.emit('join-room', { roomId, username }, async (response) => {
+            // Сбрасываем флаг присоединения
+            this.isJoiningRoom = false;
+            
             // Восстанавливаем кнопку
             if (this.elements.btnJoinRoomNow) {
                 this.elements.btnJoinRoomNow.disabled = false;
@@ -1255,8 +1319,21 @@ const VoiceRoom = {
             if (response.error) {
                 console.error('Join room error:', response.error);
                 if (response.error.includes('not found')) {
-                    this.showNotification('Комната не найдена. Создаем новую...', 'info', 3000);
-                    setTimeout(() => this.createRoom(), 1000);
+                    // НЕ создаем новую комнату автоматически если это автоматическое присоединение через URL
+                    // Это предотвращает цикл перезагрузки
+                    if (isAutoJoin) {
+                        this.showNotification('Комната не найдена. Проверьте правильность кода комнаты.', 'error', 5000);
+                        // Очищаем URL чтобы предотвратить повторные попытки
+                        if (!App.isCordova) {
+                            window.history.replaceState({}, '', '/');
+                        }
+                        // Очищаем currentRoomId чтобы не было путаницы
+                        this.currentRoomId = null;
+                    } else {
+                        // Если это ручное присоединение пользователем, можно предложить создать новую
+                        this.showNotification('Комната не найдена. Создаем новую...', 'info', 3000);
+                        setTimeout(() => this.createRoom(), 1000);
+                    }
                 } else if (response.error.includes('full')) {
                     this.showNotification('Комната переполнена. Максимум участников: ' + (response.maxUsers || '10'), 'error', 5000);
                 } else {
