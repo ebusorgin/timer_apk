@@ -741,10 +741,8 @@ const VoiceRoom = {
             const savedUsername = localStorage.getItem('voiceRoomUsername');
             if (savedUsername && this.elements.usernameInput) {
                 this.elements.usernameInput.value = savedUsername;
-                // Автоматически входим в комнату после небольшой задержки
-                setTimeout(() => {
-                    this.joinExistingRoom();
-                }, 500);
+                // Ждем подключения socket перед автоматическим присоединением
+                this.waitForSocketAndJoin(roomId, savedUsername);
             } else {
                 // Показываем информационное сообщение для нового пользователя
                 if (this.elements.statusMessage) {
@@ -753,6 +751,65 @@ const VoiceRoom = {
                 }
             }
         }
+    },
+    
+    waitForSocketAndJoin(roomId, username) {
+        console.log('waitForSocketAndJoin called:', { roomId, username, hasSocket: !!this.socket, socketConnected: this.socket?.connected });
+        
+        // Проверяем подключение socket
+        if (this.socket && this.socket.connected) {
+            // Socket уже подключен, можно присоединяться сразу
+            console.log('Socket already connected, joining room');
+            setTimeout(() => {
+                this.joinExistingRoom();
+            }, 100);
+            return;
+        }
+        
+        // Ждем подключения socket
+        if (!this.socket) {
+            // Socket еще не инициализирован, ждем немного
+            console.log('Socket not initialized yet, waiting...');
+            setTimeout(() => {
+                this.waitForSocketAndJoin(roomId, username);
+            }, 200);
+            return;
+        }
+        
+        // Socket есть, но еще не подключен - ждем события connect
+        console.log('Socket exists but not connected, waiting for connect event');
+        let joined = false;
+        const joinRoom = () => {
+            if (joined) return;
+            joined = true;
+            console.log('Socket connected, joining room');
+            setTimeout(() => {
+                this.joinExistingRoom();
+            }, 100);
+        };
+        
+        // Устанавливаем обработчик события connect
+        this.socket.once('connect', joinRoom);
+        
+        // Также запускаем проверку на случай если событие уже произошло
+        const checkConnection = () => {
+            if (this.socket && this.socket.connected) {
+                joinRoom();
+            } else if (!joined) {
+                // Проверяем каждые 200ms
+                setTimeout(checkConnection, 200);
+            }
+        };
+        
+        setTimeout(checkConnection, 200);
+        
+        // Таймаут на случай если подключение не произойдет
+        setTimeout(() => {
+            if (!joined) {
+                console.warn('Socket connection timeout, trying to join anyway');
+                joinRoom();
+            }
+        }, 5000);
     },
     
     async createRoom() {
