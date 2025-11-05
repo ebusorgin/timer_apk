@@ -133,7 +133,6 @@ export async function createClient(type, index) {
       VoiceRoom,
       username: `CordovaUser${index + 1}`,
       userId: null,
-      roomId: null,
       socket: null,
       container
     };
@@ -180,7 +179,6 @@ export async function createClient(type, index) {
       VoiceRoom,
       username: `WebUser${index + 1}`,
       userId: null,
-      roomId: null,
       socket: null,
       container
     };
@@ -213,16 +211,14 @@ async function createCordovaVoiceRoomInstance(index) {
     socket: null,
     localStream: null,
     peers: new Map(),
-    currentRoomId: null,
+    isConnected: false,
     myUserId: null,
     myUsername: null,
     audioContext: null,
     analyser: null,
     connectionStatus: 'disconnected',
     globalStatusCheckInterval: null,
-    isJoiningRoom: false,
-    isCreatingRoom: false,
-    joinRoomTimeout: null,
+    isConnecting: false,
     ICE_SERVERS: [{ urls: 'stun:stun.l.google.com:19302' }],
     SERVER_URL: 'https://aiternitas.ru',
     elements: {},
@@ -332,7 +328,7 @@ async function createCordovaVoiceRoomInstance(index) {
       }
       
       this.globalStatusCheckInterval = setInterval(() => {
-        if (!this.currentRoomId) {
+        if (!this.isConnected) {
           if (this.globalStatusCheckInterval) {
             clearInterval(this.globalStatusCheckInterval);
             this.globalStatusCheckInterval = null;
@@ -406,8 +402,7 @@ async function createCordovaVoiceRoomInstance(index) {
             this.socket.emit('ice-candidate', {
               targetUserId: targetUserId,
               fromUserId: this.myUserId,
-              candidate: event.candidate,
-              roomId: this.currentRoomId
+              candidate: event.candidate
             });
           }
         };
@@ -491,8 +486,7 @@ async function createCordovaVoiceRoomInstance(index) {
               this.socket.emit('offer', {
                 targetUserId: targetUserId,
                 fromUserId: this.myUserId,
-                offer: offer,
-                roomId: this.currentRoomId
+                offer: offer
               });
             }
           }).catch(error => {
@@ -515,12 +509,11 @@ async function createCordovaVoiceRoomInstance(index) {
           const answer = await newPeer.createAnswer();
           await newPeer.setLocalDescription(answer);
           if (this.socket && this.socket.connected) {
-            this.socket.emit('answer', {
-              targetUserId: fromUserId,
-              fromUserId: this.myUserId,
-              answer: answer,
-              roomId: this.currentRoomId
-            });
+          this.socket.emit('answer', {
+            targetUserId: fromUserId,
+            fromUserId: this.myUserId,
+            answer: answer
+          });
           }
         }
       } else {
@@ -532,10 +525,9 @@ async function createCordovaVoiceRoomInstance(index) {
             targetUserId: fromUserId,
             fromUserId: this.myUserId,
             answer: answer,
-            roomId: this.currentRoomId
-          });
-        }
-      }
+            });
+          }
+        };
     },
     
     async handleAnswer(data) {
@@ -619,97 +611,30 @@ async function createCordovaVoiceRoomInstance(index) {
       }
     },
     
-    async createRoom() {
-      if (this.isCreatingRoom) return;
+    async connect() {
+      if (this.isConnecting) return;
       
-      this.isCreatingRoom = true;
+      this.isConnecting = true;
       
-      if (!this.elements.usernameInput) {
-        this.isCreatingRoom = false;
-        return;
-      }
-      
-      const usernameValue = this.elements.usernameInput.value.trim();
-      const validation = this.validateUsername(usernameValue);
-      
-      if (!validation.valid) {
-        this.isCreatingRoom = false;
-        return;
-      }
-      
-      const username = this.sanitizeString(usernameValue);
-      
-      if (!this.socket || !this.socket.connected) {
-        this.isCreatingRoom = false;
-        return;
-      }
-      
-      this.myUsername = username;
-      
-      this.socket.emit('create-room', { username }, (response) => {
-        this.isCreatingRoom = false;
-        if (response.error) {
-          this.showNotification(response.error, 'error', 3000);
-          return;
+      // Очищаем предыдущие peer connections
+      this.peers.forEach((peer, userId) => {
+        try {
+          peer.close();
+        } catch (error) {
+          console.error('Error closing peer:', error);
         }
-        
-        const { roomId, userId } = response;
-        this.currentRoomId = roomId;
-        this.myUserId = userId;
-        
-        this.initMedia().then(() => {
-          this.addUserToGrid(this.myUserId, username, true);
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          this.showRoomScreen();
-        }).catch(error => {
-          this.addUserToGrid(this.myUserId, username, true);
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          this.showRoomScreen();
-        });
       });
-    },
-    
-    async joinExistingRoom() {
-      if (this.isJoiningRoom) return;
-      
-      this.isJoiningRoom = true;
-      
-      if (!this.elements.roomIdInput || !this.elements.usernameInput) {
-        this.isJoiningRoom = false;
-        return;
-      }
-      
-      const roomId = this.elements.roomIdInput.value.trim().toUpperCase();
-      const usernameValue = this.elements.usernameInput.value.trim();
-      
-      if (!roomId || roomId.length !== 6) {
-        this.isJoiningRoom = false;
-        return;
-      }
-      
-      const validation = this.validateUsername(usernameValue);
-      if (!validation.valid) {
-        this.isJoiningRoom = false;
-        return;
-      }
-      
-      const username = this.sanitizeString(usernameValue);
+      this.peers.clear();
       
       if (!this.socket || !this.socket.connected) {
-        this.isJoiningRoom = false;
+        this.isConnecting = false;
         return;
       }
       
-      this.myUsername = username;
-      this.currentRoomId = roomId;
+      const username = `User_${Date.now()}`;
       
-      this.socket.emit('join-room', { roomId, username }, async (response) => {
-        this.isJoiningRoom = false;
-        
+      this.socket.emit('join-chat', { username }, async (response) => {
+        this.isConnecting = false;
         if (response.error) {
           this.showNotification(response.error, 'error', 3000);
           return;
@@ -717,8 +642,10 @@ async function createCordovaVoiceRoomInstance(index) {
         
         const { userId, users } = response;
         this.myUserId = userId;
+        this.isConnected = true;
         
-        this.initMedia().then(() => {
+        try {
+          await this.initMedia();
           this.addUserToGrid(this.myUserId, username, true);
           
           if (users && users.length > 0) {
@@ -729,12 +656,8 @@ async function createCordovaVoiceRoomInstance(index) {
             });
           }
           
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          
           this.showRoomScreen();
-        }).catch(error => {
+        } catch (error) {
           this.addUserToGrid(this.myUserId, username, true);
           
           if (users && users.length > 0) {
@@ -744,12 +667,8 @@ async function createCordovaVoiceRoomInstance(index) {
             });
           }
           
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          
           this.showRoomScreen();
-        });
+        }
       });
     },
     
@@ -791,14 +710,13 @@ async function createCordovaVoiceRoomInstance(index) {
         this.globalStatusCheckInterval = null;
       }
       
-      if (this.socket && this.socket.connected && this.currentRoomId) {
-        this.socket.emit('leave-room', { roomId: this.currentRoomId });
+      if (this.socket && this.socket.connected && this.isConnected) {
+        this.socket.emit('leave-chat', {});
       }
       
-      this.currentRoomId = null;
+      this.isConnected = false;
       this.myUserId = null;
-      this.isJoiningRoom = false;
-      this.isCreatingRoom = false;
+      this.isConnecting = false;
       
       this.showLoginScreen();
     }
@@ -977,8 +895,7 @@ async function createWebVoiceRoomInstance(index) {
             this.socket.emit('ice-candidate', {
               targetUserId: targetUserId,
               fromUserId: this.myUserId,
-              candidate: event.candidate,
-              roomId: this.currentRoomId
+              candidate: event.candidate
             });
           }
         };
@@ -1112,12 +1029,11 @@ async function createWebVoiceRoomInstance(index) {
           const answer = await newPeer.createAnswer();
           await newPeer.setLocalDescription(answer);
           if (this.socket && this.socket.connected) {
-            this.socket.emit('answer', {
-              targetUserId: fromUserId,
-              fromUserId: this.myUserId,
-              answer: answer,
-              roomId: this.currentRoomId
-            });
+          this.socket.emit('answer', {
+            targetUserId: fromUserId,
+            fromUserId: this.myUserId,
+            answer: answer
+          });
           }
         }
       } else {
@@ -1129,10 +1045,9 @@ async function createWebVoiceRoomInstance(index) {
             targetUserId: fromUserId,
             fromUserId: this.myUserId,
             answer: answer,
-            roomId: this.currentRoomId
-          });
-        }
-      }
+            });
+          }
+        };
     },
     
     async handleAnswer(data) {
@@ -1232,97 +1147,30 @@ async function createWebVoiceRoomInstance(index) {
       }
     },
     
-    async createRoom() {
-      if (this.isCreatingRoom) return;
+    async connect() {
+      if (this.isConnecting) return;
       
-      this.isCreatingRoom = true;
+      this.isConnecting = true;
       
-      if (!this.elements.usernameInput) {
-        this.isCreatingRoom = false;
-        return;
-      }
-      
-      const usernameValue = this.elements.usernameInput.value.trim();
-      const validation = this.validateUsername(usernameValue);
-      
-      if (!validation.valid) {
-        this.isCreatingRoom = false;
-        return;
-      }
-      
-      const username = this.sanitizeString(usernameValue);
-      
-      if (!this.socket || !this.socket.connected) {
-        this.isCreatingRoom = false;
-        return;
-      }
-      
-      this.myUsername = username;
-      
-      this.socket.emit('create-room', { username }, (response) => {
-        this.isCreatingRoom = false;
-        if (response.error) {
-          this.showNotification(response.error, 'error', 3000);
-          return;
+      // Очищаем предыдущие peer connections
+      this.peers.forEach((peer, userId) => {
+        try {
+          peer.close();
+        } catch (error) {
+          console.error('Error closing peer:', error);
         }
-        
-        const { roomId, userId } = response;
-        this.currentRoomId = roomId;
-        this.myUserId = userId;
-        
-        this.initMedia().then(() => {
-          this.addUserToGrid(this.myUserId, username, true);
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          this.showRoomScreen();
-        }).catch(error => {
-          this.addUserToGrid(this.myUserId, username, true);
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          this.showRoomScreen();
-        });
       });
-    },
-    
-    async joinExistingRoom() {
-      if (this.isJoiningRoom) return;
-      
-      this.isJoiningRoom = true;
-      
-      if (!this.elements.roomIdInput || !this.elements.usernameInput) {
-        this.isJoiningRoom = false;
-        return;
-      }
-      
-      const roomId = this.elements.roomIdInput.value.trim().toUpperCase();
-      const usernameValue = this.elements.usernameInput.value.trim();
-      
-      if (!roomId || roomId.length !== 6) {
-        this.isJoiningRoom = false;
-        return;
-      }
-      
-      const validation = this.validateUsername(usernameValue);
-      if (!validation.valid) {
-        this.isJoiningRoom = false;
-        return;
-      }
-      
-      const username = this.sanitizeString(usernameValue);
+      this.peers.clear();
       
       if (!this.socket || !this.socket.connected) {
-        this.isJoiningRoom = false;
+        this.isConnecting = false;
         return;
       }
       
-      this.myUsername = username;
-      this.currentRoomId = roomId;
+      const username = `User_${Date.now()}`;
       
-      this.socket.emit('join-room', { roomId, username }, async (response) => {
-        this.isJoiningRoom = false;
-        
+      this.socket.emit('join-chat', { username }, async (response) => {
+        this.isConnecting = false;
         if (response.error) {
           this.showNotification(response.error, 'error', 3000);
           return;
@@ -1330,8 +1178,10 @@ async function createWebVoiceRoomInstance(index) {
         
         const { userId, users } = response;
         this.myUserId = userId;
+        this.isConnected = true;
         
-        this.initMedia().then(() => {
+        try {
+          await this.initMedia();
           this.addUserToGrid(this.myUserId, username, true);
           
           if (users && users.length > 0) {
@@ -1342,12 +1192,8 @@ async function createWebVoiceRoomInstance(index) {
             });
           }
           
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          
           this.showRoomScreen();
-        }).catch(error => {
+        } catch (error) {
           this.addUserToGrid(this.myUserId, username, true);
           
           if (users && users.length > 0) {
@@ -1357,12 +1203,8 @@ async function createWebVoiceRoomInstance(index) {
             });
           }
           
-          if (this.elements.currentRoomIdSpan) {
-            this.elements.currentRoomIdSpan.textContent = roomId;
-          }
-          
           this.showRoomScreen();
-        });
+        }
       });
     },
     
@@ -1399,14 +1241,13 @@ async function createWebVoiceRoomInstance(index) {
         this.localStream = null;
       }
       
-      if (this.socket && this.socket.connected && this.currentRoomId) {
-        this.socket.emit('leave-room', { roomId: this.currentRoomId });
+      if (this.socket && this.socket.connected && this.isConnected) {
+        this.socket.emit('leave-chat', {});
       }
       
-      this.currentRoomId = null;
+      this.isConnected = false;
       this.myUserId = null;
-      this.isJoiningRoom = false;
-      this.isCreatingRoom = false;
+      this.isConnecting = false;
       
       this.showLoginScreen();
     }
@@ -1450,64 +1291,21 @@ export async function createMixedClients(types) {
  * Настраивает сценарий с заданными клиентами
  */
 export async function setupMixedRoomScenario(clients) {
-  // Первый клиент создает комнату
-  const creator = clients[0];
-  
-  if (creator.elements && creator.elements.usernameInput) {
-    creator.elements.usernameInput.value = creator.username;
-  }
-  
-  const roomId = await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Timeout creating room'));
-    }, 5000);
-    
-    // В socket-mock событие room-created не отправляется, используется callback
-    const originalEmit = creator.socket.emit.bind(creator.socket);
-    creator.socket.emit = function(event, data, callback) {
-      if (event === 'create-room' && callback) {
-        originalEmit(event, data, (response) => {
-          if (!response.error) {
-            creator.roomId = response.roomId;
-            creator.userId = response.userId;
-            clearTimeout(timeout);
-            resolve(response.roomId);
-          } else {
-            clearTimeout(timeout);
-            reject(new Error(response.error));
-          }
-        });
-      } else {
-        originalEmit(event, data, callback);
-      }
-    };
-    
-    creator.VoiceRoom.createRoom();
-  });
-  
-  // Остальные клиенты присоединяются к комнате
-  for (let i = 1; i < clients.length; i++) {
+  // Все клиенты подключаются к глобальному чату
+  for (let i = 0; i < clients.length; i++) {
     const client = clients[i];
-    
-    if (client.elements && client.elements.roomIdInput) {
-      client.elements.roomIdInput.value = roomId;
-    }
-    if (client.elements && client.elements.usernameInput) {
-      client.elements.usernameInput.value = client.username;
-    }
     
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Timeout joining room'));
+        reject(new Error('Timeout connecting'));
       }, 5000);
       
       const originalEmit = client.socket.emit.bind(client.socket);
       client.socket.emit = function(event, data, callback) {
-        if (event === 'join-room' && callback) {
+        if (event === 'join-chat' && callback) {
           originalEmit(event, data, (response) => {
             if (!response.error) {
               client.userId = response.userId;
-              client.roomId = roomId;
               clearTimeout(timeout);
               resolve(response);
             } else {
@@ -1520,7 +1318,7 @@ export async function setupMixedRoomScenario(clients) {
         }
       };
       
-      client.VoiceRoom.joinExistingRoom();
+      client.VoiceRoom.connect();
     });
     
     // Даем время на обработку событий user-joined
@@ -1531,7 +1329,7 @@ export async function setupMixedRoomScenario(clients) {
   // Даем дополнительное время на обработку всех событий и обновление DOM
   await new Promise(resolve => setTimeout(resolve, 300));
   
-  return roomId;
+  return 'PUBLIC'; // Возвращаем фиктивный ID для совместимости
 }
 
 /**

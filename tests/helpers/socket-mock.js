@@ -6,7 +6,9 @@ import { vi } from 'vitest';
 
 // Глобальный хранилище для симуляции сервера
 const serverState = {
-  rooms: new Map(),
+  globalChat: {
+    users: new Map()
+  },
   clients: new Map()
 };
 
@@ -64,75 +66,41 @@ class MockSocket {
 
   emit(event, data, callback) {
     // Обработка специальных событий
-    if (event === 'create-room') {
-      this._handleCreateRoom(data, callback);
-    } else if (event === 'join-room') {
-      this._handleJoinRoom(data, callback);
-    } else if (event === 'leave-room') {
-      this._handleLeaveRoom(data);
+    if (event === 'join-chat') {
+      this._handleJoinChat(data, callback);
+    } else if (event === 'leave-chat') {
+      this._handleLeaveChat(data);
     } else if (event === 'offer' || event === 'answer' || event === 'ice-candidate') {
       this._handleWebRTCEvent(event, data);
     }
     return this;
   }
 
-  _handleCreateRoom(data, callback) {
+  _handleJoinChat(data, callback) {
     const { username } = data;
-    const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     
-    const room = {
-      id: roomId,
-      users: new Map([[userId, { socketId: this.id, username }]]),
-      created: Date.now()
-    };
-    
-    serverState.rooms.set(roomId, room);
-    this.join(roomId);
-    
-    if (callback && typeof callback === 'function') {
-      callback({ roomId, userId });
-    }
-  }
-
-  _handleJoinRoom(data, callback) {
-    const { roomId, username } = data;
-    const room = serverState.rooms.get(roomId);
-    
-    if (!room) {
+    // Проверка на переполнение чата
+    if (serverState.globalChat.users.size >= 100) {
       if (callback && typeof callback === 'function') {
-        callback({ error: 'Room not found' });
-      }
-      return;
-    }
-    
-    if (room.users.size >= 10) {
-      if (callback && typeof callback === 'function') {
-        callback({ error: 'Room is full (max 10 users)' });
+        callback({ error: 'Chat is full (max 100 users)' });
       }
       return;
     }
     
     const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-    room.users.set(userId, { socketId: this.id, username });
-    this.join(roomId);
+    serverState.globalChat.users.set(userId, { socketId: this.id, username });
     
-    // Уведомляем всех участников комнаты (включая создателя) о новом пользователе
-    const existingUsers = Array.from(room.users.entries())
+    // Получаем список существующих пользователей
+    const existingUsers = Array.from(serverState.globalChat.users.entries())
       .filter(([id]) => id !== userId)
       .map(([id, u]) => ({ userId: id, username: u.username }));
     
-    // Отправляем событие user-joined всем участникам комнаты
-    // Используем setTimeout для асинхронной отправки событий
-    // Увеличиваем задержку до 50ms чтобы убедиться что callback обработан
+    // Отправляем событие user-joined всем остальным участникам
     setTimeout(() => {
       serverState.clients.forEach((client) => {
-        if (client._rooms.has(roomId)) {
-          // Отправляем событие всем, включая создателя комнаты
-          // НО исключаем самого присоединившегося пользователя, т.к. он уже добавил себя через callback
-          if (client.id !== this.id) {
-            client._emitEvent('user-joined', { userId, username });
-          }
+        // Отправляем событие всем подключенным клиентам, кроме текущего
+        if (client.id !== this.id && client.connected) {
+          client._emitEvent('user-joined', { userId, username });
         }
       });
     }, 50);
@@ -142,41 +110,25 @@ class MockSocket {
     }
   }
 
-  _handleLeaveRoom(data) {
-    const { roomId } = data;
-    const room = serverState.rooms.get(roomId);
-    
-    if (!room) return;
-    
-    // Находим и удаляем пользователя
-    for (const [userId, user] of room.users.entries()) {
+  _handleLeaveChat(data) {
+    // Удаляем пользователя из глобального чата
+    for (const [userId, user] of serverState.globalChat.users.entries()) {
       if (user.socketId === this.id) {
-        room.users.delete(userId);
+        serverState.globalChat.users.delete(userId);
         
-        // Уведомляем других участников
+        // Уведомляем всех остальных участников
         serverState.clients.forEach((client) => {
-          if (client.id !== this.id && client._rooms.has(roomId)) {
+          if (client.id !== this.id && client.connected) {
             client._emitEvent('user-left', userId);
           }
         });
-        
-        // Удаляем комнату если она пустая
-        if (room.users.size === 0) {
-          serverState.rooms.delete(roomId);
-        }
-        
         break;
       }
     }
-    
-    this.leave(roomId);
   }
 
   _handleWebRTCEvent(event, data) {
-    const { roomId, targetUserId, fromUserId } = data;
-    const room = serverState.rooms.get(roomId);
-    
-    if (!room) return;
+    const { targetUserId, fromUserId } = data;
     
     if (!targetUserId) {
       console.error('Missing targetUserId in WebRTC event:', event, data);
@@ -186,7 +138,7 @@ class MockSocket {
     // Находим userId отправителя по его socketId если не указан явно
     let actualFromUserId = fromUserId;
     if (!actualFromUserId) {
-      for (const [userId, user] of room.users.entries()) {
+      for (const [userId, user] of serverState.globalChat.users.entries()) {
         if (user.socketId === this.id) {
           actualFromUserId = userId;
           break;
@@ -201,9 +153,9 @@ class MockSocket {
     
     // Пересылаем событие целевому пользователю
     serverState.clients.forEach((client) => {
-      if (client.id !== this.id && client._rooms.has(roomId)) {
+      if (client.id !== this.id && client.connected) {
         // Находим socketId целевого пользователя
-        for (const [userId, user] of room.users.entries()) {
+        for (const [userId, user] of serverState.globalChat.users.entries()) {
           if (userId === targetUserId && user.socketId === client.id) {
             // Отправляем событие в формате targetUserId/fromUserId
             const eventData = {
@@ -258,29 +210,20 @@ class MockSocket {
     this.connected = false;
     this.disconnected = true;
     
-    // Покидаем все комнаты
-    this._rooms.forEach(roomId => {
-      const room = serverState.rooms.get(roomId);
-      if (room) {
-        for (const [userId, user] of room.users.entries()) {
-          if (user.socketId === this.id) {
-            room.users.delete(userId);
-            
-            // Уведомляем других участников
-            serverState.clients.forEach((client) => {
-              if (client.id !== this.id && client._rooms.has(roomId)) {
-                client._emitEvent('user-left', userId);
-              }
-            });
-            
-            if (room.users.size === 0) {
-              serverState.rooms.delete(roomId);
-            }
-            break;
+    // Удаляем пользователя из глобального чата при отключении
+    for (const [userId, user] of serverState.globalChat.users.entries()) {
+      if (user.socketId === this.id) {
+        serverState.globalChat.users.delete(userId);
+        
+        // Уведомляем всех остальных участников
+        serverState.clients.forEach((client) => {
+          if (client.id !== this.id && client.connected) {
+            client._emitEvent('user-left', userId);
           }
-        }
+        });
+        break;
       }
-    });
+    }
     
     this._rooms.clear();
     serverState.clients.delete(this.id);
@@ -310,13 +253,15 @@ if (typeof window !== 'undefined') {
 
 // Функции для очистки состояния сервера
 export function clearServerState() {
-  serverState.rooms.clear();
+  serverState.globalChat.users.clear();
   serverState.clients.clear();
 }
 
 export function getServerState() {
   return {
-    rooms: new Map(serverState.rooms),
+    globalChat: {
+      users: new Map(serverState.globalChat.users)
+    },
     clients: new Map(serverState.clients)
   };
 }
