@@ -758,11 +758,24 @@ const VoiceRoom = {
         
         if (this.elements.btnJoinRoom) {
             this.elements.btnJoinRoom.addEventListener('click', () => {
-                const display = this.elements.joinContainer.style.display;
-                this.elements.joinContainer.style.display = display === 'none' ? 'block' : 'none';
-                // Фокус на поле ввода кода комнаты при открытии
-                if (display === 'none' && this.elements.roomIdInput) {
-                    setTimeout(() => this.elements.roomIdInput.focus(), 100);
+                if (!this.elements.joinContainer) return;
+                
+                const isHidden = this.elements.joinContainer.classList.contains('hidden');
+                
+                if (isHidden) {
+                    // Показываем контейнер
+                    this.elements.joinContainer.classList.remove('hidden');
+                    this.elements.joinContainer.classList.add('show');
+                    // Фокус на поле ввода кода комнаты
+                    if (this.elements.roomIdInput) {
+                        setTimeout(() => this.elements.roomIdInput.focus(), 150);
+                    }
+                } else {
+                    // Скрываем контейнер
+                    this.elements.joinContainer.classList.remove('show');
+                    setTimeout(() => {
+                        this.elements.joinContainer.classList.add('hidden');
+                    }, 400); // Ждем окончания анимации
                 }
             });
         }
