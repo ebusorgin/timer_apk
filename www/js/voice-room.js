@@ -3,18 +3,15 @@ const VoiceRoom = {
     socket: null,
     localStream: null,
     peers: new Map(),
-    currentRoomId: null,
+    isConnected: false, // Флаг подключения к чату
     myUserId: null,
-    myUsername: null,
     audioContext: null,
     analyser: null,
     reconnectTimeout: null,
     microphoneLevelCheckInterval: null,
     connectionStatus: 'disconnected', // disconnected, connecting, connected, error
-    isJoiningRoom: false, // Флаг для предотвращения повторных попыток присоединения
-    isCreatingRoom: false, // Флаг для предотвращения повторных попыток создания комнаты
-    lastProcessedUrl: null, // Последний обработанный URL для предотвращения повторной обработки
-    joinRoomTimeout: null, // Таймаут для сброса флага присоединения
+    isConnecting: false, // Флаг для предотвращения повторных попыток подключения
+    joinRoomTimeout: null, // Таймаут для сброса флага подключения
     
     // Константы WebRTC
     ICE_SERVERS: [
@@ -281,28 +278,11 @@ const VoiceRoom = {
         const foundElements = Object.keys(this.elements).filter(key => this.elements[key] !== null).length;
         console.log('Elements initialized:', foundElements, 'elements found');
         
-        // Инициализация настроек сервера (для Cordova)
-        // Загрузка сохраненного имени
-        this.loadSavedUsername();
-        
         // Настройка событий
         this.setupEventListeners();
         
         // Инициализация Socket.IO
         this.initSocket();
-        
-        // Автоподключение по URL параметру
-        this.handleUrlParams();
-        
-        // Обработчик события popstate для навигации назад/вперед
-        window.addEventListener('popstate', (event) => {
-            console.log('popstate event:', event.state, window.location.pathname);
-            // Обрабатываем URL только если состояние изменилось
-            const currentPath = window.location.pathname;
-            if (this.lastProcessedUrl !== currentPath) {
-                this.handleUrlParams();
-            }
-        });
         
         console.log('VoiceRoom.init() completed');
     },
@@ -381,9 +361,9 @@ const VoiceRoom = {
             this.connectionStatus = 'connected';
             this.updateConnectionStatus();
             
-            // Если были в комнате, переподключаемся
-            if (this.currentRoomId && this.myUsername) {
-                console.log('Reconnecting to room:', this.currentRoomId);
+            // Если были подключены, переподключаемся
+            if (this.isConnected && this.myUserId) {
+                console.log('Reconnecting...');
                 this.reconnectToRoom();
             }
         });
@@ -400,24 +380,13 @@ const VoiceRoom = {
             this.showNotification('Ошибка подключения к серверу', 'error', 5000);
         });
         
-        this.socket.on('room-created-error', (data) => {
-            console.error('❌ Room creation error from server:', data);
-            this.showNotification('Ошибка сервера: ' + (data.error || 'Неизвестная ошибка'), 'error', 5000);
-            
-            // Восстанавливаем кнопку
-            if (this.elements.btnCreateRoom) {
-                this.elements.btnCreateRoom.disabled = false;
-                this.elements.btnCreateRoom.innerHTML = '<span>➕</span><span>Создать комнату</span>';
-            }
-        });
-        
         this.socket.on('disconnect', (reason) => {
             console.log('⚠️ Socket disconnected:', reason);
             this.connectionStatus = 'disconnected';
             this.updateConnectionStatus();
             
             // Пытаемся переподключиться если это не было запрошено пользователем
-            if (reason !== 'io client disconnect' && this.currentRoomId) {
+            if (reason !== 'io client disconnect' && this.isConnected) {
                 this.scheduleReconnection();
             }
         });
@@ -467,11 +436,10 @@ const VoiceRoom = {
         
         this.socket.on('request-microphone-status', () => {
             // Отправляем текущий статус микрофона запросившему пользователю
-            if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+            if (this.localStream && this.socket && this.socket.connected && this.isConnected) {
                 const tracks = this.localStream.getAudioTracks();
                 const enabled = tracks[0]?.enabled ?? true;
                 this.socket.emit('microphone-status', {
-                    roomId: this.currentRoomId,
                     enabled: enabled,
                     userId: this.myUserId
                 });
@@ -502,7 +470,6 @@ const VoiceRoom = {
                     console.log('Local description (answer) set for:', fromUserId);
                     
                     this.socket.emit('answer', { 
-                        roomId: this.currentRoomId, 
                         answer, 
                         targetUserId: fromUserId, 
                         fromUserId: this.myUserId 
@@ -521,7 +488,6 @@ const VoiceRoom = {
                         console.log('Local description (answer) set for:', fromUserId);
                         
                         this.socket.emit('answer', { 
-                            roomId: this.currentRoomId, 
                             answer, 
                             targetUserId: fromUserId, 
                             fromUserId: this.myUserId 
@@ -592,7 +558,7 @@ const VoiceRoom = {
         }
         
         this.reconnectTimeout = setTimeout(() => {
-            if (this.connectionStatus !== 'connected' && this.currentRoomId) {
+            if (this.connectionStatus !== 'connected' && this.isConnected) {
                 console.log('Attempting to reconnect socket...');
                 this.initSocket();
             }
@@ -600,46 +566,11 @@ const VoiceRoom = {
     },
     
     reconnectToRoom() {
-        if (!this.currentRoomId || !this.myUsername) return;
+        if (!this.isConnected) return;
         
-        // Переподключаемся к комнате
-        this.socket.emit('join-room', { 
-            roomId: this.currentRoomId, 
-            username: this.myUsername 
-        }, (response) => {
-            if (response.error) {
-                console.error('Failed to reconnect to room:', response.error);
-                this.showNotification('Не удалось переподключиться к комнате', 'error', 5000);
-                this.leaveRoom();
-            } else {
-                console.log('Reconnected to room successfully');
-                // Восстанавливаем peer connections
-                if (response.users && response.users.length > 0) {
-                    response.users.forEach(user => {
-                        this.addUserToGrid(user.userId, user.username);
-                        this.createPeerConnection(user.userId);
-                        // Запрашиваем статус микрофона у существующих участников
-                        if (this.socket && this.socket.connected) {
-                            this.socket.emit('request-microphone-status', {
-                                roomId: this.currentRoomId,
-                                targetUserId: user.userId
-                            });
-                        }
-                    });
-                }
-                
-                // Отправляем свой статус микрофона всем участникам комнаты
-                if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
-                    const tracks = this.localStream.getAudioTracks();
-                    const enabled = tracks[0]?.enabled ?? true;
-                    this.socket.emit('microphone-status', {
-                        roomId: this.currentRoomId,
-                        enabled: enabled,
-                        userId: this.myUserId
-                    });
-                }
-            }
-        });
+        // Используем connect() для переподключения
+        console.log('Reconnecting via connect()...');
+        this.connect();
     },
     
     removeUser(userId) {
@@ -666,38 +597,16 @@ const VoiceRoom = {
         this.elements = {
             loginScreen: document.getElementById('loginScreen'),
             roomScreen: document.getElementById('roomScreen'),
-            usernameInput: document.getElementById('username'),
-            btnCreateRoom: document.getElementById('btnCreateRoom'),
-            btnJoinRoom: document.getElementById('btnJoinRoom'),
-            btnJoinRoomNow: document.getElementById('btnJoinRoomNow'),
+            btnConnect: document.getElementById('btnConnect'),
             btnLeaveRoom: document.getElementById('btnLeaveRoom'),
             btnToggleMic: document.getElementById('btnToggleMic'),
-            roomIdInput: document.getElementById('roomId'),
             usersGrid: document.getElementById('usersGrid'),
             statusMessage: document.getElementById('statusMessage'),
-            currentRoomIdSpan: document.getElementById('currentRoomId'),
-            roomLinkInput: document.getElementById('roomLink'),
-            roomLinkContainer: document.getElementById('roomLinkContainer'),
-            btnCopyLink: document.getElementById('btnCopyLink'),
-            joinContainer: document.getElementById('joinContainer'),
             userCount: document.getElementById('userCount')
         };
         
-        // Создаем элемент для отображения ошибок валидации username
-        if (this.elements.usernameInput && !this.elements.usernameInput.parentElement.querySelector('.validation-error')) {
-            const errorElement = document.createElement('div');
-            errorElement.className = 'validation-error';
-            errorElement.style.display = 'none';
-            errorElement.style.color = '#e74c3c';
-            errorElement.style.fontSize = '12px';
-            errorElement.style.marginTop = '4px';
-            errorElement.style.minHeight = '16px';
-            this.elements.usernameInput.parentElement.appendChild(errorElement);
-            this.elements.usernameValidationError = errorElement;
-        }
-        
         // Проверяем критические элементы
-        const criticalElements = ['usernameInput', 'btnCreateRoom', 'loginScreen', 'roomScreen'];
+        const criticalElements = ['btnConnect', 'loginScreen', 'roomScreen'];
         const missingElements = criticalElements.filter(key => !this.elements[key]);
         
         if (missingElements.length > 0) {
@@ -708,789 +617,100 @@ const VoiceRoom = {
         }
     },
     
-    loadSavedUsername() {
-        const savedUsername = localStorage.getItem('voiceRoomUsername');
-        if (savedUsername && this.elements.usernameInput) {
-            this.elements.usernameInput.value = savedUsername;
-        }
-    },
-    
     setupEventListeners() {
         console.log('Setting up event listeners...');
-        console.log('Document ready state:', document.readyState);
-        console.log('Is Cordova:', App.isCordova);
         
-        // В Cordova нужно устанавливать обработчики через addEventListener
-        // В браузере inline onclick работает, не трогаем его
-        if (App.isCordova && this.elements.btnCreateRoom) {
-            console.log('Cordova: Setting up event listeners for btnCreateRoom');
-            
-            // Убеждаемся что DOM готов
-            if (document.readyState === 'loading' || !document.body) {
-                console.log('Waiting for DOM to be ready in Cordova...');
-                setTimeout(() => this.setupEventListeners(), 100);
-                return;
-            }
-            
+        if (this.elements.btnConnect) {
             const clickHandler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Create room button clicked (Cordova)');
-                console.log('Event type:', e.type);
-                if (typeof this.createRoom === 'function') {
-                    this.createRoom();
-                } else {
-                    console.error('createRoom is not a function!');
-                }
+                console.log('Connect button clicked');
+                this.connect();
             };
             
-            // Для мобильных устройств используем touchstart как основной обработчик
-            this.elements.btnCreateRoom.addEventListener('touchstart', clickHandler, { passive: false });
-            this.elements.btnCreateRoom.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, { passive: false });
-            // Также добавляем click для совместимости
-            this.elements.btnCreateRoom.addEventListener('click', clickHandler);
-            
-            console.log('Event listeners added for btnCreateRoom in Cordova');
-        }
-        
-        // В браузере inline onclick работает, не добавляем дополнительных обработчиков
-        if (!App.isCordova && this.elements.btnCreateRoom) {
-            console.log('Browser: inline onclick handler will be used');
-        }
-        
-        if (this.elements.btnJoinRoom) {
-            this.elements.btnJoinRoom.addEventListener('click', () => {
-                if (!this.elements.joinContainer) return;
-                
-                const isHidden = this.elements.joinContainer.classList.contains('hidden');
-                
-                if (isHidden) {
-                    // Показываем контейнер
-                    this.elements.joinContainer.classList.remove('hidden');
-                    this.elements.joinContainer.classList.add('show');
-                    // Фокус на поле ввода кода комнаты
-                    if (this.elements.roomIdInput) {
-                        setTimeout(() => this.elements.roomIdInput.focus(), 150);
-                    }
-                } else {
-                    // Скрываем контейнер
-                    this.elements.joinContainer.classList.remove('show');
-                    setTimeout(() => {
-                        this.elements.joinContainer.classList.add('hidden');
-                    }, 400); // Ждем окончания анимации
-                }
-            });
-        }
-        
-        // Для кнопки присоединения к комнате - только в Cordova добавляем обработчики
-        if (App.isCordova && this.elements.btnJoinRoomNow) {
-            console.log('Cordova: Setting up event listeners for btnJoinRoomNow');
-            
-            const joinClickHandler = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('Join room button clicked (Cordova)');
-                console.log('Event type:', e.type);
-                if (typeof this.joinExistingRoom === 'function') {
-                    this.joinExistingRoom();
-                } else {
-                    console.error('joinExistingRoom is not a function!');
-                }
-            };
-            
-            // Для мобильных устройств используем touchstart
-            this.elements.btnJoinRoomNow.addEventListener('touchstart', joinClickHandler, { passive: false });
-            this.elements.btnJoinRoomNow.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, { passive: false });
-            // Также добавляем click для совместимости
-            this.elements.btnJoinRoomNow.addEventListener('click', joinClickHandler);
-            
-            console.log('Event listeners added for btnJoinRoomNow in Cordova');
-        }
-        
-        // В браузере btnJoinRoomNow может иметь inline обработчик или другой механизм
-        if (!App.isCordova && this.elements.btnJoinRoomNow) {
-            // В браузере может быть inline обработчик, оставляем как есть
-            // Добавляем addEventListener для совместимости
-            this.elements.btnJoinRoomNow.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('Join room button clicked');
-                if (typeof this.joinExistingRoom === 'function') {
-                    this.joinExistingRoom();
-                }
-            });
+            if (App.isCordova) {
+                this.elements.btnConnect.addEventListener('touchstart', clickHandler, { passive: false });
+                this.elements.btnConnect.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, { passive: false });
+            }
+            this.elements.btnConnect.addEventListener('click', clickHandler);
         }
         
         if (this.elements.btnLeaveRoom) {
-            this.elements.btnLeaveRoom.addEventListener('click', () => this.confirmLeaveRoom());
+            this.elements.btnLeaveRoom.addEventListener('click', () => this.leaveRoom());
         }
         
         if (this.elements.btnToggleMic) {
             this.elements.btnToggleMic.addEventListener('click', () => this.toggleMicrophone());
         }
         
-        if (this.elements.btnCopyLink) {
-            this.elements.btnCopyLink.addEventListener('click', () => this.copyRoomLink());
-        }
-        
-        // Копирование ссылки при клике на само поле ввода
-        if (this.elements.roomLinkInput) {
-            this.elements.roomLinkInput.addEventListener('click', () => {
-                this.copyRoomLink();
-            });
-            // Показываем курсор pointer для readonly поля
-            this.elements.roomLinkInput.style.cursor = 'pointer';
-            this.elements.roomLinkInput.title = 'Нажмите для копирования ссылки';
-        }
-        
-        if (this.elements.btnSaveServer) {
-            this.elements.btnSaveServer.addEventListener('click', () => this.saveServerUrl());
-        }
-        
-        if (this.elements.roomIdInput) {
-            this.elements.roomIdInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.joinExistingRoom();
-            });
-            // Автоматически преобразуем в верхний регистр
-            this.elements.roomIdInput.addEventListener('input', (e) => {
-                e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            });
-        }
-        
-        // Валидация username в реальном времени
-        if (this.elements.usernameInput) {
-            // Валидация при вводе (debounced)
-            let validationTimeout = null;
-            this.elements.usernameInput.addEventListener('input', (e) => {
-                clearTimeout(validationTimeout);
-                validationTimeout = setTimeout(() => {
-                    this.validateUsernameInput(e.target.value, true);
-                }, 300);
-            });
-            
-            // Валидация при потере фокуса
-            this.elements.usernameInput.addEventListener('blur', (e) => {
-                this.validateUsernameInput(e.target.value, true);
-            });
-            
-            // Валидация при фокусе (показываем помощь)
-            this.elements.usernameInput.addEventListener('focus', () => {
-                if (this.elements.usernameInput.value.trim() === '') {
-                    this.showUsernameHint();
-                }
-            });
-            
-            this.elements.usernameInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !this.currentRoomId) {
-                    console.log('Enter pressed in username input, creating room');
-                    // Проверяем валидность перед созданием
-                    if (this.validateUsernameInput(this.elements.usernameInput.value, true)) {
-                        this.createRoom();
-                    }
-                }
-            });
-            
-            // Автофокус на поле username при загрузке (если не в комнате)
-            if (!this.currentRoomId && document.activeElement !== this.elements.usernameInput) {
-                setTimeout(() => {
-                    if (this.elements.usernameInput && !this.elements.usernameInput.value) {
-                        this.elements.usernameInput.focus();
-                    }
-                }, 100);
-            }
-        }
-        
         console.log('Event listeners set up');
     },
     
-    handleUrlParams() {
-        // Обрабатываем новый формат /room/:roomId
-        const pathname = window.location.pathname;
-        const roomMatch = pathname.match(/^\/room\/([A-Z0-9]{6})$/i);
-        
-        if (roomMatch) {
-            const roomId = roomMatch[1].toUpperCase();
-            
-            // Предотвращаем повторную обработку того же URL
-            if (this.lastProcessedUrl === pathname) {
-                console.log('URL already processed, skipping:', pathname);
-                return;
-            }
-            this.lastProcessedUrl = pathname;
-            
-            // Если мы уже в этой комнате, не обрабатываем URL снова
-            if (this.currentRoomId === roomId && this.localStream) {
-                console.log('Already in this room, skipping URL processing');
-                return;
-            }
-            
-            if (this.elements.roomIdInput) {
-                this.elements.roomIdInput.value = roomId;
-            }
-            
-            // Проверяем, была ли эта комната создана текущим пользователем
-            const createdRoomData = sessionStorage.getItem('voiceRoomCreatedRoom');
-            if (createdRoomData) {
-                try {
-                    const createdRoom = JSON.parse(createdRoomData);
-                    // Проверяем, что это та же комната и прошло не более 30 секунд с момента создания
-                    if (createdRoom.roomId === roomId && (Date.now() - createdRoom.timestamp) < 30000) {
-                        console.log('Room was created by current user, restoring state');
-                        // Восстанавливаем состояние
-                        this.currentRoomId = createdRoom.roomId;
-                        this.myUserId = createdRoom.userId;
-                        this.myUsername = createdRoom.username;
-                        
-                        if (this.elements.usernameInput) {
-                            this.elements.usernameInput.value = createdRoom.username;
-                        }
-                        
-                        // Не нужно присоединяться повторно - мы уже в комнате
-                        // Просто показываем экран комнаты если медиа уже инициализировано
-                        if (this.localStream) {
-                            // Медиа уже есть, просто показываем экран
-                            if (this.elements.currentRoomIdSpan) {
-                                this.elements.currentRoomIdSpan.textContent = roomId;
-                            }
-                            this.showRoomScreen();
-                            return;
-                        }
-                        
-                        // Медиа еще нет, инициализируем
-                        this.initMedia().then(() => {
-                            this.addUserToGrid(this.myUserId, createdRoom.username, true);
-                            
-                            if (this.elements.currentRoomIdSpan) {
-                                this.elements.currentRoomIdSpan.textContent = roomId;
-                            }
-                            
-                            this.showRoomScreen();
-                        }).catch(error => {
-                            console.error('Error initializing media:', error);
-                            // При ошибке инициализации медиа все равно показываем экран комнаты
-                            this.showRoomScreen();
-                        });
-                        
-                        return; // Выходим, не делаем join-room
-                    } else {
-                        // Это старая информация о созданной комнате, удаляем
-                        sessionStorage.removeItem('voiceRoomCreatedRoom');
-                    }
-                } catch (error) {
-                    console.error('Error parsing created room data:', error);
-                    sessionStorage.removeItem('voiceRoomCreatedRoom');
-                }
-            }
-            
-            // Показываем контейнер присоединения с плавной анимацией
-            if (this.elements.joinContainer) {
-                this.elements.joinContainer.style.display = 'block';
-                // Добавляем класс для плавной анимации
-                setTimeout(() => {
-                    this.elements.joinContainer.classList.add('show');
-                }, 10);
-            }
-            
-            // Проверяем есть ли сохраненное имя
-            const savedUsername = localStorage.getItem('voiceRoomUsername');
-            if (savedUsername && this.elements.usernameInput) {
-                this.elements.usernameInput.value = savedUsername;
-                // Ждем подключения socket перед автоматическим присоединением
-                this.waitForSocketAndJoin(roomId, savedUsername);
-            } else {
-                // Показываем информационное сообщение для нового пользователя
-                if (this.elements.statusMessage) {
-                    this.elements.statusMessage.textContent = 'Введите ваше имя для присоединения к комнате';
-                    this.elements.statusMessage.className = 'status-message info show';
-                }
-            }
-        } else {
-            // Если URL не содержит комнату, сбрасываем lastProcessedUrl
-            this.lastProcessedUrl = pathname;
-        }
-    },
-    
-    waitForSocketAndJoin(roomId, username) {
-        console.log('waitForSocketAndJoin called:', { roomId, username, hasSocket: !!this.socket, socketConnected: this.socket?.connected });
-        
-        // Предотвращаем повторные вызовы если уже присоединяемся
-        if (this.isJoiningRoom) {
-            console.log('Already joining room, skipping waitForSocketAndJoin');
+    async connect() {
+        if (this.isConnecting) {
+            console.log('Already connecting, skipping duplicate call');
             return;
         }
         
-        // Проверяем подключение socket
-        if (this.socket && this.socket.connected) {
-            // Socket уже подключен, можно присоединяться сразу
-            console.log('Socket already connected, joining room');
-            setTimeout(() => {
-                this.joinExistingRoom(true); // Передаем true чтобы указать что это автоматическое присоединение
-            }, 100);
-            return;
-        }
+        this.isConnecting = true;
         
-        // Ждем подключения socket
-        let attempts = 0;
-        const MAX_ATTEMPTS = 25; // Максимум 5 секунд (25 * 200ms)
-        
-        const checkSocket = () => {
-            attempts++;
-            
-            // Проверяем подключение socket
-            if (this.socket && this.socket.connected) {
-                console.log('Socket connected, joining room');
-                setTimeout(() => {
-                    this.joinExistingRoom(true); // Передаем true чтобы указать что это автоматическое присоединение
-                }, 100);
-                return;
-            }
-            
-            // Если socket еще не инициализирован, ждем
-            if (!this.socket) {
-                if (attempts < MAX_ATTEMPTS) {
-                    setTimeout(checkSocket, 200);
-                } else {
-                    console.warn('Socket initialization timeout after', attempts, 'attempts');
-                    // Не присоединяемся если socket не инициализирован
-                }
-                return;
-            }
-            
-            // Socket есть, но еще не подключен - устанавливаем обработчик события connect
-            if (this.socket && !this.socket.connected) {
-                let joinHandler = null;
-                joinHandler = () => {
-                    if (this.socket) {
-                        this.socket.off('connect', joinHandler);
-                    }
-                    console.log('Socket connected via event, joining room');
-                    setTimeout(() => {
-                        this.joinExistingRoom(true);
-                    }, 100);
-                };
-                
-                this.socket.once('connect', joinHandler);
-                
-                // Также продолжаем проверку на случай если событие уже произошло
-                if (attempts < MAX_ATTEMPTS) {
-                    setTimeout(checkSocket, 200);
-                } else {
-                    console.warn('Socket connection timeout after', attempts, 'attempts');
-                    // Очищаем обработчик если таймаут
-                    if (this.socket && joinHandler) {
-                        this.socket.off('connect', joinHandler);
-                    }
-                }
-            }
-        };
-        
-        checkSocket();
-    },
-    
-    async createRoom() {
-        // Предотвращаем повторные попытки создания комнаты
-        if (this.isCreatingRoom) {
-            console.log('Already creating room, skipping duplicate call');
-            return;
-        }
-        
-        console.log('createRoom() called');
-        console.log('Current state:', {
-            hasUsernameInput: !!this.elements.usernameInput,
-            hasSocket: !!this.socket,
-            socketConnected: this.socket?.connected,
-            connectionStatus: this.connectionStatus
-        });
-        
-        // Устанавливаем флаг создания комнаты
-        this.isCreatingRoom = true;
-        
-        // Очищаем предыдущие peer connections перед созданием новой комнаты
+        // Очищаем предыдущие peer connections
         this.peers.forEach((peer, userId) => {
             try {
                 peer.close();
             } catch (error) {
-                console.error('Error closing peer before createRoom:', error);
+                console.error('Error closing peer before connect:', error);
             }
         });
         this.peers.clear();
         
-        if (!this.elements.usernameInput) {
-            this.isCreatingRoom = false;
-            console.error('Username input not found');
-            this.showNotification('Ошибка: поле ввода имени не найдено', 'error', 3000);
-            return;
-        }
-        
-        // Валидация перед отправкой
-        const usernameValue = this.elements.usernameInput.value.trim();
-        if (!this.validateUsernameInput(usernameValue, true)) {
-            this.isCreatingRoom = false;
-            // Ошибка уже показана через validateUsernameInput
-            return;
-        }
-        
-        const username = this.sanitizeString(usernameValue);
-        console.log('Username value:', username);
-        
-        if (!username || username.length < 1) {
-            this.isCreatingRoom = false;
-            console.log('Username is empty after sanitization, showing notification');
-            this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
-            return;
-        }
-        
-        if (!this.socket) {
-            this.isCreatingRoom = false;
-            console.error('Socket not initialized');
-            this.showNotification('Ошибка подключения к серверу. Проверьте, что сервер запущен.', 'error', 5000);
-            // Попробуем инициализировать socket
-            console.log('Attempting to initialize socket...');
+        if (!this.socket || !this.socket.connected) {
+            console.warn('Socket not connected, initializing...');
             this.initSocket();
-            // Ждем немного и проверяем снова
-            setTimeout(() => {
-                if (!this.socket || !this.socket.connected) {
-                    this.showNotification('Не удалось подключиться к серверу. Проверьте консоль браузера для деталей.', 'error', 5000);
-                } else {
-                    // Повторяем попытку создания комнаты
-                    this.createRoom();
-                }
-            }, 2000);
-            return;
-        }
-        
-        if (!this.socket.connected) {
-            this.isCreatingRoom = false;
-            console.warn('Socket not connected yet, waiting...');
-            this.showNotification('Подключение к серверу... Пожалуйста, подождите.', 'info', 3000);
             // Ждем подключения
-            const checkConnection = setInterval(() => {
+            await new Promise((resolve) => {
                 if (this.socket && this.socket.connected) {
-                    clearInterval(checkConnection);
-                    console.log('Socket connected, retrying createRoom...');
-                    this.createRoom();
-                }
-            }, 500);
-            
-            // Таймаут на ожидание подключения
-            setTimeout(() => {
-                clearInterval(checkConnection);
-                if (!this.socket || !this.socket.connected) {
-                    this.showNotification('Таймаут подключения к серверу. Проверьте, что сервер запущен.', 'error', 5000);
-                }
-            }, 10000);
-            return;
-        }
-        
-        console.log('Creating room for user:', username);
-        this.myUsername = username;
-        localStorage.setItem('voiceRoomUsername', username);
-        
-        // Добавляем визуальную обратную связь
-        if (this.elements.btnCreateRoom) {
-            this.elements.btnCreateRoom.disabled = true;
-            const originalText = this.elements.btnCreateRoom.innerHTML;
-            this.elements.btnCreateRoom.innerHTML = '<span>⏳</span><span>Создание...</span>';
-        }
-        
-        try {
-            this.socket.emit('create-room', { username }, (response) => {
-                // Сбрасываем флаг создания комнаты
-                this.isCreatingRoom = false;
-                
-                console.log('create-room response:', response);
-                
-                // Восстанавливаем кнопку
-                if (this.elements.btnCreateRoom) {
-                    this.elements.btnCreateRoom.disabled = false;
-                    this.elements.btnCreateRoom.innerHTML = '<span>➕</span><span>Создать комнату</span>';
-                }
-                
-                if (!response) {
-                    console.error('No response from server');
-                    this.showNotification('Ошибка при создании комнаты. Попробуйте снова.', 'error', 5000);
-                    return;
-                }
-                
-                if (response.error) {
-                    console.error('Server error:', response.error);
-                    this.showNotification('Ошибка: ' + response.error, 'error', 5000);
-                    return;
-                }
-                
-                const { roomId, userId } = response;
-                this.currentRoomId = roomId;
-                this.myUserId = userId;
-                console.log('✅ Room created:', roomId, 'User ID:', userId);
-                
-                // Сохраняем имя пользователя
-                localStorage.setItem('voiceRoomUsername', username);
-                
-                // Сохраняем информацию о созданной комнате в sessionStorage для восстановления состояния
-                sessionStorage.setItem('voiceRoomCreatedRoom', JSON.stringify({
-                    roomId,
-                    userId,
-                    username,
-                    timestamp: Date.now()
-                }));
-                
-                // Изменяем URL через History API вместо полного редиректа (сохраняет socket соединение)
-                if (!App.isCordova) {
-                    // Обновляем lastProcessedUrl перед изменением URL чтобы предотвратить повторную обработку
-                    this.lastProcessedUrl = `/room/${roomId}`;
-                    window.history.pushState({ roomId }, '', `/room/${roomId}`);
-                    // Обновляем UI после изменения URL
-                    if (this.elements.roomIdInput) {
-                        this.elements.roomIdInput.value = roomId;
-                    }
-                    // Показываем контейнер присоединения если он скрыт
-                    if (this.elements.joinContainer) {
-                        this.elements.joinContainer.style.display = 'block';
-                        setTimeout(() => {
-                            this.elements.joinContainer.classList.add('show');
-                        }, 10);
-                    }
-                    // НЕ вызываем handleUrlParams после создания комнаты - мы уже в комнате
-                }
-                
-                this.showNotification('Комната создана!', 'success', 2000);
-                
-                // Инициализируем медиа и показываем экран комнаты
-                this.initMedia().then(() => {
-                    this.addUserToGrid(this.myUserId, username, true);
-                    
-                    if (this.elements.currentRoomIdSpan) {
-                        this.elements.currentRoomIdSpan.textContent = roomId;
-                    }
-                    
-                    const roomUrl = App.isCordova 
-                        ? `voice-room://room?${roomId}`
-                        : `${window.location.origin}/room/${roomId}`;
-                    
-                    if (this.elements.roomLinkInput) {
-                        this.elements.roomLinkInput.value = roomUrl;
-                    }
-                    
-                    if (this.elements.roomLinkContainer) {
-                        this.elements.roomLinkContainer.style.display = 'block';
-                        setTimeout(() => {
-                            this.elements.roomLinkContainer.classList.add('show');
-                        }, 10);
-                    }
-                    
-                    // Отправляем начальный статус микрофона (для будущих участников)
-                    if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
-                        const tracks = this.localStream.getAudioTracks();
-                        const enabled = tracks[0]?.enabled ?? true;
-                        this.socket.emit('microphone-status', {
-                            roomId: this.currentRoomId,
-                            enabled: enabled,
-                            userId: this.myUserId
-                        });
-                    }
-                    
-                    this.showRoomScreen();
-                }).catch(error => {
-                    console.error('Error initializing media:', error);
-                    let errorMessage = 'Не удалось получить доступ к микрофону. ';
-                    if (error.name === 'NotAllowedError') {
-                        errorMessage += 'Разрешите доступ к микрофону в настройках браузера.';
-                    } else if (error.name === 'NotFoundError') {
-                        errorMessage += 'Микрофон не найден.';
-                    } else {
-                        errorMessage += error.message;
-                    }
-                    this.showNotification(errorMessage, 'error', 7000);
-                });
-            });
-        } catch (error) {
-            this.isCreatingRoom = false;
-            console.error('Error emitting create-room:', error);
-            this.showNotification('Ошибка при отправке запроса на создание комнаты', 'error', 5000);
-            
-            // Восстанавливаем кнопку
-            if (this.elements.btnCreateRoom) {
-                this.elements.btnCreateRoom.disabled = false;
-                this.elements.btnCreateRoom.innerHTML = '<span>➕</span><span>Создать комнату</span>';
-            }
-        }
-    },
-    
-    async joinExistingRoom(isAutoJoin = false) {
-        console.log('joinExistingRoom called', { isAutoJoin, isJoiningRoom: this.isJoiningRoom });
-        
-        // Предотвращаем повторные попытки присоединения
-        if (this.isJoiningRoom) {
-            console.log('Already joining room, skipping duplicate call');
-            return;
-        }
-        
-        if (!this.elements.roomIdInput || !this.elements.usernameInput) {
-            console.error('Missing elements:', {
-                roomIdInput: !!this.elements.roomIdInput,
-                usernameInput: !!this.elements.usernameInput
-            });
-            return;
-        }
-        
-        const roomId = this.elements.roomIdInput.value.trim().toUpperCase();
-        const usernameValue = this.elements.usernameInput.value.trim();
-        
-        console.log('Join room attempt:', { roomId, username: usernameValue });
-        
-        // Валидация roomId
-        if (!roomId || roomId.length !== 6 || !/^[A-Z0-9]{6}$/.test(roomId)) {
-            console.warn('Invalid roomId:', roomId);
-            this.showNotification('Введите корректный код комнаты (6 символов)', 'error', 3000);
-            if (this.elements.roomIdInput) {
-                this.elements.roomIdInput.classList.add('invalid');
-                setTimeout(() => {
-                    if (this.elements.roomIdInput) {
-                        this.elements.roomIdInput.classList.remove('invalid');
-                    }
-                }, 3000);
-            }
-            return;
-        }
-        
-        // Валидация username
-        const usernameValid = this.validateUsernameInput(usernameValue, true);
-        console.log('Username validation result:', usernameValid);
-        if (!usernameValid) {
-            // Ошибка уже показана через validateUsernameInput
-            console.warn('Username validation failed');
-            return;
-        }
-        
-        const username = this.sanitizeString(usernameValue);
-        console.log('Sanitized username:', username);
-        
-        if (!username || username.length < 1) {
-            console.warn('Username is empty after sanitization');
-            this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
-            return;
-        }
-        
-        console.log('Proceeding with join:', { roomId, username });
-        
-        // Очищаем предыдущий таймаут если есть
-        if (this.joinRoomTimeout) {
-            clearTimeout(this.joinRoomTimeout);
-            this.joinRoomTimeout = null;
-        }
-        
-        // Устанавливаем флаг присоединения
-        this.isJoiningRoom = true;
-        
-        // Устанавливаем таймаут для автоматического сброса флага (на случай если callback не вызовется)
-        const JOIN_ROOM_TIMEOUT = 10000; // 10 секунд
-        this.joinRoomTimeout = setTimeout(() => {
-            if (this.isJoiningRoom) {
-                console.warn('Join room timeout - resetting flag');
-                this.isJoiningRoom = false;
-                this.joinRoomTimeout = null;
-                
-                // Восстанавливаем кнопку
-                if (this.elements.btnJoinRoomNow) {
-                    this.elements.btnJoinRoomNow.disabled = false;
-                    this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
-                }
-                
-                // Показываем сообщение об ошибке только если это не автоматическое присоединение
-                if (!isAutoJoin) {
-                    this.showNotification('Таймаут присоединения к комнате. Попробуйте снова.', 'error', 5000);
-                }
-            }
-        }, JOIN_ROOM_TIMEOUT);
-        
-        // Визуальная обратная связь
-        if (this.elements.btnJoinRoomNow) {
-            this.elements.btnJoinRoomNow.disabled = true;
-            const originalText = this.elements.btnJoinRoomNow.innerHTML;
-            this.elements.btnJoinRoomNow.innerHTML = '<span>⏳</span><span>Присоединение...</span>';
-        }
-        
-        if (!this.socket) {
-            console.error('Socket not initialized');
-            this.resetJoinRoomState();
-            this.showNotification('Ошибка подключения к серверу', 'error', 5000);
-            return;
-        }
-        
-        if (!this.socket.connected) {
-            console.warn('Socket not connected');
-            this.resetJoinRoomState();
-            this.showNotification('Подключение к серверу... Пожалуйста, подождите.', 'info', 3000);
-            return;
-        }
-        
-        console.log('Socket is ready, emitting join-room');
-        
-        this.myUsername = username;
-        localStorage.setItem('voiceRoomUsername', username);
-        this.currentRoomId = roomId;
-        
-        try {
-            this.socket.emit('join-room', { roomId, username }, async (response) => {
-                console.log('join-room callback received:', response);
-                
-                // Очищаем таймаут
-                if (this.joinRoomTimeout) {
-                    clearTimeout(this.joinRoomTimeout);
-                    this.joinRoomTimeout = null;
-                }
-                
-                // Сбрасываем флаг присоединения
-                this.isJoiningRoom = false;
-                
-                // Восстанавливаем кнопку
-                if (this.elements.btnJoinRoomNow) {
-                    this.elements.btnJoinRoomNow.disabled = false;
-                    this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
-                }
-                
-                if (!response) {
-                    console.error('No response from server');
-                    this.showNotification('Ошибка при присоединении к комнате. Попробуйте снова.', 'error', 5000);
-                    return;
-                }
-                
-                if (response.error) {
-                    console.error('Join room error:', response.error);
-                    if (response.error.includes('not found')) {
-                        // НЕ создаем новую комнату автоматически если это автоматическое присоединение через URL
-                        // Это предотвращает цикл перезагрузки
-                        if (isAutoJoin) {
-                            this.showNotification('Комната не найдена. Проверьте правильность кода комнаты.', 'error', 5000);
-                            // Очищаем URL чтобы предотвратить повторные попытки
-                            if (!App.isCordova) {
-                                window.history.replaceState({}, '', '/');
-                            }
-                            // Очищаем currentRoomId чтобы не было путаницы
-                            this.currentRoomId = null;
-                        } else {
-                            // Если это ручное присоединение пользователем, можно предложить создать новую
-                            this.showNotification('Комната не найдена. Создаем новую...', 'info', 3000);
-                            setTimeout(() => this.createRoom(), 1000);
+                    resolve();
+                } else {
+                    this.socket.once('connect', resolve);
+                    setTimeout(() => {
+                        if (!this.socket || !this.socket.connected) {
+                            this.isConnecting = false;
+                            this.showNotification('Не удалось подключиться к серверу', 'error', 5000);
+                            resolve();
                         }
-                    } else if (response.error.includes('full')) {
-                        this.showNotification('Комната переполнена. Максимум участников: ' + (response.maxUsers || '10'), 'error', 5000);
-                    } else {
-                        this.showNotification('Ошибка: ' + response.error, 'error', 5000);
-                    }
+                    }, 5000);
+                }
+            });
+        }
+        
+        if (!this.socket || !this.socket.connected) {
+            this.isConnecting = false;
+            this.showNotification('Не удалось подключиться к серверу', 'error', 5000);
+            return;
+        }
+        
+        const username = `User_${Date.now()}`; // Генерируем случайное имя
+        
+        try {
+            this.socket.emit('join-chat', { username }, async (response) => {
+                this.isConnecting = false;
+                
+                if (response.error) {
+                    console.error('Failed to join:', response.error);
+                    this.showNotification('Ошибка: ' + response.error, 'error', 5000);
                     return;
                 }
                 
                 const { userId, users } = response;
                 this.myUserId = userId;
-                console.log('Joined room:', roomId);
-                this.showNotification('Вы присоединились к комнате!', 'success', 2000);
+                this.isConnected = true;
+                
+                console.log('Joined');
+                this.showNotification('Вы подключились!', 'success', 2000);
                 
                 try {
                     await this.initMedia();
@@ -1504,32 +724,26 @@ const VoiceRoom = {
                             // Запрашиваем статус микрофона у существующих участников
                             if (this.socket && this.socket.connected) {
                                 this.socket.emit('request-microphone-status', {
-                                    roomId: this.currentRoomId,
                                     targetUserId: user.userId
                                 });
                             }
                         });
                     }
                     
-                    // Отправляем свой статус микрофона всем участникам комнаты
-                    if (this.localStream && this.socket && this.socket.connected && this.currentRoomId) {
+                    // Отправляем свой статус микрофона всем участникам
+                    if (this.localStream && this.socket && this.socket.connected && this.isConnected) {
                         const tracks = this.localStream.getAudioTracks();
                         const enabled = tracks[0]?.enabled ?? true;
                         this.socket.emit('microphone-status', {
-                            roomId: this.currentRoomId,
                             enabled: enabled,
                             userId: this.myUserId
                         });
                     }
                     
-                    if (this.elements.currentRoomIdSpan) {
-                        this.elements.currentRoomIdSpan.textContent = roomId;
-                    }
-                    
                     this.showRoomScreen();
                 } catch (error) {
-                    console.error('Error joining room:', error);
-                    let errorMessage = 'Не удалось подключиться к комнате. ';
+                    console.error('Error initializing media:', error);
+                    let errorMessage = 'Не удалось подключиться. ';
                     if (error.name === 'NotAllowedError') {
                         errorMessage += 'Разрешите доступ к микрофону в настройках браузера.';
                     } else {
@@ -1539,646 +753,81 @@ const VoiceRoom = {
                 }
             });
         } catch (error) {
-            console.error('Error emitting join-room:', error);
-            this.resetJoinRoomState();
-            this.showNotification('Ошибка при отправке запроса на присоединение к комнате', 'error', 5000);
+            this.isConnecting = false;
+            console.error('Error emitting join-chat:', error);
+            this.showNotification('Ошибка при подключении', 'error', 5000);
         }
     },
     
-    resetJoinRoomState() {
-        // Очищаем таймаут
-        if (this.joinRoomTimeout) {
-            clearTimeout(this.joinRoomTimeout);
-            this.joinRoomTimeout = null;
-        }
-        
-        // Сбрасываем флаг
-        this.isJoiningRoom = false;
-        
-        // Восстанавливаем кнопку
-        if (this.elements.btnJoinRoomNow) {
-            this.elements.btnJoinRoomNow.disabled = false;
-            this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
-        }
-    },
-    
-    async initMedia() {
-        try {
-            // Закрываем предыдущий поток если есть
-            if (this.localStream) {
-                try {
-                    this.localStream.getTracks().forEach(track => track.stop());
-                } catch (error) {
-                    console.error('Error stopping previous stream:', error);
-                }
+    removeUser(userId) {
+        const peer = this.peers.get(userId);
+        if (peer) {
+            try {
+                peer.close();
+            } catch (error) {
+                console.error('Error closing peer connection:', error);
             }
-            
-            // Закрываем предыдущий AudioContext если есть
-            if (this.audioContext && this.audioContext.state !== 'closed') {
-                try {
-                    await this.audioContext.close();
-                } catch (error) {
-                    console.error('Error closing previous AudioContext:', error);
-                }
-            }
-            
-            this.localStream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { 
-                    echoCancellation: true, 
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    // Оптимизация для мобильных устройств
-                    ...(this.isMobile ? {
-                        sampleRate: 16000, // Меньшая частота дискретизации для экономии батареи
-                        channelCount: 1 // Моно вместо стерео
-                    } : {})
-                },
-                video: false 
-            });
-            
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            this.analyser = this.audioContext.createAnalyser();
-            
-            // Оптимизация для мобильных устройств
-            if (this.isMobile) {
-                this.analyser.fftSize = 128; // Меньший размер для экономии ресурсов
-                this.analyser.smoothingTimeConstant = 0.6; // Более быстрая реакция на мобильных
-            } else {
-                this.analyser.fftSize = 256;
-                this.analyser.smoothingTimeConstant = 0.8;
-            }
-            
-            const source = this.audioContext.createMediaStreamSource(this.localStream);
-            source.connect(this.analyser);
-            
-            this.startMicrophoneMonitoring();
-        } catch (error) {
-            console.error('Error accessing microphone:', error);
-            // Очищаем частично созданные ресурсы
-            if (this.localStream) {
-                try {
-                    this.localStream.getTracks().forEach(track => track.stop());
-                } catch (e) {
-                    console.error('Error stopping stream on error:', e);
-                }
-                this.localStream = null;
-            }
-            if (this.audioContext && this.audioContext.state !== 'closed') {
-                try {
-                    await this.audioContext.close();
-                } catch (e) {
-                    console.error('Error closing AudioContext on error:', e);
-                }
-                this.audioContext = null;
-            }
-            this.analyser = null;
-            throw error; // Пробрасываем ошибку дальше
         }
-    },
-    
-    createPeerConnection(targetUserId) {
-        if (!this.localStream) {
-            console.error('Cannot create peer connection: no local stream');
-            return;
+        this.peers.delete(userId);
+        
+        // Удаляем пользователя из DOM
+        const userCard = document.getElementById(`user-${userId}`);
+        if (userCard) {
+            userCard.remove();
         }
         
-        // Проверяем, не существует ли уже соединение
-        if (this.peers.has(targetUserId)) {
-            console.warn('Peer connection already exists for:', targetUserId);
-            const existingPeer = this.peers.get(targetUserId);
-            console.log('Existing peer state:', existingPeer.signalingState);
-            return;
-        }
-        
-        console.log('Creating peer with:', targetUserId);
-        console.log('My userId:', this.myUserId, 'Target userId:', targetUserId);
-        
-        // Определяем кто создает offer первым (чтобы избежать race condition)
-        // Пользователь с меньшим userId создает offer
-        const shouldCreateOffer = this.myUserId < targetUserId;
-        console.log('Should create offer:', shouldCreateOffer);
-        
-        try {
-            const peer = new RTCPeerConnection({
-                iceServers: this.ICE_SERVERS
-            });
-            
-            // Добавляем локальные треки
-            this.localStream.getTracks().forEach(track => {
-                peer.addTrack(track, this.localStream);
-            });
-            
-            peer.ontrack = (event) => {
-                console.log('Received track from:', targetUserId);
-                console.log('Updating status to connected for:', targetUserId);
-                const stream = event.streams[0];
-                
-                const audio = document.getElementById(`audio-${targetUserId}`);
-                if (audio && audio.play) {
-                    audio.srcObject = stream;
-                    audio.play().catch(err => {
-                        console.error('Error playing audio:', err);
-                    });
-                }
-                
-                const video = document.getElementById(`video-${targetUserId}`);
-                if (video) {
-                    video.srcObject = stream;
-                    if (stream.getVideoTracks().length > 0) {
-                        const card = document.getElementById(`user-${targetUserId}`);
-                        if (card) card.classList.add('has-video');
-                    }
-                }
-                
-                // Обновляем статус при получении трека
-                // Небольшая задержка для гарантии что карточка создана
-                setTimeout(() => {
-                    const card = document.getElementById(`user-${targetUserId}`);
-                    console.log('Card found in ontrack for', targetUserId, ':', !!card);
-                    if (card) {
-                        const status = card.querySelector('.user-status');
-                        if (status) {
-                            console.log('Updating status to "Подключен" for', targetUserId);
-                            // Сохраняем иконку микрофона если она есть
-                            const micIcon = status.querySelector('.microphone-status-icon');
-                            status.textContent = 'Подключен';
-                            if (micIcon) {
-                                status.appendChild(micIcon);
-                            }
-                            card.classList.add('connected');
-                            card.classList.remove('reconnecting', 'error');
-                        } else {
-                            console.warn('Status element not found in ontrack for', targetUserId);
-                        }
-                    } else {
-                        console.warn('Card not found in ontrack for', targetUserId);
-                    }
-                }, 100);
-            };
-            
-            peer.onicecandidate = (event) => {
-                if (event.candidate && this.socket && this.socket.connected) {
-                    this.socket.emit('ice-candidate', { 
-                        roomId: this.currentRoomId, 
-                        candidate: event.candidate, 
-                        targetUserId, 
-                        fromUserId: this.myUserId 
-                    });
-                }
-            };
-            
-            peer.oniceconnectionstatechange = () => {
-                console.log(`ICE connection state with ${targetUserId}:`, peer.iceConnectionState);
-                const card = document.getElementById(`user-${targetUserId}`);
-                console.log(`Card found for ${targetUserId}:`, !!card);
-                if (card) {
-                    const status = card.querySelector('.user-status');
-                    console.log(`Status element found for ${targetUserId}:`, !!status);
-                    if (status) {
-                        switch (peer.iceConnectionState) {
-                            case 'connected':
-                            case 'completed':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIcon = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Подключен';
-                                if (micIcon) {
-                                    status.appendChild(micIcon);
-                                }
-                                card.classList.remove('reconnecting', 'error');
-                                card.classList.add('connected');
-                                break;
-                            case 'connecting':
-                            case 'checking':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconConnecting = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Подключение...';
-                                if (micIconConnecting) {
-                                    status.appendChild(micIconConnecting);
-                                }
-                                card.classList.add('reconnecting');
-                                card.classList.remove('error', 'connected');
-                                break;
-                            case 'disconnected':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconDisconnected = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Отключен';
-                                if (micIconDisconnected) {
-                                    status.appendChild(micIconDisconnected);
-                                }
-                                card.classList.remove('reconnecting', 'connected');
-                                break;
-                            case 'failed':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconFailed = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Ошибка подключения';
-                                if (micIconFailed) {
-                                    status.appendChild(micIconFailed);
-                                }
-                                card.classList.add('error');
-                                card.classList.remove('reconnecting', 'connected');
-                                // Пытаемся переподключиться
-                                setTimeout(() => {
-                                    if (this.peers.has(targetUserId)) {
-                                        this.createPeerConnection(targetUserId);
-                                    }
-                                }, 3000);
-                                break;
-                            case 'closed':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconClosed = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Закрыто';
-                                if (micIconClosed) {
-                                    status.appendChild(micIconClosed);
-                                }
-                                break;
-                        }
-                    } else {
-                        console.warn(`Status element not found for user ${targetUserId}. Card exists:`, !!card);
-                    }
-                } else {
-                    console.warn(`Card not found for user ${targetUserId}`);
-                }
-            };
-            
-            peer.onconnectionstatechange = () => {
-                console.log(`Connection state with ${targetUserId}:`, peer.connectionState);
-                const card = document.getElementById(`user-${targetUserId}`);
-                console.log(`Card found for ${targetUserId} (connection state):`, !!card);
-                if (card) {
-                    const status = card.querySelector('.user-status');
-                    console.log(`Status element found for ${targetUserId} (connection state):`, !!status);
-                    if (status) {
-                        switch (peer.connectionState) {
-                            case 'connected':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIcon = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Подключен';
-                                if (micIcon) {
-                                    status.appendChild(micIcon);
-                                }
-                                card.classList.remove('reconnecting', 'error');
-                                card.classList.add('connected');
-                                break;
-                            case 'connecting':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconConnecting = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Подключение...';
-                                if (micIconConnecting) {
-                                    status.appendChild(micIconConnecting);
-                                }
-                                card.classList.add('reconnecting');
-                                card.classList.remove('error', 'connected');
-                                break;
-                            case 'disconnected':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconDisconnected = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Отключен';
-                                if (micIconDisconnected) {
-                                    status.appendChild(micIconDisconnected);
-                                }
-                                card.classList.remove('reconnecting', 'connected');
-                                break;
-                            case 'failed':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconFailed = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Ошибка подключения';
-                                if (micIconFailed) {
-                                    status.appendChild(micIconFailed);
-                                }
-                                card.classList.add('error');
-                                card.classList.remove('reconnecting', 'connected');
-                                break;
-                            case 'closed':
-                                // Сохраняем иконку микрофона если она есть
-                                const micIconClosed = status.querySelector('.microphone-status-icon');
-                                status.textContent = 'Закрыто';
-                                if (micIconClosed) {
-                                    status.appendChild(micIconClosed);
-                                }
-                                break;
-                        }
-                    } else {
-                        console.warn(`Status element not found for user ${targetUserId} (connection state). Card exists:`, !!card);
-                    }
-                } else {
-                    console.warn(`Card not found for user ${targetUserId} (connection state)`);
-                }
-            };
-            
-            peer.onerror = (error) => {
-                console.error('Peer connection error:', error);
-                this.showNotification('Ошибка соединения с участником', 'error', 3000);
-            };
-            
-            this.peers.set(targetUserId, peer);
-            
-            // Создаем offer только если мы должны инициировать соединение
-            if (shouldCreateOffer) {
-                console.log('Creating offer for:', targetUserId);
-                peer.createOffer({
-                    offerToReceiveAudio: true,
-                    offerToReceiveVideo: false
-                }).then(offer => {
-                    console.log('Offer created, setting local description...');
-                    return peer.setLocalDescription(offer);
-                }).then(() => {
-                    console.log('Local description set, sending offer to:', targetUserId);
-                    if (this.socket && this.socket.connected && peer.signalingState === 'have-local-offer') {
-                        this.socket.emit('offer', { 
-                            roomId: this.currentRoomId, 
-                            offer: peer.localDescription, 
-                            targetUserId, 
-                            fromUserId: this.myUserId 
-                        });
-                    } else {
-                        console.warn('Cannot send offer:', {
-                            socketConnected: this.socket?.connected,
-                            peerState: peer.signalingState
-                        });
-                    }
-                }).catch(error => {
-                    console.error('Error creating offer:', error);
-                    this.peers.delete(targetUserId);
-                    this.showNotification('Ошибка при создании соединения', 'error', 3000);
-                });
-            } else {
-                console.log('Waiting for offer from:', targetUserId);
-                // Если мы не создаем offer, просто ждем offer от другого пользователя
-            }
-        } catch (error) {
-            console.error('Error creating peer connection:', error);
-            this.showNotification('Ошибка при создании соединения', 'error', 3000);
-        }
-    },
-    
-    addUserToGrid(userId, username, isMyself = false) {
-        if (!this.elements.usersGrid) return;
-        if (document.getElementById(`user-${userId}`)) return;
-        
-        const sanitizedUsername = this.sanitizeString(username);
-        const firstLetter = sanitizedUsername.charAt(0).toUpperCase() || '?';
-        
-        const card = document.createElement('div');
-        card.id = `user-${userId}`;
-        card.className = 'user-card' + (isMyself ? ' speaking' : '');
-        
-        const avatar = document.createElement('div');
-        avatar.className = 'user-avatar';
-        avatar.textContent = firstLetter;
-        
-        const name = document.createElement('div');
-        name.className = 'user-name';
-        name.textContent = isMyself ? sanitizedUsername + ' (Вы)' : sanitizedUsername;
-        
-        const status = document.createElement('div');
-        status.className = 'user-status';
-        status.textContent = isMyself ? 'Подключен' : 'Подключение...';
-        
-        // Добавляем иконку статуса микрофона (по умолчанию включен)
-        const micIcon = document.createElement('span');
-        micIcon.className = 'microphone-status-icon';
-        micIcon.textContent = ' 🎤';
-        micIcon.title = 'Микрофон включен';
-        status.appendChild(micIcon);
-        
-        // Устанавливаем начальный статус микрофона (по умолчанию включен)
-        if (isMyself) {
-            // Для себя проверяем реальный статус
-            if (this.localStream) {
-                const tracks = this.localStream.getAudioTracks();
-                const enabled = tracks[0]?.enabled ?? true;
-                this.updateMicrophoneStatusUI(userId, enabled);
-            }
-        } else {
-            // Для других участников по умолчанию считаем микрофон включенным
-            card.classList.add('microphone-active');
-        }
-        
-        const video = document.createElement('video');
-        video.id = `video-${userId}`;
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = true; // Всегда приглушаем для предотвращения обратной связи
-        video.className = 'user-video';
-        
-        const audio = document.createElement('audio');
-        audio.id = `audio-${userId}`;
-        audio.autoplay = true;
-        audio.playsInline = true;
-        audio.muted = isMyself; // Приглушаем только свой аудио
-        
-        avatar.appendChild(video);
-        card.appendChild(avatar);
-        card.appendChild(name);
-        card.appendChild(status);
-        card.appendChild(audio);
-        
-        // Удаляем empty-state если есть
-        const emptyState = this.elements.usersGrid.querySelector('.empty-state');
-        if (emptyState) {
-            emptyState.remove();
-        }
-        
-        this.elements.usersGrid.appendChild(card);
+        // Обновляем счетчик пользователей
         this.updateUserCount();
     },
     
-    updateUserCount() {
-        if (this.elements.userCount && this.elements.usersGrid) {
-            const count = this.elements.usersGrid.querySelectorAll('.user-card').length;
-            this.elements.userCount.textContent = count;
-        }
-    },
-    
-    toggleMicrophone() {
-        if (!this.localStream) return;
-        const tracks = this.localStream.getAudioTracks();
-        tracks.forEach(track => track.enabled = !track.enabled);
-        
-        const enabled = tracks[0]?.enabled;
-        if (this.elements.btnToggleMic) {
-            this.elements.btnToggleMic.classList.toggle('muted', !enabled);
-            const icon = this.elements.btnToggleMic.querySelector('.btn-icon');
-            if (icon) {
-                icon.textContent = enabled ? '🎤' : '🔇';
-            }
-        }
-        
-        // Отправляем статус микрофона другим участникам
-        if (this.socket && this.socket.connected && this.currentRoomId) {
-            this.socket.emit('microphone-status', {
-                roomId: this.currentRoomId,
-                enabled: enabled,
-                userId: this.myUserId
-            });
-        }
-        
-        // Обновляем визуальный статус для себя
-        this.updateMicrophoneStatusUI(this.myUserId, enabled);
-    },
-    
-    updateMicrophoneStatusUI(userId, enabled) {
-        const card = document.getElementById(`user-${userId}`);
-        if (!card) return;
-        
-        // Добавляем или удаляем класс для отображения статуса
-        card.classList.toggle('microphone-muted', !enabled);
-        card.classList.toggle('microphone-active', enabled);
-        
-        // Обновляем иконку статуса микрофона в карточке пользователя
-        let micIcon = card.querySelector('.microphone-status-icon');
-        if (!micIcon) {
-            micIcon = document.createElement('span');
-            micIcon.className = 'microphone-status-icon';
-            const statusEl = card.querySelector('.user-status');
-            if (statusEl) {
-                statusEl.appendChild(micIcon);
-            }
-        }
-        micIcon.textContent = enabled ? ' 🎤' : ' 🔇';
-        micIcon.title = enabled ? 'Микрофон включен' : 'Микрофон выключен';
-    },
-    
-    startMicrophoneMonitoring() {
-        if (!this.analyser) return;
-        
-        // Останавливаем предыдущий мониторинг если есть
-        if (this.microphoneLevelCheckInterval) {
-            clearInterval(this.microphoneLevelCheckInterval);
-        }
-        
-        const buffer = new Uint8Array(this.analyser.frequencyBinCount);
-        let lastCheckTime = 0;
-        
-        // Для мобильных устройств используем более длинный интервал
-        const checkInterval = this.isMobile ? this.MICROPHONE_CHECK_INTERVAL * 2 : this.MICROPHONE_CHECK_INTERVAL;
-        
-        const check = () => {
-            const now = Date.now();
-            // Throttle проверки для оптимизации производительности
-            if (now - lastCheckTime < checkInterval) {
-                this.microphoneLevelCheckInterval = setTimeout(check, checkInterval);
-                return;
-            }
-            
-            lastCheckTime = now;
-            this.analyser.getByteFrequencyData(buffer);
-            const avg = buffer.reduce((a, b) => a + b, 0) / buffer.length;
-            
-            const myCard = document.getElementById(`user-${this.myUserId}`);
-            if (myCard) {
-                myCard.classList.toggle('speaking', avg > 10);
-            }
-            
-            this.microphoneLevelCheckInterval = setTimeout(check, checkInterval);
-        };
-        
-        check();
-    },
-    
-    stopMicrophoneMonitoring() {
-        if (this.microphoneLevelCheckInterval) {
-            try {
-                clearInterval(this.microphoneLevelCheckInterval);
-            } catch (error) {
-                console.error('Error clearing microphone interval:', error);
-            }
-            this.microphoneLevelCheckInterval = null;
-        }
-    },
-    
-    // Подтверждение выхода из комнаты
-    confirmLeaveRoom() {
-        if (this.elements.usersGrid && this.elements.usersGrid.querySelectorAll('.user-card').length > 1) {
-            const confirmed = confirm('Вы уверены, что хотите покинуть комнату?');
-            if (!confirmed) {
-                return;
-            }
-        }
-        this.leaveRoom();
-    },
-    
-    leaveRoom() {
-        // Очищаем флаги присоединения
-        this.resetJoinRoomState();
-        
-        // Останавливаем мониторинг микрофона
-        try {
-            this.stopMicrophoneMonitoring();
-        } catch (error) {
-            console.error('Error stopping microphone monitoring:', error);
-        }
+    removeUser(userId) {
+        console.log('Disconnecting...');
         
         // Закрываем все peer connections
         this.peers.forEach((peer, userId) => {
             try {
                 peer.close();
             } catch (error) {
-                console.error('Error closing peer:', error);
+                console.error('Error closing peer connection:', error);
             }
         });
         this.peers.clear();
         
         // Останавливаем локальный поток
         if (this.localStream) {
-            try {
-                this.localStream.getTracks().forEach(track => {
-                    track.stop();
-                });
-            } catch (error) {
-                console.error('Error stopping tracks:', error);
-            }
+            this.localStream.getTracks().forEach(track => track.stop());
             this.localStream = null;
         }
         
         // Закрываем AudioContext
         if (this.audioContext && this.audioContext.state !== 'closed') {
-            try {
-                this.audioContext.close().catch(error => {
-                    console.error('Error closing AudioContext:', error);
-                });
-            } catch (error) {
-                console.error('Error closing AudioContext:', error);
-            }
+            this.audioContext.close().catch(error => {
+                console.error('Error closing audio context:', error);
+            });
             this.audioContext = null;
         }
         
-        this.analyser = null;
-        
-        // Очищаем таймауты
-        if (this.reconnectTimeout) {
-            try {
-                clearTimeout(this.reconnectTimeout);
-            } catch (error) {
-                console.error('Error clearing reconnectTimeout:', error);
-            }
-            this.reconnectTimeout = null;
+        // Останавливаем проверку уровня микрофона
+        if (this.microphoneLevelCheckInterval) {
+            clearInterval(this.microphoneLevelCheckInterval);
+            this.microphoneLevelCheckInterval = null;
         }
         
-        // Очищаем UI
+        // Очищаем сетку пользователей
         if (this.elements.usersGrid) {
-            this.elements.usersGrid.innerHTML = '';
+            this.elements.usersGrid.innerHTML = '<div class="empty-state">Ожидание других участников...</div>';
         }
         
-        if (this.elements.loginScreen) {
-            this.elements.loginScreen.classList.add('active');
+        // Отправляем событие отключения
+        if (this.socket && this.socket.connected && this.isConnected) {
+            this.socket.emit('leave-chat', {});
         }
         
-        if (this.elements.roomScreen) {
-            this.elements.roomScreen.classList.remove('active');
-        }
-        
-        // Уведомляем сервер
-        if (this.socket && this.socket.connected && this.currentRoomId) {
-            try {
-                this.socket.emit('leave-room', { roomId: this.currentRoomId });
-            } catch (error) {
-                console.error('Error emitting leave-room:', error);
-            }
-        }
-        
-        this.currentRoomId = null;
+        this.isConnected = false;
         this.myUserId = null;
+        this.isConnecting = false;
+        
+        this.showLoginScreen();
     },
     
     showRoomScreen() {
@@ -2190,42 +839,12 @@ const VoiceRoom = {
         }
     },
     
-    async copyRoomLink() {
-        if (!this.elements.roomLinkInput || !this.elements.btnCopyLink) return;
-        
-        // Визуальная обратная связь
-        const btn = this.elements.btnCopyLink;
-        const originalContent = btn.innerHTML;
-        
-        try {
-            await navigator.clipboard.writeText(this.elements.roomLinkInput.value);
-            
-            // Показываем успешное копирование
-            btn.classList.add('copied');
-            btn.innerHTML = '<span>✅</span>';
-            this.showNotification('Ссылка скопирована!', 'success', 2000);
-            
-            // Восстанавливаем через 2 секунды
-            setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.innerHTML = originalContent;
-            }, 2000);
-        } catch (err) {
-            console.error('Failed to copy:', err);
-            // Fallback для старых браузеров
-            this.elements.roomLinkInput.select();
-            document.execCommand('copy');
-            
-            // Показываем успешное копирование
-            btn.classList.add('copied');
-            btn.innerHTML = '<span>✅</span>';
-            this.showNotification('Ссылка скопирована!', 'success', 2000);
-            
-            // Восстанавливаем через 2 секунды
-            setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.innerHTML = originalContent;
-            }, 2000);
+    showLoginScreen() {
+        if (this.elements.roomScreen) {
+            this.elements.roomScreen.classList.remove('active');
+        }
+        if (this.elements.loginScreen) {
+            this.elements.loginScreen.classList.add('active');
         }
     }
 };

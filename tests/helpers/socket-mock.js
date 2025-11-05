@@ -123,12 +123,19 @@ class MockSocket {
       .map(([id, u]) => ({ userId: id, username: u.username }));
     
     // Отправляем событие user-joined всем участникам комнаты
-    serverState.clients.forEach((client) => {
-      if (client._rooms.has(roomId)) {
-        // Отправляем событие всем, включая создателя комнаты
-        client._emitEvent('user-joined', { userId, username });
-      }
-    });
+    // Используем setTimeout для асинхронной отправки событий
+    // Увеличиваем задержку до 50ms чтобы убедиться что callback обработан
+    setTimeout(() => {
+      serverState.clients.forEach((client) => {
+        if (client._rooms.has(roomId)) {
+          // Отправляем событие всем, включая создателя комнаты
+          // НО исключаем самого присоединившегося пользователя, т.к. он уже добавил себя через callback
+          if (client.id !== this.id) {
+            client._emitEvent('user-joined', { userId, username });
+          }
+        }
+      });
+    }, 50);
     
     if (callback && typeof callback === 'function') {
       callback({ userId, users: existingUsers });

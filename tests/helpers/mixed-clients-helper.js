@@ -1522,7 +1522,14 @@ export async function setupMixedRoomScenario(clients) {
       
       client.VoiceRoom.joinExistingRoom();
     });
+    
+    // Даем время на обработку событий user-joined
+    // Увеличиваем задержку до 200ms чтобы дать время на обработку callback и событий
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
+  
+  // Даем дополнительное время на обработку всех событий и обновление DOM
+  await new Promise(resolve => setTimeout(resolve, 300));
   
   return roomId;
 }

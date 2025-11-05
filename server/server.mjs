@@ -51,65 +51,6 @@ app.get('/cordova.js', (req, res) => {
 
 app.use(express.static(wwwPath));
 
-// Роут для комнат /room/:roomId - возвращает index.html для SPA роутинга
-app.get('/room/:roomId', (req, res) => {
-    const { roomId } = req.params;
-    const roomIdValidation = validateRoomId(roomId);
-    if (!roomIdValidation.valid) {
-        res.status(404).type('text/html');
-        res.send(`
-            <!DOCTYPE html>
-            <html lang="ru">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Комната не найдена</title>
-                <style>
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                        max-width: 600px;
-                        margin: 50px auto;
-                        padding: 20px;
-                        background: #f5f5f5;
-                        text-align: center;
-                    }
-                    .container {
-                        background: white;
-                        padding: 40px;
-                        border-radius: 8px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    }
-                    h1 {
-                        color: #e74c3c;
-                        margin-top: 0;
-                    }
-                    p {
-                        color: #666;
-                        margin: 20px 0;
-                    }
-                    a {
-                        color: #667eea;
-                        text-decoration: none;
-                    }
-                    a:hover {
-                        text-decoration: underline;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Комната не найдена</h1>
-                    <p>Комната с указанным кодом не существует или была удалена.</p>
-                    <p><a href="/">Вернуться на главную</a></p>
-                </div>
-            </body>
-            </html>
-        `);
-        return;
-    }
-    // Возвращаем index.html для SPA роутинга
-    res.sendFile(path.join(wwwPath, 'index.html'));
-});
 
 // Эндпоинт для скачивания APK
 app.get('/download/apk', (req, res) => {
@@ -279,16 +220,15 @@ app.get('/download/apk', (req, res) => {
     fileStream.pipe(res);
 });
 
-const rooms = new Map();
-// Map для хранения таймеров удаления пустых комнат (roomId -> timeout)
-const roomDeletionTimers = new Map();
+// Глобальный чат (одна "комната" без ID)
+const globalChat = {
+    users: new Map(),
+    created: Date.now(),
+    lastActivity: Date.now()
+};
 
-// Константы для валидации из переменных окружения
-const MAX_USERNAME_LENGTH = 20;
-const MIN_USERNAME_LENGTH = 1;
-const MAX_USERS_PER_ROOM = parseInt(process.env.MAX_USERS_PER_ROOM || '10', 10);
-const ROOM_ID_LENGTH = 6;
-const ROOM_TIMEOUT_MS = parseInt(process.env.ROOM_TIMEOUT_MINUTES || '30', 10) * 60 * 1000;
+// Константы
+const MAX_USERS_PER_CHAT = parseInt(process.env.MAX_USERS_PER_ROOM || '100', 10);
 
 // Функция для санитизации строки (защита от XSS)
 function sanitizeString(str) {
@@ -298,220 +238,52 @@ function sanitizeString(str) {
         .trim();
 }
 
-// Валидация username
-function validateUsername(username) {
-    if (!username || typeof username !== 'string') {
-        return { valid: false, error: 'Username is required' };
-    }
-    
-    const sanitized = sanitizeString(username);
-    
-    if (sanitized.length < MIN_USERNAME_LENGTH) {
-        return { valid: false, error: `Username must be at least ${MIN_USERNAME_LENGTH} character` };
-    }
-    
-    if (sanitized.length > MAX_USERNAME_LENGTH) {
-        return { valid: false, error: `Username must be at most ${MAX_USERNAME_LENGTH} characters` };
-    }
-    
-    // Проверка на допустимые символы (буквы, цифры, пробелы, дефисы, подчеркивания)
-    if (!/^[a-zA-Zа-яА-ЯёЁ0-9\s\-_]+$/.test(sanitized)) {
-        return { valid: false, error: 'Username contains invalid characters' };
-    }
-    
-    return { valid: true, username: sanitized };
-}
-
-// Валидация roomId
-function validateRoomId(roomId) {
-    if (!roomId || typeof roomId !== 'string') {
-        return { valid: false, error: 'Room ID is required' };
-    }
-    
-    const sanitized = roomId.trim().toUpperCase();
-    
-    if (sanitized.length !== ROOM_ID_LENGTH) {
-        return { valid: false, error: `Room ID must be ${ROOM_ID_LENGTH} characters long` };
-    }
-    
-    // Проверка на допустимые символы (буквы и цифры)
-    if (!/^[A-Z0-9]+$/.test(sanitized)) {
-        return { valid: false, error: 'Room ID contains invalid characters' };
-    }
-    
-    return { valid: true, roomId: sanitized };
-}
-
-function generateRoomId() {
-    let roomId;
-    do {
-        roomId = Math.random().toString(36).substring(2, 2 + ROOM_ID_LENGTH).toUpperCase();
-    } while (rooms.has(roomId)); // Гарантируем уникальность
-    return roomId;
-}
-
-// Автоматическая очистка пустых комнат
-function cleanupEmptyRooms() {
-    const now = Date.now();
-    for (const [roomId, room] of rooms.entries()) {
-        // Удаляем комнаты, которые пустые и старые
-        if (room.users.size === 0 && (now - room.created) > ROOM_TIMEOUT_MS) {
-            rooms.delete(roomId);
-            console.log(`🧹 Cleaned up empty room: ${roomId}`);
-        }
-    }
-}
-
-// Запускаем очистку каждые 5 минут
-setInterval(cleanupEmptyRooms, 5 * 60 * 1000);
 
 io.on('connection', (socket) => {
     console.log('✅ Client connected:', socket.id);
 
-    socket.on('create-room', ({ username }, callback) => {
-        console.log('📝 Received create-room request from socket:', socket.id);
-        console.log('📝 Username:', username);
-        console.log('📝 Callback type:', typeof callback);
-        
-        // Проверяем что callback существует
-        if (!callback || typeof callback !== 'function') {
-            console.error('❌ Callback is not a function or missing');
-            socket.emit('room-created-error', { error: 'Server error: callback not available' });
-            return;
-        }
-        
-        // Валидация username
-        const usernameValidation = validateUsername(username);
-        if (!usernameValidation.valid) {
-            console.error('❌ Invalid username:', usernameValidation.error);
-            callback({ error: usernameValidation.error });
-            return;
-        }
-        
-        const sanitizedUsername = usernameValidation.username;
-        console.log('✅ Creating room for user:', sanitizedUsername);
-        
-        const roomId = generateRoomId();
-        const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-        
-        rooms.set(roomId, {
-            users: new Map([[userId, { socketId: socket.id, username: sanitizedUsername }]]),
-            created: Date.now(),
-            lastActivity: Date.now()
-        });
-        
-        socket.join(roomId);
-        console.log('✅ Room created:', roomId, 'User ID:', userId, 'Socket ID:', socket.id);
-        
-        try {
-            callback({ roomId, userId });
-            console.log('✅ Callback called successfully');
-        } catch (error) {
-            console.error('❌ Error calling callback:', error);
-            socket.emit('room-created-error', { error: 'Server error calling callback' });
-        }
-    });
-
-    socket.on('join-room', ({ roomId, username }, callback) => {
-        // Валидация roomId
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID:', roomIdValidation.error);
-            if (callback && typeof callback === 'function') {
-                callback({ error: roomIdValidation.error });
-            }
-            return;
-        }
-        
-        // Валидация username
-        const usernameValidation = validateUsername(username);
-        if (!usernameValidation.valid) {
-            console.error('❌ Invalid username:', usernameValidation.error);
-            if (callback && typeof callback === 'function') {
-                callback({ error: usernameValidation.error });
-            }
-            return;
-        }
-        
-        const sanitizedRoomId = roomIdValidation.roomId;
-        const sanitizedUsername = usernameValidation.username;
-        
-        const room = rooms.get(sanitizedRoomId);
-        if (!room) {
-            console.error('❌ Room not found:', sanitizedRoomId);
-            if (callback && typeof callback === 'function') {
-                callback({ error: 'Room not found' });
-            }
-            return;
-        }
+    socket.on('join-chat', ({ username }, callback) => {
+        // Санитизируем username
+        const sanitizedUsername = sanitizeString(username) || `User_${Date.now()}`;
         
         // Проверка количества пользователей
-        if (room.users.size >= MAX_USERS_PER_ROOM) {
-            console.error('❌ Room is full:', sanitizedRoomId);
+        if (globalChat.users.size >= MAX_USERS_PER_CHAT) {
+            console.error('❌ Chat is full');
             if (callback && typeof callback === 'function') {
-                callback({ error: `Room is full (max ${MAX_USERS_PER_ROOM} users)` });
+                callback({ error: `Chat is full (max ${MAX_USERS_PER_CHAT} users)` });
             }
             return;
         }
         
         const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-        room.users.set(userId, { socketId: socket.id, username: sanitizedUsername });
-        room.lastActivity = Date.now();
-        socket.join(sanitizedRoomId);
+        globalChat.users.set(userId, { socketId: socket.id, username: sanitizedUsername });
+        globalChat.lastActivity = Date.now();
         
-        // Отменяем таймер удаления если он был установлен (комната больше не пустая)
-        const deletionTimer = roomDeletionTimers.get(sanitizedRoomId);
-        if (deletionTimer) {
-            clearTimeout(deletionTimer);
-            roomDeletionTimers.delete(sanitizedRoomId);
-            console.log('✅ Room deletion cancelled (user joined):', sanitizedRoomId);
-        }
-        
-        const existingUsers = Array.from(room.users.entries())
+        const existingUsers = Array.from(globalChat.users.entries())
             .filter(([id]) => id !== userId)
             .map(([id, u]) => ({ userId: id, username: u.username }));
         
-        console.log('✅ User joined room:', sanitizedRoomId, 'User ID:', userId);
+        console.log('✅ User joined chat:', 'User ID:', userId);
         
         if (callback && typeof callback === 'function') {
-        callback({ userId, users: existingUsers });
+            callback({ userId, users: existingUsers });
         }
         
-        socket.to(sanitizedRoomId).emit('user-joined', { userId, username: sanitizedUsername });
+        socket.broadcast.emit('user-joined', { userId, username: sanitizedUsername });
     });
 
-    socket.on('leave-room', (data) => {
-        if (!data || !data.roomId) return;
-        const { roomId } = data;
-        
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID in leave-room:', roomId);
-            return;
-        }
-        
-        const sanitizedRoomId = roomIdValidation.roomId;
-        const room = rooms.get(sanitizedRoomId);
-        if (!room) return;
-
-        for (const [userId, user] of room.users.entries()) {
+    socket.on('leave-chat', () => {
+        for (const [userId, user] of globalChat.users.entries()) {
             if (user.socketId === socket.id) {
-                room.users.delete(userId);
-                socket.to(sanitizedRoomId).emit('user-left', userId);
-                console.log('👋 User left room:', sanitizedRoomId, 'User ID:', userId);
-                
-                if (room.users.size === 0) {
-                    rooms.delete(sanitizedRoomId);
-                    console.log(`🗑️ Room deleted: ${sanitizedRoomId}`);
-                }
+                globalChat.users.delete(userId);
+                socket.broadcast.emit('user-left', userId);
+                console.log('👋 User left chat:', 'User ID:', userId);
                 break;
             }
         }
     });
 
     socket.on('offer', (data) => {
-        if (!data || !data.roomId) return;
-        
         const targetUserId = data.targetUserId;
         const fromUserId = data.fromUserId;
         
@@ -520,36 +292,22 @@ io.on('connection', (socket) => {
             return;
         }
         
-        const { roomId, offer } = data;
+        const { offer } = data;
         
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID in offer:', roomId);
-            return;
-        }
-        
-        const room = rooms.get(roomIdValidation.roomId);
-        if (!room) {
-            console.error('❌ Room not found in offer:', roomId);
-            return;
-        }
-        
-        // Проверяем, что оба пользователя в комнате
-        const fromUserExists = Array.from(room.users.values()).some(u => u.socketId === socket.id);
-        const targetUserExists = room.users.has(targetUserId);
+        // Проверяем, что оба пользователя в чате
+        const fromUserExists = Array.from(globalChat.users.values()).some(u => u.socketId === socket.id);
+        const targetUserExists = globalChat.users.has(targetUserId);
         
         if (!fromUserExists || !targetUserExists) {
-            console.error('❌ Invalid users in offer:', { roomId, fromUserId, targetUserId });
+            console.error('❌ Invalid users in offer:', { fromUserId, targetUserId });
             return;
         }
         
-        room.lastActivity = Date.now();
-        socket.to(roomIdValidation.roomId).emit('offer', { offer, targetUserId, fromUserId });
+        globalChat.lastActivity = Date.now();
+        socket.broadcast.emit('offer', { offer, targetUserId, fromUserId });
     });
 
     socket.on('answer', (data) => {
-        if (!data || !data.roomId) return;
-        
         const targetUserId = data.targetUserId;
         const fromUserId = data.fromUserId;
         
@@ -558,27 +316,13 @@ io.on('connection', (socket) => {
             return;
         }
         
-        const { roomId, answer } = data;
+        const { answer } = data;
         
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID in answer:', roomId);
-            return;
-        }
-        
-        const room = rooms.get(roomIdValidation.roomId);
-        if (!room) {
-            console.error('❌ Room not found in answer:', roomId);
-            return;
-        }
-        
-        room.lastActivity = Date.now();
-        socket.to(roomIdValidation.roomId).emit('answer', { answer, targetUserId, fromUserId });
+        globalChat.lastActivity = Date.now();
+        socket.broadcast.emit('answer', { answer, targetUserId, fromUserId });
     });
 
     socket.on('ice-candidate', (data) => {
-        if (!data || !data.roomId) return;
-        
         const targetUserId = data.targetUserId;
         const fromUserId = data.fromUserId;
         
@@ -587,77 +331,39 @@ io.on('connection', (socket) => {
             return;
         }
         
-        const { roomId, candidate } = data;
+        const { candidate } = data;
         
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID in ice-candidate:', roomId);
-            return;
-        }
-        
-        const room = rooms.get(roomIdValidation.roomId);
-        if (!room) {
-            console.error('❌ Room not found in ice-candidate:', roomId);
-            return;
-        }
-        
-        room.lastActivity = Date.now();
-        socket.to(roomIdValidation.roomId).emit('ice-candidate', { candidate, targetUserId, fromUserId });
+        globalChat.lastActivity = Date.now();
+        socket.broadcast.emit('ice-candidate', { candidate, targetUserId, fromUserId });
     });
     
     socket.on('microphone-status', (data) => {
-        if (!data || !data.roomId) return;
-        const { roomId, enabled, userId } = data;
+        const { enabled, userId } = data;
         
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID in microphone-status:', roomId);
-            return;
-        }
-        
-        const room = rooms.get(roomIdValidation.roomId);
-        if (!room) {
-            console.error('❌ Room not found in microphone-status:', roomId);
-            return;
-        }
-        
-        // Проверяем, что пользователь в комнате
-        const userExists = room.users.has(userId);
+        // Проверяем, что пользователь в чате
+        const userExists = globalChat.users.has(userId);
         if (!userExists) {
-            console.error('❌ User not found in room:', userId);
+            console.error('❌ User not found in chat:', userId);
             return;
         }
         
-        room.lastActivity = Date.now();
-        // Отправляем статус микрофона всем остальным участникам комнаты
-        socket.to(roomIdValidation.roomId).emit('microphone-status', { userId, enabled });
+        globalChat.lastActivity = Date.now();
+        // Отправляем статус микрофона всем остальным участникам
+        socket.broadcast.emit('microphone-status', { userId, enabled });
     });
     
     socket.on('request-microphone-status', (data) => {
-        if (!data || !data.roomId) return;
-        const { roomId, targetUserId } = data;
+        const { targetUserId } = data;
         
-        const roomIdValidation = validateRoomId(roomId);
-        if (!roomIdValidation.valid) {
-            console.error('❌ Invalid room ID in request-microphone-status:', roomId);
-            return;
-        }
-        
-        const room = rooms.get(roomIdValidation.roomId);
-        if (!room) {
-            console.error('❌ Room not found in request-microphone-status:', roomId);
-            return;
-        }
-        
-        // Проверяем, что оба пользователя в комнате
-        const targetUserExists = room.users.has(targetUserId);
+        // Проверяем, что целевой пользователь в чате
+        const targetUserExists = globalChat.users.has(targetUserId);
         if (!targetUserExists) {
-            console.error('❌ Target user not found in room:', targetUserId);
+            console.error('❌ Target user not found in chat:', targetUserId);
             return;
         }
         
         // Находим socket ID целевого пользователя и отправляем ему запрос
-        const targetUser = room.users.get(targetUserId);
+        const targetUser = globalChat.users.get(targetUserId);
         if (targetUser && targetUser.socketId) {
             io.to(targetUser.socketId).emit('request-microphone-status', {});
         }
@@ -665,52 +371,13 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('⚠️ Client disconnected:', socket.id);
-        for (const [roomId, room] of rooms.entries()) {
-            for (const [userId, user] of room.users.entries()) {
-                if (user.socketId === socket.id) {
-                    room.users.delete(userId);
-                    socket.to(roomId).emit('user-left', userId);
-                    console.log('👋 User disconnected from room:', roomId, 'User ID:', userId);
-                    
-                    if (room.users.size === 0) {
-                        // Комната стала пустой - устанавливаем задержку перед удалением
-                        // Это дает время на переподключение после редиректа
-                        const deletionDelay = 5000; // 5 секунд
-                        console.log(`⏳ Room ${roomId} is empty, scheduling deletion in ${deletionDelay}ms`);
-                        
-                        // Отменяем предыдущий таймер если есть
-                        const existingTimer = roomDeletionTimers.get(roomId);
-                        if (existingTimer) {
-                            clearTimeout(existingTimer);
-                        }
-                        
-                        // Устанавливаем новый таймер
-                        const deletionTimer = setTimeout(() => {
-                            // Проверяем, что комната все еще пустая перед удалением
-                            const currentRoom = rooms.get(roomId);
-                            if (currentRoom && currentRoom.users.size === 0) {
-                                rooms.delete(roomId);
-                                roomDeletionTimers.delete(roomId);
-                                console.log('🗑️ Room deleted (empty after delay):', roomId);
-                            } else {
-                                // Комната была заполнена, отменяем удаление
-                                roomDeletionTimers.delete(roomId);
-                                console.log('✅ Room deletion cancelled (room filled):', roomId);
-                            }
-                        }, deletionDelay);
-                        
-                        roomDeletionTimers.set(roomId, deletionTimer);
-                    } else {
-                        // Комната не пустая - отменяем таймер удаления если он был установлен
-                        const deletionTimer = roomDeletionTimers.get(roomId);
-                        if (deletionTimer) {
-                            clearTimeout(deletionTimer);
-                            roomDeletionTimers.delete(roomId);
-                            console.log('✅ Room deletion cancelled (users still in room):', roomId);
-                        }
-                    }
-                    break;
-                }
+        
+        for (const [userId, user] of globalChat.users.entries()) {
+            if (user.socketId === socket.id) {
+                globalChat.users.delete(userId);
+                socket.broadcast.emit('user-left', userId);
+                console.log('👋 User disconnected from chat:', 'User ID:', userId);
+                break;
             }
         }
     });

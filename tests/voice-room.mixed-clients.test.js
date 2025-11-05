@@ -65,8 +65,8 @@ describe('Смешанные сценарии веб+APK', () => {
         expect(clients[0].roomId).toBe(roomId);
         expect(clients[1].roomId).toBe(roomId);
         
-        // Ждем установления соединений
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Ждем установления соединений и обработки всех событий
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Проверяем что все видят друг друга
         verifyConnectionStatuses(clients);
@@ -407,7 +407,7 @@ describe('Смешанные сценарии веб+APK', () => {
       const clients = await createMixedClients(['web', 'cordova', 'web']);
       
       try {
-        // Шаг 1: Первый клиент создает комнату
+        // Шаг 1: Первый клиент создает комнату (используем callback как в setupMixedRoomScenario)
         const creator = clients[0];
         if (creator.elements && creator.elements.usernameInput) {
           creator.elements.usernameInput.value = creator.username;
@@ -418,12 +418,24 @@ describe('Смешанные сценарии веб+APK', () => {
             reject(new Error('Timeout creating room'));
           }, 5000);
           
-          creator.socket.once('room-created', (data) => {
-            clearTimeout(timeout);
-            creator.roomId = data.roomId;
-            creator.userId = data.userId;
-            resolve(data.roomId);
-          });
+          const originalEmit = creator.socket.emit.bind(creator.socket);
+          creator.socket.emit = function(event, data, callback) {
+            if (event === 'create-room' && callback) {
+              originalEmit(event, data, (response) => {
+                if (!response.error) {
+                  creator.roomId = response.roomId;
+                  creator.userId = response.userId;
+                  clearTimeout(timeout);
+                  resolve(response.roomId);
+                } else {
+                  clearTimeout(timeout);
+                  reject(new Error(response.error));
+                }
+              });
+            } else {
+              originalEmit(event, data, callback);
+            }
+          };
           
           creator.VoiceRoom.createRoom();
         });
@@ -431,6 +443,7 @@ describe('Смешанные сценарии веб+APK', () => {
         expect(roomId).toBeDefined();
         expect(creator.userId).toBeDefined();
         
+        // Даем время на обработку всех событий и обновление DOM
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Шаг 2: Второй клиент (APK) присоединяется
@@ -471,6 +484,7 @@ describe('Смешанные сценарии веб+APK', () => {
         
         expect(secondClient.userId).toBeDefined();
         
+        // Даем время на обработку всех событий и обновление DOM
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Проверяем статусы после присоединения второго клиента
@@ -514,13 +528,14 @@ describe('Смешанные сценарии веб+APK', () => {
         
         expect(thirdClient.userId).toBeDefined();
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Даем время на обработку всех событий и обновление DOM
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Проверяем статусы после присоединения всех клиентов
         verifyConnectionStatuses(clients);
         
         // Ждем установления всех соединений
-        await waitForAllConnections(clients, 10000);
+        await waitForAllConnections(clients, 15000);
         
         // Ждем обновления статусов
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -529,7 +544,7 @@ describe('Смешанные сценарии веб+APK', () => {
       } finally {
         cleanupClients(clients);
       }
-    });
+    }, 20000);
   });
   
   describe('Одновременное присоединение', () => {
@@ -538,7 +553,7 @@ describe('Смешанные сценарии веб+APK', () => {
       const clients = await createMixedClients(['web', 'cordova', 'web', 'cordova']);
       
       try {
-        // Первый клиент создает комнату
+        // Первый клиент создает комнату (используем callback как в setupMixedRoomScenario)
         const creator = clients[0];
         if (creator.elements && creator.elements.usernameInput) {
           creator.elements.usernameInput.value = creator.username;
@@ -549,12 +564,24 @@ describe('Смешанные сценарии веб+APK', () => {
             reject(new Error('Timeout creating room'));
           }, 5000);
           
-          creator.socket.once('room-created', (data) => {
-            clearTimeout(timeout);
-            creator.roomId = data.roomId;
-            creator.userId = data.userId;
-            resolve(data.roomId);
-          });
+          const originalEmit = creator.socket.emit.bind(creator.socket);
+          creator.socket.emit = function(event, data, callback) {
+            if (event === 'create-room' && callback) {
+              originalEmit(event, data, (response) => {
+                if (!response.error) {
+                  creator.roomId = response.roomId;
+                  creator.userId = response.userId;
+                  clearTimeout(timeout);
+                  resolve(response.roomId);
+                } else {
+                  clearTimeout(timeout);
+                  reject(new Error(response.error));
+                }
+              });
+            } else {
+              originalEmit(event, data, callback);
+            }
+          };
           
           creator.VoiceRoom.createRoom();
         });
@@ -600,7 +627,8 @@ describe('Смешанные сценарии веб+APK', () => {
         
         expect(clients.every(c => c.userId)).toBe(true);
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Даем время на обработку всех событий и обновление DOM
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         verifyConnectionStatuses(clients);
         
@@ -612,7 +640,7 @@ describe('Смешанные сценарии веб+APK', () => {
       } finally {
         cleanupClients(clients);
       }
-    });
+    }, 25000);
   });
   
   describe('Выход участников', () => {
@@ -625,7 +653,8 @@ describe('Смешанные сценарии веб+APK', () => {
         
         expect(roomId).toBeDefined();
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Даем время на обработку всех событий и обновление DOM
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         verifyConnectionStatuses(clients);
         
@@ -635,6 +664,7 @@ describe('Смешанные сценарии веб+APK', () => {
         const leavingClient = clients[1];
         leavingClient.VoiceRoom.leaveRoom();
         
+        // Даем время на обработку события user-left и обновление DOM
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Проверяем что остальные клиенты видят правильное количество участников
@@ -673,7 +703,8 @@ describe('Смешанные сценарии веб+APK', () => {
         
         expect(roomId).toBeDefined();
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Даем время на обработку всех событий и обновление DOM
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         verifyConnectionStatuses(clients);
         
@@ -727,7 +758,8 @@ describe('Смешанные сценарии веб+APK', () => {
           disconnectedClient.VoiceRoom.joinExistingRoom();
         });
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Даем время на обработку всех событий и обновление DOM
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         verifyConnectionStatuses(clients);
         

@@ -13,21 +13,12 @@
         <div id="loginScreen" class="screen active">
             <div class="login-container">
                 <h1>🔊 Voice Room</h1>
-                <p class="subtitle">Создайте или присоединитесь к голосовой комнате</p>
+                <p class="subtitle">Подключитесь к голосовому чату</p>
                 
-                <div class="form-group">
-                    <label for="username">Ваше имя:</label>
-                    <input type="text" id="username" placeholder="Введите ваше имя" maxlength="20" autocomplete="off">
-                </div>
-
                 <div class="button-group">
-                    <button id="btnCreateRoom" class="btn btn-primary" onclick="console.log('Button clicked from inline handler'); if (typeof VoiceRoom !== 'undefined' && VoiceRoom.createRoom) VoiceRoom.createRoom();">
-                        <span>➕</span>
-                        <span>Создать комнату</span>
-                    </button>
-                    <button id="btnJoinRoom" class="btn btn-secondary">
+                    <button id="btnConnect" class="btn btn-primary">
                         <span>🔗</span>
-                        <span>Присоединиться</span>
+                        <span>Подключиться</span>
                     </button>
                 </div>
 
@@ -38,25 +29,6 @@
                     </a>
                     <small class="download-hint">Для установки на Android устройство</small>
                 </div>
-
-                <div id="roomLinkContainer" class="room-link-container" style="display: none;">
-                    <label>Ссылка на комнату:</label>
-                    <div class="link-input-group">
-                        <input type="text" id="roomLink" readonly>
-                        <button id="btnCopyLink" class="btn btn-small">
-                            <span>📋</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div id="joinContainer" class="join-container">
-                    <label for="roomId">Код комнаты:</label>
-                    <input type="text" id="roomId" placeholder="Введите код комнаты" maxlength="6" style="text-transform: uppercase;">
-                    <button id="btnJoinRoomNow" class="btn btn-primary" style="margin-top: 12px;">
-                        <span>✅</span>
-                        <span>Присоединиться к комнате</span>
-                    </button>
-                </div>
             </div>
         </div>
 
@@ -64,10 +36,10 @@
         <div id="roomScreen" class="screen">
             <div class="room-header">
                 <div class="room-title">
-                    <h2>Комната: <span id="currentRoomId"></span></h2>
+                    <h2>Голосовой чат</h2>
                     <button id="btnLeaveRoom" class="btn btn-danger btn-small">
                         <span>🚪</span>
-                        <span>Выйти</span>
+                        <span>Отключиться</span>
                     </button>
                 </div>
                 <div class="status-badge">
