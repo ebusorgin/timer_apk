@@ -78,6 +78,22 @@ body {
     border-color: #667eea;
 }
 
+.form-group input.valid {
+    border-color: #27ae60;
+}
+
+.form-group input.invalid {
+    border-color: #e74c3c;
+}
+
+.validation-error {
+    color: #e74c3c;
+    font-size: 12px;
+    margin-top: 4px;
+    min-height: 16px;
+    transition: opacity 0.3s;
+}
+
 .button-group {
     display: flex;
     flex-direction: column;

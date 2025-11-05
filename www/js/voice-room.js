@@ -195,6 +195,68 @@ const VoiceRoom = {
         return { valid: true, username: sanitized };
     },
     
+    // Валидация username с визуальной обратной связью
+    validateUsernameInput(username, showError = false) {
+        const validation = this.validateUsername(username);
+        
+        if (!this.elements.usernameInput) return validation.valid;
+        
+        // Обновляем визуальное состояние поля
+        if (validation.valid) {
+            this.elements.usernameInput.classList.remove('invalid');
+            this.elements.usernameInput.classList.add('valid');
+            if (this.elements.usernameValidationError) {
+                this.elements.usernameValidationError.style.display = 'none';
+            }
+        } else {
+            this.elements.usernameInput.classList.remove('valid');
+            if (showError || username.length > 0) {
+                this.elements.usernameInput.classList.add('invalid');
+                if (this.elements.usernameValidationError) {
+                    this.elements.usernameValidationError.textContent = validation.error;
+                    this.elements.usernameValidationError.style.display = 'block';
+                }
+            } else {
+                this.elements.usernameInput.classList.remove('invalid');
+                if (this.elements.usernameValidationError) {
+                    this.elements.usernameValidationError.style.display = 'none';
+                }
+            }
+        }
+        
+        // Обновляем состояние кнопки
+        this.updateCreateButtonState();
+        
+        return validation.valid;
+    },
+    
+    // Показ подсказки для username
+    showUsernameHint() {
+        if (this.elements.usernameValidationError && !this.elements.usernameInput.value) {
+            this.elements.usernameValidationError.textContent = 'Введите имя от 1 до 20 символов';
+            this.elements.usernameValidationError.style.display = 'block';
+            this.elements.usernameValidationError.style.color = '#666';
+        }
+    },
+    
+    // Обновление состояния кнопки создания комнаты
+    updateCreateButtonState() {
+        if (!this.elements.btnCreateRoom || !this.elements.usernameInput) return;
+        
+        const username = this.elements.usernameInput.value.trim();
+        const isValid = this.validateUsername(username).valid;
+        const isDisabled = this.elements.btnCreateRoom.disabled;
+        
+        // Не отключаем кнопку если она уже в состоянии загрузки
+        if (!isDisabled && !isValid && username.length > 0) {
+            this.elements.btnCreateRoom.style.opacity = '0.6';
+            this.elements.btnCreateRoom.style.cursor = 'not-allowed';
+        } else if (!isDisabled) {
+            this.elements.btnCreateRoom.style.opacity = '1';
+            this.elements.btnCreateRoom.style.cursor = 'pointer';
+        }
+    },
+    
     init() {
         console.log('VoiceRoom initializing...');
         console.log('Document ready state:', document.readyState);
@@ -607,6 +669,19 @@ const VoiceRoom = {
             userCount: document.getElementById('userCount')
         };
         
+        // Создаем элемент для отображения ошибок валидации username
+        if (this.elements.usernameInput && !this.elements.usernameInput.parentElement.querySelector('.validation-error')) {
+            const errorElement = document.createElement('div');
+            errorElement.className = 'validation-error';
+            errorElement.style.display = 'none';
+            errorElement.style.color = '#e74c3c';
+            errorElement.style.fontSize = '12px';
+            errorElement.style.marginTop = '4px';
+            errorElement.style.minHeight = '16px';
+            this.elements.usernameInput.parentElement.appendChild(errorElement);
+            this.elements.usernameValidationError = errorElement;
+        }
+        
         // Проверяем критические элементы
         const criticalElements = ['usernameInput', 'btnCreateRoom', 'loginScreen', 'roomScreen'];
         const missingElements = criticalElements.filter(key => !this.elements[key]);
@@ -672,6 +747,10 @@ const VoiceRoom = {
             this.elements.btnJoinRoom.addEventListener('click', () => {
                 const display = this.elements.joinContainer.style.display;
                 this.elements.joinContainer.style.display = display === 'none' ? 'block' : 'none';
+                // Фокус на поле ввода кода комнаты при открытии
+                if (display === 'none' && this.elements.roomIdInput) {
+                    setTimeout(() => this.elements.roomIdInput.focus(), 100);
+                }
             });
         }
         
@@ -683,7 +762,7 @@ const VoiceRoom = {
         }
         
         if (this.elements.btnLeaveRoom) {
-            this.elements.btnLeaveRoom.addEventListener('click', () => this.leaveRoom());
+            this.elements.btnLeaveRoom.addEventListener('click', () => this.confirmLeaveRoom());
         }
         
         if (this.elements.btnToggleMic) {
@@ -702,15 +781,53 @@ const VoiceRoom = {
             this.elements.roomIdInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') this.joinExistingRoom();
             });
+            // Автоматически преобразуем в верхний регистр
+            this.elements.roomIdInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            });
         }
         
+        // Валидация username в реальном времени
         if (this.elements.usernameInput) {
+            // Валидация при вводе (debounced)
+            let validationTimeout = null;
+            this.elements.usernameInput.addEventListener('input', (e) => {
+                clearTimeout(validationTimeout);
+                validationTimeout = setTimeout(() => {
+                    this.validateUsernameInput(e.target.value, true);
+                }, 300);
+            });
+            
+            // Валидация при потере фокуса
+            this.elements.usernameInput.addEventListener('blur', (e) => {
+                this.validateUsernameInput(e.target.value, true);
+            });
+            
+            // Валидация при фокусе (показываем помощь)
+            this.elements.usernameInput.addEventListener('focus', () => {
+                if (this.elements.usernameInput.value.trim() === '') {
+                    this.showUsernameHint();
+                }
+            });
+            
             this.elements.usernameInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !this.currentRoomId) {
                     console.log('Enter pressed in username input, creating room');
-                    this.createRoom();
+                    // Проверяем валидность перед созданием
+                    if (this.validateUsernameInput(this.elements.usernameInput.value, true)) {
+                        this.createRoom();
+                    }
                 }
             });
+            
+            // Автофокус на поле username при загрузке (если не в комнате)
+            if (!this.currentRoomId && document.activeElement !== this.elements.usernameInput) {
+                setTimeout(() => {
+                    if (this.elements.usernameInput && !this.elements.usernameInput.value) {
+                        this.elements.usernameInput.focus();
+                    }
+                }, 100);
+            }
         }
         
         console.log('Event listeners set up');
@@ -726,6 +843,60 @@ const VoiceRoom = {
             
             if (this.elements.roomIdInput) {
                 this.elements.roomIdInput.value = roomId;
+            }
+            
+            // Проверяем, была ли эта комната создана текущим пользователем
+            const createdRoomData = sessionStorage.getItem('voiceRoomCreatedRoom');
+            if (createdRoomData) {
+                try {
+                    const createdRoom = JSON.parse(createdRoomData);
+                    // Проверяем, что это та же комната и прошло не более 30 секунд с момента создания
+                    if (createdRoom.roomId === roomId && (Date.now() - createdRoom.timestamp) < 30000) {
+                        console.log('Room was created by current user, restoring state');
+                        // Восстанавливаем состояние
+                        this.currentRoomId = createdRoom.roomId;
+                        this.myUserId = createdRoom.userId;
+                        this.myUsername = createdRoom.username;
+                        
+                        if (this.elements.usernameInput) {
+                            this.elements.usernameInput.value = createdRoom.username;
+                        }
+                        
+                        // Не нужно присоединяться повторно - мы уже в комнате
+                        // Просто показываем экран комнаты если медиа уже инициализировано
+                        if (this.localStream) {
+                            // Медиа уже есть, просто показываем экран
+                            if (this.elements.currentRoomIdSpan) {
+                                this.elements.currentRoomIdSpan.textContent = roomId;
+                            }
+                            this.showRoomScreen();
+                            return;
+                        }
+                        
+                        // Медиа еще нет, инициализируем
+                        this.initMedia().then(() => {
+                            this.addUserToGrid(this.myUserId, createdRoom.username, true);
+                            
+                            if (this.elements.currentRoomIdSpan) {
+                                this.elements.currentRoomIdSpan.textContent = roomId;
+                            }
+                            
+                            this.showRoomScreen();
+                        }).catch(error => {
+                            console.error('Error initializing media:', error);
+                            // При ошибке инициализации медиа все равно показываем экран комнаты
+                            this.showRoomScreen();
+                        });
+                        
+                        return; // Выходим, не делаем join-room
+                    } else {
+                        // Это старая информация о созданной комнате, удаляем
+                        sessionStorage.removeItem('voiceRoomCreatedRoom');
+                    }
+                } catch (error) {
+                    console.error('Error parsing created room data:', error);
+                    sessionStorage.removeItem('voiceRoomCreatedRoom');
+                }
             }
             
             // Показываем контейнер присоединения с плавной анимацией
@@ -837,11 +1008,18 @@ const VoiceRoom = {
             return;
         }
         
-        const username = this.sanitizeString(this.elements.usernameInput.value);
+        // Валидация перед отправкой
+        const usernameValue = this.elements.usernameInput.value.trim();
+        if (!this.validateUsernameInput(usernameValue, true)) {
+            // Ошибка уже показана через validateUsernameInput
+            return;
+        }
+        
+        const username = this.sanitizeString(usernameValue);
         console.log('Username value:', username);
         
         if (!username || username.length < 1) {
-            console.log('Username is empty, showing notification');
+            console.log('Username is empty after sanitization, showing notification');
             this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
             return;
         }
@@ -924,18 +1102,36 @@ const VoiceRoom = {
                 this.myUserId = userId;
                 console.log('✅ Room created:', roomId, 'User ID:', userId);
                 
-                // Сохраняем имя пользователя перед редиректом
+                // Сохраняем имя пользователя
                 localStorage.setItem('voiceRoomUsername', username);
                 
-                // Редирект на страницу комнаты
+                // Сохраняем информацию о созданной комнате в sessionStorage для восстановления состояния
+                sessionStorage.setItem('voiceRoomCreatedRoom', JSON.stringify({
+                    roomId,
+                    userId,
+                    username,
+                    timestamp: Date.now()
+                }));
+                
+                // Изменяем URL через History API вместо полного редиректа (сохраняет socket соединение)
                 if (!App.isCordova) {
-                    window.location.href = `/room/${roomId}`;
-                    return; // Прерываем выполнение, так как происходит редирект
+                    window.history.pushState({ roomId }, '', `/room/${roomId}`);
+                    // Обновляем UI после изменения URL
+                    if (this.elements.roomIdInput) {
+                        this.elements.roomIdInput.value = roomId;
+                    }
+                    // Показываем контейнер присоединения если он скрыт
+                    if (this.elements.joinContainer) {
+                        this.elements.joinContainer.style.display = 'block';
+                        setTimeout(() => {
+                            this.elements.joinContainer.classList.add('show');
+                        }, 10);
+                    }
                 }
                 
-                // Для Cordova показываем уведомление и выполняем стандартный flow
                 this.showNotification('Комната создана!', 'success', 2000);
                 
+                // Инициализируем медиа и показываем экран комнаты
                 this.initMedia().then(() => {
                     this.addUserToGrid(this.myUserId, username, true);
                     
@@ -943,7 +1139,9 @@ const VoiceRoom = {
                         this.elements.currentRoomIdSpan.textContent = roomId;
                     }
                     
-                    const roomUrl = `voice-room://room?${roomId}`;
+                    const roomUrl = App.isCordova 
+                        ? `voice-room://room?${roomId}`
+                        : `${window.location.origin}/room/${roomId}`;
                     
                     if (this.elements.roomLinkInput) {
                         this.elements.roomLinkInput.value = roomUrl;
@@ -997,16 +1195,40 @@ const VoiceRoom = {
         if (!this.elements.roomIdInput || !this.elements.usernameInput) return;
         
         const roomId = this.elements.roomIdInput.value.trim().toUpperCase();
-        const username = this.sanitizeString(this.elements.usernameInput.value);
+        const usernameValue = this.elements.usernameInput.value.trim();
         
-        if (!roomId || roomId.length !== 6) {
-            this.showNotification('Введите код комнаты (6 символов)', 'error', 3000);
+        // Валидация roomId
+        if (!roomId || roomId.length !== 6 || !/^[A-Z0-9]{6}$/.test(roomId)) {
+            this.showNotification('Введите корректный код комнаты (6 символов)', 'error', 3000);
+            if (this.elements.roomIdInput) {
+                this.elements.roomIdInput.classList.add('invalid');
+                setTimeout(() => {
+                    if (this.elements.roomIdInput) {
+                        this.elements.roomIdInput.classList.remove('invalid');
+                    }
+                }, 3000);
+            }
             return;
         }
+        
+        // Валидация username
+        if (!this.validateUsernameInput(usernameValue, true)) {
+            // Ошибка уже показана через validateUsernameInput
+            return;
+        }
+        
+        const username = this.sanitizeString(usernameValue);
         
         if (!username || username.length < 1) {
             this.showNotification('Пожалуйста, введите ваше имя', 'error', 3000);
             return;
+        }
+        
+        // Визуальная обратная связь
+        if (this.elements.btnJoinRoomNow) {
+            this.elements.btnJoinRoomNow.disabled = true;
+            const originalText = this.elements.btnJoinRoomNow.innerHTML;
+            this.elements.btnJoinRoomNow.innerHTML = '<span>⏳</span><span>Присоединение...</span>';
         }
         
         if (!this.socket) {
@@ -1024,11 +1246,19 @@ const VoiceRoom = {
         this.currentRoomId = roomId;
         
         this.socket.emit('join-room', { roomId, username }, async (response) => {
+            // Восстанавливаем кнопку
+            if (this.elements.btnJoinRoomNow) {
+                this.elements.btnJoinRoomNow.disabled = false;
+                this.elements.btnJoinRoomNow.innerHTML = '<span>✅</span><span>Присоединиться к комнате</span>';
+            }
+            
             if (response.error) {
                 console.error('Join room error:', response.error);
                 if (response.error.includes('not found')) {
                     this.showNotification('Комната не найдена. Создаем новую...', 'info', 3000);
                     setTimeout(() => this.createRoom(), 1000);
+                } else if (response.error.includes('full')) {
+                    this.showNotification('Комната переполнена. Максимум участников: ' + (response.maxUsers || '10'), 'error', 5000);
                 } else {
                     this.showNotification('Ошибка: ' + response.error, 'error', 5000);
                 }
@@ -1492,6 +1722,17 @@ const VoiceRoom = {
             }
             this.microphoneLevelCheckInterval = null;
         }
+    },
+    
+    // Подтверждение выхода из комнаты
+    confirmLeaveRoom() {
+        if (this.elements.usersGrid && this.elements.usersGrid.querySelectorAll('.user-card').length > 1) {
+            const confirmed = confirm('Вы уверены, что хотите покинуть комнату?');
+            if (!confirmed) {
+                return;
+            }
+        }
+        this.leaveRoom();
     },
     
     leaveRoom() {

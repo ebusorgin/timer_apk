@@ -280,6 +280,8 @@ app.get('/download/apk', (req, res) => {
 });
 
 const rooms = new Map();
+// Map для хранения таймеров удаления пустых комнат (roomId -> timeout)
+const roomDeletionTimers = new Map();
 
 // Константы для валидации из переменных окружения
 const MAX_USERNAME_LENGTH = 20;
@@ -456,6 +458,14 @@ io.on('connection', (socket) => {
         room.users.set(userId, { socketId: socket.id, username: sanitizedUsername });
         room.lastActivity = Date.now();
         socket.join(sanitizedRoomId);
+        
+        // Отменяем таймер удаления если он был установлен (комната больше не пустая)
+        const deletionTimer = roomDeletionTimers.get(sanitizedRoomId);
+        if (deletionTimer) {
+            clearTimeout(deletionTimer);
+            roomDeletionTimers.delete(sanitizedRoomId);
+            console.log('✅ Room deletion cancelled (user joined):', sanitizedRoomId);
+        }
         
         const existingUsers = Array.from(room.users.entries())
             .filter(([id]) => id !== userId)
@@ -636,8 +646,41 @@ io.on('connection', (socket) => {
                     console.log('👋 User disconnected from room:', roomId, 'User ID:', userId);
                     
                     if (room.users.size === 0) {
-                        rooms.delete(roomId);
-                        console.log('🗑️ Room deleted (empty):', roomId);
+                        // Комната стала пустой - устанавливаем задержку перед удалением
+                        // Это дает время на переподключение после редиректа
+                        const deletionDelay = 5000; // 5 секунд
+                        console.log(`⏳ Room ${roomId} is empty, scheduling deletion in ${deletionDelay}ms`);
+                        
+                        // Отменяем предыдущий таймер если есть
+                        const existingTimer = roomDeletionTimers.get(roomId);
+                        if (existingTimer) {
+                            clearTimeout(existingTimer);
+                        }
+                        
+                        // Устанавливаем новый таймер
+                        const deletionTimer = setTimeout(() => {
+                            // Проверяем, что комната все еще пустая перед удалением
+                            const currentRoom = rooms.get(roomId);
+                            if (currentRoom && currentRoom.users.size === 0) {
+                                rooms.delete(roomId);
+                                roomDeletionTimers.delete(roomId);
+                                console.log('🗑️ Room deleted (empty after delay):', roomId);
+                            } else {
+                                // Комната была заполнена, отменяем удаление
+                                roomDeletionTimers.delete(roomId);
+                                console.log('✅ Room deletion cancelled (room filled):', roomId);
+                            }
+                        }, deletionDelay);
+                        
+                        roomDeletionTimers.set(roomId, deletionTimer);
+                    } else {
+                        // Комната не пустая - отменяем таймер удаления если он был установлен
+                        const deletionTimer = roomDeletionTimers.get(roomId);
+                        if (deletionTimer) {
+                            clearTimeout(deletionTimer);
+                            roomDeletionTimers.delete(roomId);
+                            console.log('✅ Room deletion cancelled (users still in room):', roomId);
+                        }
                     }
                     break;
                 }
