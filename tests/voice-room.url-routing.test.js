@@ -17,8 +17,12 @@ beforeEach(async () => {
   
   // Создаем модуль App
   App = {
+    _isCordova: false,
     get isCordova() {
-      return typeof window.cordova !== 'undefined';
+      return this._isCordova || typeof window.cordova !== 'undefined';
+    },
+    set isCordova(value) {
+      this._isCordova = value;
     },
     get isBrowser() {
       return typeof window !== 'undefined' && !this.isCordova;
@@ -116,20 +120,29 @@ beforeEach(async () => {
       if (!username) return;
       this.myUsername = username;
       
+      // Сохраняем имя пользователя перед редиректом
+      localStorage.setItem('voiceRoomUsername', username);
+      
       // Эмулируем вызов сервера
       if (this.socket && this.socket.emit) {
         this.socket.emit('create-room', { username }, (response) => {
           if (response && !response.error) {
             this.currentRoomId = response.roomId;
             this.myUserId = response.userId;
+            
+            // Редирект на страницу комнаты для браузера
+            if (!App.isCordova) {
+              window.location.href = `/room/${response.roomId}`;
+              return;
+            }
+            
+            // Для Cordova выполняем стандартный flow
             this.initMedia().then(() => {
               this.addUserToGrid(this.myUserId, username, true);
               this.showRoomScreen();
               
               // Генерируем ссылку на комнату
-              const roomUrl = App.isCordova 
-                ? `voice-room://room?${this.currentRoomId}` 
-                : `${window.location.origin}/room/${this.currentRoomId}`;
+              const roomUrl = `voice-room://room?${this.currentRoomId}`;
               
               if (this.elements.roomLinkInput) {
                 this.elements.roomLinkInput.value = roomUrl;
@@ -151,6 +164,13 @@ beforeEach(async () => {
         this.currentRoomId = mockRoomId;
         this.myUserId = mockUserId;
         
+        // Редирект на страницу комнаты для браузера
+        if (!App.isCordova) {
+          window.location.href = `/room/${mockRoomId}`;
+          return;
+        }
+        
+        // Для Cordova выполняем стандартный flow
         await this.initMedia();
         this.addUserToGrid(this.myUserId, username, true);
         this.showRoomScreen();
@@ -462,7 +482,10 @@ describe('URL роутинг для комнат /room/:roomId', () => {
       expect(VoiceRoom.currentRoomId).toBeTruthy();
     });
     
-    it('должен сохранять ссылку в roomLinkInput при создании комнаты', async () => {
+    it('должен сохранять ссылку в roomLinkInput при создании комнаты в Cordova', async () => {
+      // Устанавливаем флаг что это Cordova
+      App.isCordova = true;
+      
       VoiceRoom.init();
       await new Promise(resolve => setTimeout(resolve, 100));
       await VoiceRoom.initMedia();
@@ -474,12 +497,99 @@ describe('URL роутинг для комнат /room/:roomId', () => {
         setTimeout(resolve, 200);
       });
       
-      // После реализации нужно проверить что ссылка в формате /room/:roomId
+      // В Cordova должна быть ссылка в roomLinkInput
       const roomId = VoiceRoom.currentRoomId;
       if (roomId && VoiceRoom.elements.roomLinkInput) {
-        const expectedUrl = `${window.location.origin}/room/${roomId}`;
+        const expectedUrl = `voice-room://room?${roomId}`;
         expect(VoiceRoom.elements.roomLinkInput.value).toBe(expectedUrl);
       }
+    });
+    
+    it('должен выполнять редирект на /room/:roomId при создании комнаты в браузере', async () => {
+      // Устанавливаем флаг что это браузер (не Cordova)
+      App.isCordova = false;
+      
+      // Мокаем window.location.href для проверки редиректа
+      let redirectUrl = null;
+      const originalLocation = window.location;
+      Object.defineProperty(window, 'location', {
+        value: {
+          ...originalLocation,
+          set href(value) {
+            redirectUrl = value;
+          },
+          get href() {
+            return redirectUrl || originalLocation.href;
+          }
+        },
+        writable: true,
+        configurable: true
+      });
+      
+      VoiceRoom.init();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await VoiceRoom.initMedia();
+      
+      VoiceRoom.elements.usernameInput.value = 'TestUser';
+      
+      await new Promise(resolve => {
+        VoiceRoom.createRoom();
+        setTimeout(resolve, 200);
+      });
+      
+      // Проверяем что произошел редирект на правильный URL
+      expect(redirectUrl).toBeTruthy();
+      expect(redirectUrl).toMatch(/^\/room\/[A-Z0-9]{6}$/);
+      
+      // Восстанавливаем оригинальный location
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+        configurable: true
+      });
+    });
+    
+    it('не должен делать редирект в Cordova окружении', async () => {
+      // Устанавливаем флаг что это Cordova
+      App.isCordova = true;
+      
+      VoiceRoom.init();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await VoiceRoom.initMedia();
+      
+      VoiceRoom.elements.usernameInput.value = 'TestUser';
+      
+      // Мокаем window.location.href для проверки что редирект НЕ происходит
+      let redirectUrl = null;
+      const originalLocation = window.location;
+      Object.defineProperty(window, 'location', {
+        value: {
+          ...originalLocation,
+          set href(value) {
+            redirectUrl = value;
+          },
+          get href() {
+            return redirectUrl || originalLocation.href;
+          }
+        },
+        writable: true,
+        configurable: true
+      });
+      
+      await new Promise(resolve => {
+        VoiceRoom.createRoom();
+        setTimeout(resolve, 200);
+      });
+      
+      // В Cordova не должно быть редиректа
+      expect(redirectUrl).toBeNull();
+      
+      // Восстанавливаем оригинальный location
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+        configurable: true
+      });
     });
   });
   

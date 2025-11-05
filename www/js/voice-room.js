@@ -867,6 +867,16 @@ const VoiceRoom = {
                 this.myUserId = userId;
                 console.log('✅ Room created:', roomId, 'User ID:', userId);
                 
+                // Сохраняем имя пользователя перед редиректом
+                localStorage.setItem('voiceRoomUsername', username);
+                
+                // Редирект на страницу комнаты
+                if (!App.isCordova) {
+                    window.location.href = `/room/${roomId}`;
+                    return; // Прерываем выполнение, так как происходит редирект
+                }
+                
+                // Для Cordova показываем уведомление и выполняем стандартный flow
                 this.showNotification('Комната создана!', 'success', 2000);
                 
                 this.initMedia().then(() => {
@@ -876,9 +886,7 @@ const VoiceRoom = {
                         this.elements.currentRoomIdSpan.textContent = roomId;
                     }
                     
-                    const roomUrl = App.isCordova 
-                        ? `voice-room://room?${roomId}` 
-                        : `${window.location.origin}/room/${roomId}`;
+                    const roomUrl = `voice-room://room?${roomId}`;
                     
                     if (this.elements.roomLinkInput) {
                         this.elements.roomLinkInput.value = roomUrl;

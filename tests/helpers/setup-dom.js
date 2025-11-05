@@ -112,13 +112,14 @@ export function setupDOM() {
     // Создаем объект location с возможностью изменения pathname
     let currentPathname = '/';
     let currentSearch = '';
+    let currentHref = 'http://localhost:3000/';
     
     // Создаем функцию для обновления location
     const updateLocation = () => {
       Object.defineProperty(window, 'location', {
         value: {
           origin: 'http://localhost:3000',
-          href: `http://localhost:3000${currentPathname}${currentSearch}`,
+          href: currentHref,
           get pathname() {
             return currentPathname;
           },
@@ -126,7 +127,27 @@ export function setupDOM() {
             return currentSearch;
           },
           get href() {
-            return `http://localhost:3000${currentPathname}${currentSearch ? '?' + currentSearch : ''}`;
+            return currentHref;
+          },
+          set href(value) {
+            currentHref = value;
+            // Если это относительный URL, парсим его
+            if (value.startsWith('/')) {
+              const parts = value.split('?');
+              currentPathname = parts[0];
+              currentSearch = parts[1] || '';
+              currentHref = `http://localhost:3000${value}`;
+            } else {
+              try {
+                const urlObj = new URL(value);
+                currentPathname = urlObj.pathname;
+                currentSearch = urlObj.search.substring(1);
+                currentHref = value;
+              } catch (e) {
+                currentHref = value;
+              }
+            }
+            updateLocation();
           }
         },
         writable: true,
@@ -144,6 +165,7 @@ export function setupDOM() {
           const urlObj = new URL(url, 'http://localhost:3000');
           currentPathname = urlObj.pathname;
           currentSearch = urlObj.search.substring(1); // Убираем '?'
+          currentHref = `http://localhost:3000${urlObj.pathname}${urlObj.search}`;
           updateLocation();
         } catch (e) {
           // Если URL относительный, парсим его вручную
@@ -151,6 +173,7 @@ export function setupDOM() {
             const parts = url.split('?');
             currentPathname = parts[0];
             currentSearch = parts[1] || '';
+            currentHref = `http://localhost:3000${url}`;
             updateLocation();
           }
         }
