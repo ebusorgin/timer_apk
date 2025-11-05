@@ -42,6 +42,15 @@ class MockSocket {
     return this;
   }
 
+  once(event, handler) {
+    const onceHandler = (...args) => {
+      handler(...args);
+      this.off(event, onceHandler);
+    };
+    this.on(event, onceHandler);
+    return this;
+  }
+
   off(event, handler) {
     if (this._eventHandlers.has(event)) {
       const handlers = this._eventHandlers.get(event);
@@ -108,14 +117,15 @@ class MockSocket {
     room.users.set(userId, { socketId: this.id, username });
     this.join(roomId);
     
-    // Уведомляем других участников
+    // Уведомляем всех участников комнаты (включая создателя) о новом пользователе
     const existingUsers = Array.from(room.users.entries())
       .filter(([id]) => id !== userId)
       .map(([id, u]) => ({ userId: id, username: u.username }));
     
     // Отправляем событие user-joined всем участникам комнаты
     serverState.clients.forEach((client) => {
-      if (client.id !== this.id && client._rooms.has(roomId)) {
+      if (client._rooms.has(roomId)) {
+        // Отправляем событие всем, включая создателя комнаты
         client._emitEvent('user-joined', { userId, username });
       }
     });
@@ -156,23 +166,30 @@ class MockSocket {
   }
 
   _handleWebRTCEvent(event, data) {
-    const { roomId, targetUserId, to, from } = data;
+    const { roomId, targetUserId, fromUserId } = data;
     const room = serverState.rooms.get(roomId);
     
     if (!room) return;
     
-    // Поддерживаем оба формата: targetUserId и to
-    const targetId = targetUserId || to;
+    if (!targetUserId) {
+      console.error('Missing targetUserId in WebRTC event:', event, data);
+      return;
+    }
     
-    // Находим userId отправителя по его socketId
-    let fromUserId = from;
-    if (!fromUserId) {
+    // Находим userId отправителя по его socketId если не указан явно
+    let actualFromUserId = fromUserId;
+    if (!actualFromUserId) {
       for (const [userId, user] of room.users.entries()) {
         if (user.socketId === this.id) {
-          fromUserId = userId;
+          actualFromUserId = userId;
           break;
         }
       }
+    }
+    
+    if (!actualFromUserId) {
+      console.error('Cannot determine fromUserId for WebRTC event:', event, data);
+      return;
     }
     
     // Пересылаем событие целевому пользователю
@@ -180,12 +197,12 @@ class MockSocket {
       if (client.id !== this.id && client._rooms.has(roomId)) {
         // Находим socketId целевого пользователя
         for (const [userId, user] of room.users.entries()) {
-          if (userId === targetId && user.socketId === client.id) {
-            // Преобразуем формат данных для получения события
+          if (userId === targetUserId && user.socketId === client.id) {
+            // Отправляем событие в формате targetUserId/fromUserId
             const eventData = {
               ...data,
-              from: fromUserId,
-              to: targetId
+              targetUserId: targetUserId,
+              fromUserId: actualFromUserId
             };
             client._emitEvent(event, eventData);
             break;

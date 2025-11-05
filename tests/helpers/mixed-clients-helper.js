@@ -307,15 +307,18 @@ async function createCordovaVoiceRoomInstance(index) {
       });
       
       this.socket.on('offer', async (data) => {
-        await this.handleOffer(data);
+        const fromUserId = data.fromUserId || data.from;
+        await this.handleOffer({ ...data, from: fromUserId });
       });
       
       this.socket.on('answer', async (data) => {
-        await this.handleAnswer(data);
+        const fromUserId = data.fromUserId || data.from;
+        await this.handleAnswer({ ...data, from: fromUserId });
       });
       
       this.socket.on('ice-candidate', async (data) => {
-        await this.handleIceCandidate(data);
+        const fromUserId = data.fromUserId || data.from;
+        await this.handleIceCandidate({ ...data, from: fromUserId });
       });
       
       this.socket.on('microphone-status', (data) => {
@@ -401,7 +404,8 @@ async function createCordovaVoiceRoomInstance(index) {
         peer.onicecandidate = (event) => {
           if (event.candidate && this.socket && this.socket.connected) {
             this.socket.emit('ice-candidate', {
-              to: targetUserId,
+              targetUserId: targetUserId,
+              fromUserId: this.myUserId,
               candidate: event.candidate,
               roomId: this.currentRoomId
             });
@@ -485,7 +489,8 @@ async function createCordovaVoiceRoomInstance(index) {
             peer.setLocalDescription(offer);
             if (this.socket && this.socket.connected) {
               this.socket.emit('offer', {
-                to: targetUserId,
+                targetUserId: targetUserId,
+                fromUserId: this.myUserId,
                 offer: offer,
                 roomId: this.currentRoomId
               });
@@ -500,17 +505,19 @@ async function createCordovaVoiceRoomInstance(index) {
     },
     
     async handleOffer(data) {
-      const peer = this.peers.get(data.from);
+      const fromUserId = data.fromUserId || data.from;
+      const peer = this.peers.get(fromUserId);
       if (!peer) {
-        this.createPeerConnection(data.from);
-        const newPeer = this.peers.get(data.from);
+        this.createPeerConnection(fromUserId);
+        const newPeer = this.peers.get(fromUserId);
         if (newPeer) {
           await newPeer.setRemoteDescription(new RTCSessionDescription(data.offer));
           const answer = await newPeer.createAnswer();
           await newPeer.setLocalDescription(answer);
           if (this.socket && this.socket.connected) {
             this.socket.emit('answer', {
-              to: data.from,
+              targetUserId: fromUserId,
+              fromUserId: this.myUserId,
               answer: answer,
               roomId: this.currentRoomId
             });
@@ -522,7 +529,8 @@ async function createCordovaVoiceRoomInstance(index) {
         await peer.setLocalDescription(answer);
         if (this.socket && this.socket.connected) {
           this.socket.emit('answer', {
-            to: data.from,
+            targetUserId: fromUserId,
+            fromUserId: this.myUserId,
             answer: answer,
             roomId: this.currentRoomId
           });
@@ -531,14 +539,16 @@ async function createCordovaVoiceRoomInstance(index) {
     },
     
     async handleAnswer(data) {
-      const peer = this.peers.get(data.from);
+      const fromUserId = data.fromUserId || data.from;
+      const peer = this.peers.get(fromUserId);
       if (peer) {
         await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
     },
     
     async handleIceCandidate(data) {
-      const peer = this.peers.get(data.from);
+      const fromUserId = data.fromUserId || data.from;
+      const peer = this.peers.get(fromUserId);
       if (peer && data.candidate) {
         await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
       }
@@ -897,15 +907,18 @@ async function createWebVoiceRoomInstance(index) {
       });
       
       this.socket.on('offer', async (data) => {
-        await this.handleOffer(data);
+        const fromUserId = data.fromUserId || data.from;
+        await this.handleOffer({ ...data, from: fromUserId });
       });
       
       this.socket.on('answer', async (data) => {
-        await this.handleAnswer(data);
+        const fromUserId = data.fromUserId || data.from;
+        await this.handleAnswer({ ...data, from: fromUserId });
       });
       
       this.socket.on('ice-candidate', async (data) => {
-        await this.handleIceCandidate(data);
+        const fromUserId = data.fromUserId || data.from;
+        await this.handleIceCandidate({ ...data, from: fromUserId });
       });
       
       this.socket.on('microphone-status', (data) => {
@@ -962,7 +975,8 @@ async function createWebVoiceRoomInstance(index) {
         peer.onicecandidate = (event) => {
           if (event.candidate && this.socket && this.socket.connected) {
             this.socket.emit('ice-candidate', {
-              to: targetUserId,
+              targetUserId: targetUserId,
+              fromUserId: this.myUserId,
               candidate: event.candidate,
               roomId: this.currentRoomId
             });
@@ -1088,17 +1102,19 @@ async function createWebVoiceRoomInstance(index) {
     },
     
     async handleOffer(data) {
-      const peer = this.peers.get(data.from);
+      const fromUserId = data.fromUserId || data.from;
+      const peer = this.peers.get(fromUserId);
       if (!peer) {
-        this.createPeerConnection(data.from);
-        const newPeer = this.peers.get(data.from);
+        this.createPeerConnection(fromUserId);
+        const newPeer = this.peers.get(fromUserId);
         if (newPeer) {
           await newPeer.setRemoteDescription(new RTCSessionDescription(data.offer));
           const answer = await newPeer.createAnswer();
           await newPeer.setLocalDescription(answer);
           if (this.socket && this.socket.connected) {
             this.socket.emit('answer', {
-              to: data.from,
+              targetUserId: fromUserId,
+              fromUserId: this.myUserId,
               answer: answer,
               roomId: this.currentRoomId
             });
@@ -1110,7 +1126,8 @@ async function createWebVoiceRoomInstance(index) {
         await peer.setLocalDescription(answer);
         if (this.socket && this.socket.connected) {
           this.socket.emit('answer', {
-            to: data.from,
+            targetUserId: fromUserId,
+            fromUserId: this.myUserId,
             answer: answer,
             roomId: this.currentRoomId
           });
@@ -1119,14 +1136,16 @@ async function createWebVoiceRoomInstance(index) {
     },
     
     async handleAnswer(data) {
-      const peer = this.peers.get(data.from);
+      const fromUserId = data.fromUserId || data.from;
+      const peer = this.peers.get(fromUserId);
       if (peer) {
         await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
     },
     
     async handleIceCandidate(data) {
-      const peer = this.peers.get(data.from);
+      const fromUserId = data.fromUserId || data.from;
+      const peer = this.peers.get(fromUserId);
       if (peer && data.candidate) {
         await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
       }
