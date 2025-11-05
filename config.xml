@@ -7,7 +7,7 @@
     <author email="dev@example.com" href="https://example.com">
         Your Name
     </author>
-    <content src="index.html" />
+    <content src="cordova.html" />
     <access origin="*" />
     <allow-intent href="http://*/*" />
     <allow-intent href="https://*/*" />

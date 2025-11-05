@@ -21,10 +21,28 @@ const App = {
     
     // Определение URL для Socket.IO
     getSocketUrl() {
-        // Всегда используем текущий хост (работает и в браузере и в Cordova)
-        if (typeof window !== 'undefined') {
+        // В Cordova window.location.origin возвращает file:// или cordova://
+        // Поэтому нужно использовать реальный URL сервера
+        if (this.isCordova) {
+            // Проверяем сохраненный URL в localStorage (если пользователь настраивал)
+            const savedServerUrl = localStorage.getItem('voiceRoomServerUrl');
+            if (savedServerUrl && savedServerUrl.startsWith('http')) {
+                console.log('Using saved server URL from localStorage:', savedServerUrl);
+                return savedServerUrl;
+            }
+            
+            // Используем дефолтный URL сервера для продакшена
+            const defaultServerUrl = 'https://aiternitas.ru';
+            console.log('Using default server URL for Cordova:', defaultServerUrl);
+            return defaultServerUrl;
+        }
+        
+        // В браузере используем текущий хост (как было - работает)
+        if (typeof window !== 'undefined' && window.location && window.location.origin) {
             return window.location.origin;
         }
+        
+        // Fallback для тестирования
         return 'http://localhost:3000';
     },
     

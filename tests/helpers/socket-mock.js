@@ -156,18 +156,38 @@ class MockSocket {
   }
 
   _handleWebRTCEvent(event, data) {
-    const { roomId, targetUserId } = data;
+    const { roomId, targetUserId, to, from } = data;
     const room = serverState.rooms.get(roomId);
     
     if (!room) return;
     
+    // Поддерживаем оба формата: targetUserId и to
+    const targetId = targetUserId || to;
+    
+    // Находим userId отправителя по его socketId
+    let fromUserId = from;
+    if (!fromUserId) {
+      for (const [userId, user] of room.users.entries()) {
+        if (user.socketId === this.id) {
+          fromUserId = userId;
+          break;
+        }
+      }
+    }
+    
     // Пересылаем событие целевому пользователю
     serverState.clients.forEach((client) => {
-      if (client._rooms.has(roomId)) {
+      if (client.id !== this.id && client._rooms.has(roomId)) {
         // Находим socketId целевого пользователя
         for (const [userId, user] of room.users.entries()) {
-          if (userId === targetUserId && user.socketId === client.id) {
-            client._emitEvent(event, data);
+          if (userId === targetId && user.socketId === client.id) {
+            // Преобразуем формат данных для получения события
+            const eventData = {
+              ...data,
+              from: fromUserId,
+              to: targetId
+            };
+            client._emitEvent(event, eventData);
             break;
           }
         }

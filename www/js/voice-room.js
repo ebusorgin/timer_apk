@@ -718,43 +718,47 @@ const VoiceRoom = {
     setupEventListeners() {
         console.log('Setting up event listeners...');
         console.log('Document ready state:', document.readyState);
+        console.log('Is Cordova:', App.isCordova);
         
-        if (this.elements.btnCreateRoom) {
-            console.log('btnCreateRoom found, adding click listener');
-            console.log('Button element:', this.elements.btnCreateRoom);
-            console.log('Button ID:', this.elements.btnCreateRoom.id);
-            console.log('Button current onclick:', this.elements.btnCreateRoom.onclick);
+        // В Cordova нужно устанавливать обработчики через addEventListener
+        // В браузере inline onclick работает, не трогаем его
+        if (App.isCordova && this.elements.btnCreateRoom) {
+            console.log('Cordova: Setting up event listeners for btnCreateRoom');
             
-            // Добавляем обработчик через addEventListener
+            // Убеждаемся что DOM готов
+            if (document.readyState === 'loading' || !document.body) {
+                console.log('Waiting for DOM to be ready in Cordova...');
+                setTimeout(() => this.setupEventListeners(), 100);
+                return;
+            }
+            
             const clickHandler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Create room button clicked via addEventListener');
-                console.log('Event:', e);
-                console.log('VoiceRoom.createRoom type:', typeof this.createRoom);
-                console.log('VoiceRoom object:', this);
-                this.createRoom();
+                console.log('Create room button clicked (Cordova)');
+                console.log('Event type:', e.type);
+                if (typeof this.createRoom === 'function') {
+                    this.createRoom();
+                } else {
+                    console.error('createRoom is not a function!');
+                }
             };
             
+            // Для мобильных устройств используем touchstart как основной обработчик
+            this.elements.btnCreateRoom.addEventListener('touchstart', clickHandler, { passive: false });
+            this.elements.btnCreateRoom.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, { passive: false });
+            // Также добавляем click для совместимости
             this.elements.btnCreateRoom.addEventListener('click', clickHandler);
             
-            // Проверяем что обработчик установлен
-            console.log('Event listener added');
-            console.log('Button onclick after setup:', this.elements.btnCreateRoom.onclick);
-            
-            // Тестовый клик для проверки
-            console.log('Testing button click programmatically...');
-            setTimeout(() => {
-                if (this.elements.btnCreateRoom) {
-                    const testEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
-                    // Не вызываем автоматически, только логируем
-                    console.log('Test event created, button ready for clicks');
-                }
-            }, 1000);
-        } else {
-            console.error('btnCreateRoom element not found!');
-            console.error('Available elements:', Object.keys(this.elements));
-            console.error('Document body:', document.body.innerHTML.substring(0, 500));
+            console.log('Event listeners added for btnCreateRoom in Cordova');
+        }
+        
+        // В браузере inline onclick работает, не добавляем дополнительных обработчиков
+        if (!App.isCordova && this.elements.btnCreateRoom) {
+            console.log('Browser: inline onclick handler will be used');
         }
         
         if (this.elements.btnJoinRoom) {
@@ -781,17 +785,45 @@ const VoiceRoom = {
             });
         }
         
-        if (this.elements.btnJoinRoomNow) {
+        // Для кнопки присоединения к комнате - только в Cordova добавляем обработчики
+        if (App.isCordova && this.elements.btnJoinRoomNow) {
+            console.log('Cordova: Setting up event listeners for btnJoinRoomNow');
+            
+            const joinClickHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Join room button clicked (Cordova)');
+                console.log('Event type:', e.type);
+                if (typeof this.joinExistingRoom === 'function') {
+                    this.joinExistingRoom();
+                } else {
+                    console.error('joinExistingRoom is not a function!');
+                }
+            };
+            
+            // Для мобильных устройств используем touchstart
+            this.elements.btnJoinRoomNow.addEventListener('touchstart', joinClickHandler, { passive: false });
+            this.elements.btnJoinRoomNow.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, { passive: false });
+            // Также добавляем click для совместимости
+            this.elements.btnJoinRoomNow.addEventListener('click', joinClickHandler);
+            
+            console.log('Event listeners added for btnJoinRoomNow in Cordova');
+        }
+        
+        // В браузере btnJoinRoomNow может иметь inline обработчик или другой механизм
+        if (!App.isCordova && this.elements.btnJoinRoomNow) {
+            // В браузере может быть inline обработчик, оставляем как есть
+            // Добавляем addEventListener для совместимости
             this.elements.btnJoinRoomNow.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('Join room button clicked');
-                console.log('Button element:', this.elements.btnJoinRoomNow);
-                console.log('Room ID input value:', this.elements.roomIdInput?.value);
-                console.log('Username input value:', this.elements.usernameInput?.value);
-                console.log('VoiceRoom object:', this);
-                console.log('joinExistingRoom method:', typeof this.joinExistingRoom);
-                this.joinExistingRoom();
+                if (typeof this.joinExistingRoom === 'function') {
+                    this.joinExistingRoom();
+                }
             });
         }
         
@@ -1638,6 +1670,7 @@ const VoiceRoom = {
             
             peer.ontrack = (event) => {
                 console.log('Received track from:', targetUserId);
+                console.log('Updating status to connected for:', targetUserId);
                 const stream = event.streams[0];
                 
                 const audio = document.getElementById(`audio-${targetUserId}`);
@@ -1656,6 +1689,31 @@ const VoiceRoom = {
                         if (card) card.classList.add('has-video');
                     }
                 }
+                
+                // Обновляем статус при получении трека
+                // Небольшая задержка для гарантии что карточка создана
+                setTimeout(() => {
+                    const card = document.getElementById(`user-${targetUserId}`);
+                    console.log('Card found in ontrack for', targetUserId, ':', !!card);
+                    if (card) {
+                        const status = card.querySelector('.user-status');
+                        if (status) {
+                            console.log('Updating status to "Подключен" for', targetUserId);
+                            // Сохраняем иконку микрофона если она есть
+                            const micIcon = status.querySelector('.microphone-status-icon');
+                            status.textContent = 'Подключен';
+                            if (micIcon) {
+                                status.appendChild(micIcon);
+                            }
+                            card.classList.add('connected');
+                            card.classList.remove('reconnecting', 'error');
+                        } else {
+                            console.warn('Status element not found in ontrack for', targetUserId);
+                        }
+                    } else {
+                        console.warn('Card not found in ontrack for', targetUserId);
+                    }
+                }, 100);
             };
             
             peer.onicecandidate = (event) => {
@@ -1672,27 +1730,50 @@ const VoiceRoom = {
             peer.oniceconnectionstatechange = () => {
                 console.log(`ICE connection state with ${targetUserId}:`, peer.iceConnectionState);
                 const card = document.getElementById(`user-${targetUserId}`);
+                console.log(`Card found for ${targetUserId}:`, !!card);
                 if (card) {
                     const status = card.querySelector('.user-status');
+                    console.log(`Status element found for ${targetUserId}:`, !!status);
                     if (status) {
                         switch (peer.iceConnectionState) {
                             case 'connected':
+                            case 'completed':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIcon = status.querySelector('.microphone-status-icon');
                                 status.textContent = 'Подключен';
+                                if (micIcon) {
+                                    status.appendChild(micIcon);
+                                }
                                 card.classList.remove('reconnecting', 'error');
                                 card.classList.add('connected');
                                 break;
                             case 'connecting':
                             case 'checking':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconConnecting = status.querySelector('.microphone-status-icon');
                                 status.textContent = 'Подключение...';
+                                if (micIconConnecting) {
+                                    status.appendChild(micIconConnecting);
+                                }
                                 card.classList.add('reconnecting');
                                 card.classList.remove('error', 'connected');
                                 break;
                             case 'disconnected':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconDisconnected = status.querySelector('.microphone-status-icon');
                                 status.textContent = 'Отключен';
+                                if (micIconDisconnected) {
+                                    status.appendChild(micIconDisconnected);
+                                }
                                 card.classList.remove('reconnecting', 'connected');
                                 break;
                             case 'failed':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconFailed = status.querySelector('.microphone-status-icon');
                                 status.textContent = 'Ошибка подключения';
+                                if (micIconFailed) {
+                                    status.appendChild(micIconFailed);
+                                }
                                 card.classList.add('error');
                                 card.classList.remove('reconnecting', 'connected');
                                 // Пытаемся переподключиться
@@ -1703,15 +1784,85 @@ const VoiceRoom = {
                                 }, 3000);
                                 break;
                             case 'closed':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconClosed = status.querySelector('.microphone-status-icon');
                                 status.textContent = 'Закрыто';
+                                if (micIconClosed) {
+                                    status.appendChild(micIconClosed);
+                                }
                                 break;
                         }
+                    } else {
+                        console.warn(`Status element not found for user ${targetUserId}. Card exists:`, !!card);
                     }
+                } else {
+                    console.warn(`Card not found for user ${targetUserId}`);
                 }
             };
             
             peer.onconnectionstatechange = () => {
                 console.log(`Connection state with ${targetUserId}:`, peer.connectionState);
+                const card = document.getElementById(`user-${targetUserId}`);
+                console.log(`Card found for ${targetUserId} (connection state):`, !!card);
+                if (card) {
+                    const status = card.querySelector('.user-status');
+                    console.log(`Status element found for ${targetUserId} (connection state):`, !!status);
+                    if (status) {
+                        switch (peer.connectionState) {
+                            case 'connected':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIcon = status.querySelector('.microphone-status-icon');
+                                status.textContent = 'Подключен';
+                                if (micIcon) {
+                                    status.appendChild(micIcon);
+                                }
+                                card.classList.remove('reconnecting', 'error');
+                                card.classList.add('connected');
+                                break;
+                            case 'connecting':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconConnecting = status.querySelector('.microphone-status-icon');
+                                status.textContent = 'Подключение...';
+                                if (micIconConnecting) {
+                                    status.appendChild(micIconConnecting);
+                                }
+                                card.classList.add('reconnecting');
+                                card.classList.remove('error', 'connected');
+                                break;
+                            case 'disconnected':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconDisconnected = status.querySelector('.microphone-status-icon');
+                                status.textContent = 'Отключен';
+                                if (micIconDisconnected) {
+                                    status.appendChild(micIconDisconnected);
+                                }
+                                card.classList.remove('reconnecting', 'connected');
+                                break;
+                            case 'failed':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconFailed = status.querySelector('.microphone-status-icon');
+                                status.textContent = 'Ошибка подключения';
+                                if (micIconFailed) {
+                                    status.appendChild(micIconFailed);
+                                }
+                                card.classList.add('error');
+                                card.classList.remove('reconnecting', 'connected');
+                                break;
+                            case 'closed':
+                                // Сохраняем иконку микрофона если она есть
+                                const micIconClosed = status.querySelector('.microphone-status-icon');
+                                status.textContent = 'Закрыто';
+                                if (micIconClosed) {
+                                    status.appendChild(micIconClosed);
+                                }
+                                break;
+                        }
+                    } else {
+                        console.warn(`Status element not found for user ${targetUserId} (connection state). Card exists:`, !!card);
+                    }
+                } else {
+                    console.warn(`Card not found for user ${targetUserId} (connection state)`);
+                }
             };
             
             peer.onerror = (error) => {
