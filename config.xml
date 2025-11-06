@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget id="com.example.timeapp" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-    <name>Voice Room</name>
+<widget id="com.severomorets.app" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>Severomorets</name>
     <description>
-        Голосовые комнаты для общения в реальном времени
+        Severomorets - система голосовых звонков
     </description>
     <author email="dev@example.com" href="https://example.com">
-        Your Name
+        Severomorets Team
     </author>
     <content src="cordova.html" />
     <access origin="*" />
@@ -17,6 +17,12 @@
     <allow-intent href="geo:*" />
     <platform name="android">
         <allow-intent href="market:*" />
+        <icon density="ldpi" src="res/icon/android/ldpi.png" />
+        <icon density="mdpi" src="res/icon/android/mdpi.png" />
+        <icon density="hdpi" src="res/icon/android/hdpi.png" />
+        <icon density="xhdpi" src="res/icon/android/xhdpi.png" />
+        <icon density="xxhdpi" src="res/icon/android/xxhdpi.png" />
+        <icon density="xxxhdpi" src="res/icon/android/xxxhdpi.png" />
     </platform>
     <plugin name="cordova-plugin-android-permissions" spec="^1.1.5" />
     <preference name="DisallowOverscroll" value="true" />
@@ -31,4 +37,3 @@
     <preference name="SplashScreenDelay" value="2000" />
     <preference name="AutoHideSplashScreen" value="true" />
 </widget>
-

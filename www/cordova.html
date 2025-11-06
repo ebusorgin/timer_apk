@@ -3,98 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: gap: https: 'unsafe-eval' 'unsafe-inline' http://localhost:* ws: wss:; style-src 'self' 'unsafe-inline' https:; media-src *; img-src 'self' data: content:;">
-    <title>Voice Room</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: gap: https: 'unsafe-eval' 'unsafe-inline' http://localhost:* ws: wss:; style-src 'self' 'unsafe-inline'; media-src *; img-src 'self' data: content:;">
+    <title>Severomorets Master</title>
     <link rel="stylesheet" href="css/cordova.css">
 </head>
 <body>
     <div id="app">
-        <!-- Login Screen -->
-        <div id="loginScreen" class="screen active">
-            <div class="login-container">
-                <div class="app-header">
-                    <h1>🔊 Voice Room</h1>
-                    <p class="subtitle">Голосовая комната</p>
-                </div>
+        <!-- Экран подключения -->
+        <div id="connectScreen" class="screen active">
+            <div class="container">
+                <h1>🔊 Severomorets</h1>
+                <p class="subtitle">Мастер приложение</p>
                 
                 <div class="form-group">
-                    <input type="text" id="username" placeholder="Введите ваше имя" maxlength="20" autocomplete="off">
+                    <input type="text" id="userName" placeholder="Ваше имя" maxlength="20">
                 </div>
-
-                <div class="button-group">
-                    <button id="btnCreateRoom" class="btn btn-primary">
-                        <span class="btn-icon">➕</span>
-                        <span class="btn-text">Создать комнату</span>
-                    </button>
-                    <button id="btnJoinRoom" class="btn btn-secondary">
-                        <span class="btn-icon">🔗</span>
-                        <span class="btn-text">Присоединиться</span>
-                    </button>
-                </div>
-
-                <div id="roomLinkContainer" class="room-link-container" style="display: none;">
-                    <div class="room-link-label">Комната создана!</div>
-                    <div class="room-link-value" id="roomLink"></div>
-                </div>
-
-                <div id="joinContainer" class="join-container">
-                    <input type="text" id="roomId" placeholder="Введите код комнаты" maxlength="6" style="text-transform: uppercase;">
-                    <button id="btnJoinRoomNow" class="btn btn-primary">
-                        <span class="btn-icon">✅</span>
-                        <span class="btn-text">Присоединиться</span>
-                    </button>
-                </div>
+                
+                <button id="btnConnect" class="btn btn-primary">Подключиться</button>
+                
+                <div id="statusMessage" class="status-message"></div>
             </div>
         </div>
 
-        <!-- Room Screen -->
-        <div id="roomScreen" class="screen">
-            <div class="room-header">
-                <div class="room-info">
-                    <div class="room-title">Комната</div>
-                    <div class="room-id" id="currentRoomId"></div>
+        <!-- Экран главного экрана -->
+        <div id="mainScreen" class="screen">
+            <div class="container">
+                <h2>Подключено как Мастер</h2>
+                
+                <div id="usersList" class="users-list">
+                    <p>Ожидание пользователей...</p>
                 </div>
-                <button id="btnLeaveRoom" class="btn-icon-only">
-                    <span>🚪</span>
-                </button>
+                
+                <button id="btnDisconnect" class="btn btn-secondary">Отключиться</button>
+                
+                <div id="statusMessage" class="status-message"></div>
             </div>
-
-            <div class="room-content">
-                <div class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Участников: <span id="userCount">0</span></span>
-                </div>
-
-                <div class="users-grid" id="usersGrid">
-                    <div class="empty-state">
-                        <div class="empty-icon">👥</div>
-                        <div class="empty-text">Ожидание других участников...</div>
-                    </div>
-                </div>
-
-                <div class="controls-bar">
-                    <button id="btnToggleMic" class="control-btn">
-                        <span class="btn-icon-large">🎤</span>
-                        <span class="btn-label">Микрофон</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Status message -->
-            <div id="statusMessage" class="status-message"></div>
         </div>
     </div>
 
-    <!-- Socket.IO через CDN для Cordova -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    
-    <!-- Cordova script -->
     <script src="cordova.js"></script>
-    
-    <!-- App scripts -->
-    <script src="js/app-cordova.js"></script>
-    <script src="js/voice-room-cordova.js"></script>
-    <script src="js/index.js"></script>
+    <script src="js/cordova-app.js"></script>
 </body>
 </html>
 

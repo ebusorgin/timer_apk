@@ -2,183 +2,49 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: gap: https: 'unsafe-eval' 'unsafe-inline' http://localhost:* ws: wss:; style-src 'self' 'unsafe-inline'; media-src *; img-src 'self' data: content:;">
-    <title>Voice Room - Голосовая комната</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конференция - Общение</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <div id="app">
-        <!-- Login Screen -->
-        <div id="loginScreen" class="screen active">
-            <div class="login-container">
-                <h1>🔊 Voice Room</h1>
-                <p class="subtitle">Подключитесь к голосовому чату</p>
+        <!-- Экран подключения -->
+        <div id="connectScreen" class="screen active">
+            <div class="container">
+                <h1>🎙️ Конференция</h1>
+                <p class="subtitle">Присоединитесь к конференции для общения</p>
                 
-                <div class="button-group">
-                    <button id="btnConnect" class="btn btn-primary">
-                        <span>🔗</span>
-                        <span>Подключиться</span>
-                    </button>
+                <div class="form-group">
+                    <input type="text" id="userName" placeholder="Ваше имя" maxlength="20">
                 </div>
-
-                <div class="download-apk-container">
-                    <a href="/download/apk" id="btnDownloadAPK" class="btn btn-download">
-                        <span>📱</span>
-                        <span>Скачать APK</span>
-                    </a>
-                    <small class="download-hint">Для установки на Android устройство</small>
-                </div>
+                
+                <button id="btnConnect" class="btn btn-primary">Присоединиться</button>
+                
+                <div id="statusMessage" class="status-message"></div>
             </div>
         </div>
 
-        <!-- Room Screen -->
-        <div id="roomScreen" class="screen">
-            <div class="room-header">
-                <div class="room-title">
-                    <h2>Голосовой чат</h2>
-                    <button id="btnLeaveRoom" class="btn btn-danger btn-small">
-                        <span>🚪</span>
-                        <span>Отключиться</span>
-                    </button>
+        <!-- Экран конференции -->
+        <div id="conferenceScreen" class="screen">
+            <div class="container conference-container">
+                <h2>Конференция</h2>
+                
+                <div id="conferenceStatus" class="conference-status"></div>
+                
+                <div id="participantsList" class="participants-list"></div>
+                
+                <div class="conference-controls">
+                    <button id="btnMute" class="btn btn-control">🎤 Включить микрофон</button>
+                    <button id="btnDisconnect" class="btn btn-secondary">Покинуть конференцию</button>
                 </div>
-                <div class="status-badge">
-                    <span class="status-dot"></span>
-                    <span>Участников: <span id="userCount">0</span></span>
-                </div>
+                
+                <div id="statusMessage" class="status-message"></div>
             </div>
-
-            <div class="room-content">
-                <div class="users-grid" id="usersGrid">
-                    <div class="empty-state">Ожидание других участников...</div>
-                </div>
-
-                <div class="controls-bar">
-                    <button id="btnToggleMic" class="control-btn">
-                        <span class="btn-icon">🎤</span>
-                        <span class="btn-label">Выключить микрофон</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Status message -->
-            <div id="statusMessage" class="status-message"></div>
         </div>
     </div>
 
-    <!-- Socket.IO и скрипты приложения -->
-    <script>
-        (function() {
-            // Загружаем Socket.IO в зависимости от окружения
-            function loadSocketIO(callback) {
-                if (typeof cordova !== 'undefined') {
-                    // Для Cordova используем CDN
-                    const script = document.createElement('script');
-                    script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
-                    script.onload = callback;
-                    script.onerror = callback; // Продолжаем даже если не загрузилось
-                    document.head.appendChild(script);
-                } else {
-                    // Для браузера используем встроенный Socket.IO от сервера
-                    const script = document.createElement('script');
-                    script.src = '/socket.io/socket.io.js';
-                    script.onload = callback;
-                    script.onerror = function() {
-                        // Если сервер не запущен, пробуем CDN
-                        const cdnScript = document.createElement('script');
-                        cdnScript.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
-                        cdnScript.onload = callback;
-                        cdnScript.onerror = callback;
-                        document.head.appendChild(cdnScript);
-                    };
-                    document.head.appendChild(script);
-                }
-            }
-            
-            function loadAppScripts() {
-                // Проверяем что Socket.IO действительно загружен
-                if (typeof io === 'undefined') {
-                    console.error('Socket.IO не загружен! Повторная попытка...');
-                    setTimeout(loadAppScripts, 500);
-                    return;
-                }
-                
-                console.log('Socket.IO loaded, loading app scripts...');
-                
-                // Загружаем наши модули последовательно
-                const scripts = [
-                    'js/app.js',
-                    'js/voice-room.js',
-                    'js/index.js'
-                ];
-                
-                let currentIndex = 0;
-                
-                function loadNext() {
-                    if (currentIndex >= scripts.length) {
-                        // Все скрипты загружены, инициализируем приложение
-                        console.log('All scripts loaded, initializing app...');
-                        if (typeof App !== 'undefined') {
-                            App.init();
-                        } else {
-                            console.error('App module not found!');
-                        }
-                        return;
-                    }
-                    
-                    const script = document.createElement('script');
-                    script.src = scripts[currentIndex];
-                    script.onload = function() {
-                        console.log('Loaded:', scripts[currentIndex]);
-                        currentIndex++;
-                        loadNext();
-                    };
-                    script.onerror = function() {
-                        console.error('Failed to load:', scripts[currentIndex]);
-                        currentIndex++;
-                        loadNext();
-                    };
-                    document.body.appendChild(script);
-                }
-                
-                loadNext();
-            }
-            
-            // Начинаем загрузку
-            loadSocketIO(function() {
-                // Небольшая задержка для гарантии загрузки Socket.IO
-                setTimeout(loadAppScripts, 100);
-            });
-        })();
-    </script>
-    
-    <!-- Cordova script (загружается только в Cordova окружении) -->
-    <script type="text/javascript">
-        // Загружаем cordova.js только если это действительно Cordova окружение
-        // Проверяем через протокол file:// или наличие специфичных для Cordova объектов
-        (function() {
-            // В браузере протокол будет http:// или https://
-            // В Cordova приложении может быть file:// или cordova://
-            const isCordova = window.location.protocol === 'file:' || 
-                             window.location.protocol === 'cordova:' ||
-                             (window.navigator && window.navigator.standalone) ||
-                             /Cordova/i.test(navigator.userAgent);
-            
-            if (isCordova) {
-                // В Cordova окружении cordova.js должен быть доступен локально
-                const cordovaScript = document.createElement('script');
-                cordovaScript.src = 'cordova.js';
-                cordovaScript.onerror = function() {
-                    // Игнорируем ошибку загрузки - это нормально если файл не найден
-                    console.log('Cordova.js загружается...');
-                };
-                document.head.appendChild(cordovaScript);
-            } else {
-                // В браузере не загружаем cordova.js вообще
-                // Сервер вернет пустой placeholder, чтобы избежать 404 ошибок
-                console.log('Браузерное окружение - cordova.js не требуется');
-            }
-        })();
-    </script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
+
