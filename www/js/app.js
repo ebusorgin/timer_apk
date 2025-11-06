@@ -275,7 +275,25 @@ const App = {
             
             // Обработка ICE соединения
             peerConnection.oniceconnectionstatechange = () => {
-                console.log(`🧊 ICE соединение с ${targetSocketId}: ${peerConnection.iceConnectionState}`);
+                const iceState = peerConnection.iceConnectionState;
+                console.log(`🧊 ICE соединение с ${targetSocketId}: ${iceState}`);
+                
+                const participant = this.participants.get(targetSocketId);
+                if (participant) {
+                    if (iceState === 'connected' || iceState === 'completed') {
+                        participant.connected = true;
+                        console.log(`✅ ICE соединение установлено с ${targetSocketId}`);
+                        // Убеждаемся, что аудио воспроизводится
+                        if (participant.audioElement && participant.audioElement.srcObject) {
+                            participant.audioElement.play().catch(err => {
+                                console.error('Ошибка воспроизведения после ICE подключения:', err);
+                            });
+                        }
+                    } else if (iceState === 'failed' || iceState === 'disconnected') {
+                        console.warn(`⚠️ ICE соединение потеряно с ${targetSocketId}: ${iceState}`);
+                    }
+                    this.updateParticipantUI(targetSocketId);
+                }
             };
             
             // Сохраняем информацию о соединении
@@ -330,7 +348,9 @@ const App = {
             if (data.type === 'offer') {
                 await this.handleOffer(pc, data);
             } else if (data.type === 'answer') {
+                console.log('📥 Получен answer от', data.fromSocketId);
                 await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                console.log('✅ Remote description установлен (answer)');
                 participant.connected = true;
                 this.updateParticipantUI(data.fromSocketId);
                 
@@ -346,10 +366,17 @@ const App = {
                     participant.pendingCandidates = [];
                 }
             } else if (data.type === 'ice-candidate') {
+                console.log('🧊 Получен ICE кандидат от', data.fromSocketId);
                 if (pc.remoteDescription) {
-                    await pc.addIceCandidate(new RTCIceCandidate(data.signal));
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(data.signal));
+                        console.log('✅ ICE кандидат добавлен');
+                    } catch (err) {
+                        console.error('❌ Ошибка добавления ICE кандидата:', err);
+                    }
                 } else {
                     // Сохраняем кандидата для добавления позже
+                    console.log('⏳ Сохранение ICE кандидата для добавления позже');
                     if (!participant.pendingCandidates) {
                         participant.pendingCandidates = [];
                     }
@@ -364,12 +391,21 @@ const App = {
     async handleOffer(pc, data) {
         try {
             // Если у нас уже есть локальное описание (мы тоже создали offer), 
-            // игнорируем входящий offer и ждем answer на наш offer
+            // это означает, что оба участника пытаются инициировать одновременно
             if (pc.localDescription && pc.localDescription.type === 'offer') {
-                console.log('Оба участника инициировали соединение, ожидаем answer');
+                console.log('⚠️ Оба участника инициировали соединение одновременно');
+                console.log('🔄 Устанавливаем удаленное описание и ждем answer на наш offer');
+                // Устанавливаем удаленное описание, но не создаем answer
+                // Будем ждать answer на наш offer
+                try {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                } catch (err) {
+                    console.error('Ошибка установки удаленного описания:', err);
+                }
                 return;
             }
             
+            console.log('📥 Установка удаленного описания (offer)');
             await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
             
             // Добавляем отложенные ICE кандидаты если есть
@@ -457,9 +493,20 @@ const App = {
         this.participants.forEach((participant, socketId) => {
             const item = document.createElement('div');
             item.className = 'participant-item';
-            const status = participant.peerConnection.connectionState === 'connected' ? 'Подключено' : 
-                          participant.peerConnection.connectionState === 'connecting' ? 'Подключение...' : 
-                          'Ожидание';
+            
+            // Проверяем оба состояния для более точного статуса
+            const connState = participant.peerConnection.connectionState;
+            const iceState = participant.peerConnection.iceConnectionState;
+            
+            let status = 'Ожидание';
+            if (connState === 'connected' || iceState === 'connected' || iceState === 'completed') {
+                status = 'Подключено';
+            } else if (connState === 'connecting' || iceState === 'checking' || iceState === 'connecting') {
+                status = 'Подключение...';
+            } else if (connState === 'failed' || iceState === 'failed') {
+                status = 'Ошибка';
+            }
+            
             item.innerHTML = `
                 <div class="participant-name">Участник ${socketId.substring(0, 8)}</div>
                 <div class="participant-status">${status}</div>
