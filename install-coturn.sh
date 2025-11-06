@@ -35,6 +35,12 @@ sed -i 's/TURNSERVER_ENABLED=0/TURNSERVER_ENABLED=1/' $COTURN_DEFAULT || echo "T
 EXTERNAL_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || echo "82.146.44.126")
 echo "🌐 Внешний IP: $EXTERNAL_IP"
 
+# Создаем директорию для логов и даем права
+mkdir -p /var/log
+touch /var/log/turnserver.log
+chown turnserver:turnserver /var/log/turnserver.log 2>/dev/null || chmod 666 /var/log/turnserver.log
+echo "✅ Права на лог файл настроены"
+
 # Создаем конфигурацию coturn
 cat > $COTURN_CONFIG << EOF
 # Coturn configuration for aiternitas.ru
@@ -46,8 +52,8 @@ external-ip=$EXTERNAL_IP
 # Realm
 realm=aiternitas.ru
 
-# Логирование
-log-file=/var/log/turnserver.log
+# Логирование - используем syslog вместо файла для избежания проблем с правами
+syslog
 verbose
 
 # Без аутентификации для STUN (только для тестирования)
@@ -102,7 +108,12 @@ else
     journalctl -u coturn -n 30 --no-pager || true
     echo ""
     echo "Проверка конфигурации:"
-    turnserver -c $COTURN_CONFIG --test || true
+    # Проверяем синтаксис конфигурации
+    turnserver -c $COTURN_CONFIG -o 2>&1 | head -20 || true
+    echo ""
+    echo "Проверка прав на файлы:"
+    ls -la /var/log/turnserver* 2>/dev/null || echo "Лог файлы не найдены"
+    ls -la $COTURN_CONFIG || true
 fi
 
 echo ""
