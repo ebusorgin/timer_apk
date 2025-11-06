@@ -9,8 +9,16 @@ const App = {
     ICE_SERVERS: [
         // Собственный STUN/TURN сервер (приоритет)
         { urls: 'stun:aiternitas.ru:3478' },
-        { urls: 'turn:aiternitas.ru:3478?transport=udp' },
-        { urls: 'turn:aiternitas.ru:3478?transport=tcp' },
+        { 
+            urls: 'turn:aiternitas.ru:3478?transport=udp',
+            username: 'turnuser',
+            credential: 'turnpass'
+        },
+        { 
+            urls: 'turn:aiternitas.ru:3478?transport=tcp',
+            username: 'turnuser',
+            credential: 'turnpass'
+        },
         // Резервные публичные STUN серверы
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
