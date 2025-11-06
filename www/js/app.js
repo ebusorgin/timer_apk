@@ -58,7 +58,12 @@ const App = {
             }
             
             this.socket = io(this.SERVER_URL, {
-                transports: ['websocket', 'polling']
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                timeout: 20000,
+                forceNew: false
             });
             
             this.setupSocketEvents();

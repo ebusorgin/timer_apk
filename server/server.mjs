@@ -13,7 +13,13 @@ const server = createServer(app);
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const io = new Server(server, {
-    cors: { origin: CORS_ORIGIN }
+    cors: { 
+        origin: CORS_ORIGIN,
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'],
+    allowEIO3: true
 });
 
 // Статический контент для веб-версии
