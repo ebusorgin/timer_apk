@@ -11,6 +11,12 @@ const App = {
         { urls: 'stun:stun1.l.google.com:19302' }
     ],
     
+    // Определение, кто является инициатором соединения
+    // Участник с меньшим socketId становится инициатором
+    isInitiator(mySocketId, targetSocketId) {
+        return mySocketId < targetSocketId;
+    },
+    
     init() {
         console.log('Conference App initializing...');
         this.initElements();
@@ -104,14 +110,17 @@ const App = {
                 if (document.getElementById('connectScreen').classList.contains('active')) {
                     this.showScreen('conferenceScreen');
                     this.updateConferenceStatus();
+                    this.updateMuteButton();
                 }
                 
                 // Подключаемся ко всем существующим участникам
                 if (data.users && data.users.length > 0) {
                     console.log(`🔗 Подключение к ${data.users.length} участникам...`);
                     for (const socketId of data.users) {
-                        console.log(`🔗 Инициирую соединение с ${socketId}`);
-                        await this.connectToPeer(socketId, true);
+                        // Определяем роль на основе сравнения socketId
+                        const isInitiator = this.isInitiator(this.socket.id, socketId);
+                        console.log(`🔗 Инициирую соединение с ${socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
+                        await this.connectToPeer(socketId, isInitiator);
                     }
                     this.showMessage(`Подключено к ${data.users.length} участникам`, 'success');
                 } else {
@@ -130,6 +139,8 @@ const App = {
                     video: false
                 });
                 console.log('✅ Доступ к микрофону получен');
+                // Обновляем текст кнопки микрофона (микрофон включен по умолчанию)
+                this.updateMuteButton();
             } catch (error) {
                 console.error('❌ Ошибка доступа к микрофону:', error);
                 this.showMessage('Не удалось получить доступ к микрофону. Разрешите доступ и попробуйте снова.', 'error');
@@ -148,6 +159,7 @@ const App = {
                         console.log('⏱️ Таймаут: переходим в конференцию');
                         this.showScreen('conferenceScreen');
                         this.updateConferenceStatus();
+                        this.updateMuteButton();
                         this.showMessage('Подключено к конференции', 'success');
                     }
                 }, 1000);
@@ -175,9 +187,13 @@ const App = {
             // Убеждаемся, что мы уже в конференции
             if (document.getElementById('connectScreen').classList.contains('active')) {
                 this.showScreen('conferenceScreen');
+                this.updateMuteButton();
             }
             
-            await this.connectToPeer(data.socketId, true);
+            // Определяем роль на основе сравнения socketId
+            const isInitiator = this.isInitiator(this.socket.id, data.socketId);
+            console.log(`🔗 Подключение к новому участнику ${data.socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
+            await this.connectToPeer(data.socketId, isInitiator);
             this.updateConferenceStatus();
         });
         
@@ -257,17 +273,20 @@ const App = {
                 const state = peerConnection.connectionState;
                 console.log(`🔗 Соединение с ${targetSocketId}: ${state}`);
                 
-                if (state === 'connected') {
-                    console.log('✅ WebRTC соединение установлено с', targetSocketId);
-                    participant.connected = true;
-                    // Убеждаемся, что аудио воспроизводится
-                    if (participant.audioElement && participant.audioElement.srcObject) {
-                        participant.audioElement.play().catch(err => {
-                            console.error('Ошибка воспроизведения после подключения:', err);
-                        });
+                const participant = this.participants.get(targetSocketId);
+                if (participant) {
+                    if (state === 'connected') {
+                        console.log('✅ WebRTC соединение установлено с', targetSocketId);
+                        participant.connected = true;
+                        // Убеждаемся, что аудио воспроизводится
+                        if (participant.audioElement && participant.audioElement.srcObject) {
+                            participant.audioElement.play().catch(err => {
+                                console.error('Ошибка воспроизведения после подключения:', err);
+                            });
+                        }
+                    } else if (state === 'failed' || state === 'disconnected') {
+                        console.warn('⚠️ WebRTC соединение потеряно с', targetSocketId, state);
                     }
-                } else if (state === 'failed' || state === 'disconnected') {
-                    console.warn('⚠️ WebRTC соединение потеряно с', targetSocketId, state);
                 }
                 
                 this.updateParticipantUI(targetSocketId);
@@ -302,6 +321,9 @@ const App = {
                 audioElement,
                 connected: false
             });
+            
+            // Обновляем статус конференции после добавления участника
+            this.updateConferenceStatus();
             
             // Если мы инициатор, создаем offer
             if (isInitiator) {
@@ -351,19 +373,15 @@ const App = {
                 console.log('📥 Получен answer от', data.fromSocketId);
                 console.log('📊 Текущее состояние соединения:', pc.signalingState);
                 
-                // Проверяем состояние перед установкой answer
-                if (pc.signalingState === 'stable' && pc.localDescription && pc.localDescription.type === 'offer') {
-                    // Если состояние stable и у нас есть локальный offer, значит мы уже установили remote description
-                    // Проверяем, не установлен ли уже remote description
-                    if (pc.remoteDescription) {
-                        console.log('⚠️ Remote description уже установлен, пропускаем answer');
-                        // Возможно, это дубликат или поздний answer
-                        return;
-                    }
+                // Проверяем, не установлен ли уже remote description
+                if (pc.remoteDescription) {
+                    console.log('⚠️ Remote description уже установлен, пропускаем answer');
+                    return;
                 }
                 
-                // Если состояние "have-local-offer", можем установить answer
-                if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'stable') {
+                // Устанавливаем answer только если состояние "have-local-offer"
+                // Это означает, что мы отправили offer и ждем answer
+                if (pc.signalingState === 'have-local-offer') {
                     try {
                         await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
                         console.log('✅ Remote description установлен (answer)');
@@ -383,28 +401,10 @@ const App = {
                         }
                     } catch (err) {
                         console.error('❌ Ошибка установки answer:', err);
-                        // Если ошибка из-за состояния, пробуем rollback
-                        if (err.name === 'InvalidStateError' && pc.signalingState === 'stable') {
-                            console.log('🔄 Попытка rollback для установки answer');
-                            try {
-                                // Сохраняем текущее локальное описание
-                                const localDesc = pc.localDescription;
-                                // Сбрасываем локальное описание
-                                await pc.setLocalDescription(null);
-                                // Устанавливаем удаленное описание (answer)
-                                await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
-                                // Восстанавливаем локальное описание
-                                await pc.setLocalDescription(localDesc);
-                                console.log('✅ Answer установлен после rollback');
-                                participant.connected = true;
-                                this.updateParticipantUI(data.fromSocketId);
-                            } catch (rollbackErr) {
-                                console.error('❌ Ошибка при rollback:', rollbackErr);
-                            }
-                        }
                     }
                 } else {
-                    console.warn('⚠️ Неподходящее состояние для установки answer:', pc.signalingState);
+                    console.warn('⚠️ Неподходящее состояние для установки answer:', pc.signalingState, 
+                        '(ожидается have-local-offer, но получено', pc.signalingState + ')');
                 }
             } else if (data.type === 'ice-candidate') {
                 console.log('🧊 Получен ICE кандидат от', data.fromSocketId);
@@ -435,38 +435,52 @@ const App = {
             // это означает, что оба участника пытаются инициировать одновременно
             if (pc.localDescription && pc.localDescription.type === 'offer') {
                 console.log('⚠️ Оба участника инициировали соединение одновременно');
-                console.log('🔄 Устанавливаем удаленное описание и создаем answer');
                 
-                // Устанавливаем удаленное описание
-                try {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
-                    console.log('✅ Remote description установлен (offer при одновременной инициализации)');
-                    
-                    // Создаем answer - это разрешено в WebRTC
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
-                    
-                    this.socket.emit('webrtc-signal', {
-                        targetSocketId: data.fromSocketId,
-                        signal: answer,
-                        type: 'answer'
-                    });
-                    
-                    // Добавляем отложенные ICE кандидаты если есть
-                    const participant = Array.from(this.participants.values()).find(p => p.peerConnection === pc);
-                    if (participant && participant.pendingCandidates) {
-                        for (const candidate of participant.pendingCandidates) {
-                            try {
-                                await pc.addIceCandidate(candidate);
-                            } catch (err) {
-                                console.error('Ошибка добавления отложенного кандидата:', err);
+                // Определяем, кто должен быть инициатором
+                const shouldBeInitiator = this.isInitiator(this.socket.id, data.fromSocketId);
+                
+                if (!shouldBeInitiator) {
+                    // Мы не инициатор (больший socketId), отменяем свой offer и принимаем роль ответчика
+                    console.log('🔄 Отменяю локальный offer, принимаю роль ответчика');
+                    try {
+                        // Отменяем локальный offer
+                        await pc.setLocalDescription(null);
+                        console.log('✅ Локальный offer отменен');
+                        
+                        // Устанавливаем удаленное описание (offer от инициатора)
+                        await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                        console.log('✅ Remote description установлен (offer от инициатора)');
+                        
+                        // Создаем answer
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
+                        
+                        this.socket.emit('webrtc-signal', {
+                            targetSocketId: data.fromSocketId,
+                            signal: answer,
+                            type: 'answer'
+                        });
+                        
+                        // Добавляем отложенные ICE кандидаты если есть
+                        const participant = Array.from(this.participants.values()).find(p => p.peerConnection === pc);
+                        if (participant && participant.pendingCandidates) {
+                            for (const candidate of participant.pendingCandidates) {
+                                try {
+                                    await pc.addIceCandidate(candidate);
+                                } catch (err) {
+                                    console.error('Ошибка добавления отложенного кандидата:', err);
+                                }
                             }
+                            participant.pendingCandidates = [];
                         }
-                        participant.pendingCandidates = [];
+                    } catch (err) {
+                        console.error('❌ Ошибка обработки одновременного offer (отмена):', err);
                     }
-                } catch (err) {
-                    console.error('❌ Ошибка обработки одновременного offer:', err);
+                } else {
+                    // Мы инициатор (меньший socketId), игнорируем полученный offer
+                    // и ждем answer на наш offer
+                    console.log('✅ Я инициатор, игнорирую полученный offer, жду answer');
                 }
                 return;
             }
@@ -518,6 +532,7 @@ const App = {
                 }
             }
             this.participants.delete(socketId);
+            this.updateConferenceStatus();
             this.showMessage('Участник покинул конференцию', 'info');
             this.updateParticipantsList();
         }
@@ -528,12 +543,44 @@ const App = {
         
         const audioTracks = this.localStream.getAudioTracks();
         if (audioTracks.length > 0) {
-            const isMuted = !audioTracks[0].enabled;
-            audioTracks[0].enabled = isMuted;
+            // Определяем текущее состояние (включен/выключен)
+            const currentlyEnabled = audioTracks[0].enabled;
             
+            // Изменяем состояние на противоположное
+            audioTracks[0].enabled = !currentlyEnabled;
+            
+            // Обновляем текст кнопки - показываем действие, которое произойдет при следующем нажатии
+            // Если микрофон теперь включен -> показываем "Выключить" (следующее действие)
+            // Если микрофон теперь выключен -> показываем "Включить" (следующее действие)
             if (this.elements.btnMute) {
-                this.elements.btnMute.textContent = isMuted ? '🔇 Выключить микрофон' : '🎤 Включить микрофон';
-                this.elements.btnMute.classList.toggle('muted', !isMuted);
+                if (!currentlyEnabled) {
+                    // Микрофон был выключен, теперь включили -> показываем "Выключить" (следующее действие)
+                    this.elements.btnMute.textContent = '🔇 Выключить микрофон';
+                    this.elements.btnMute.classList.remove('muted');
+                } else {
+                    // Микрофон был включен, теперь выключили -> показываем "Включить" (следующее действие)
+                    this.elements.btnMute.textContent = '🎤 Включить микрофон';
+                    this.elements.btnMute.classList.add('muted');
+                }
+            }
+        }
+    },
+    
+    updateMuteButton() {
+        // Обновляем текст кнопки в соответствии с текущим состоянием микрофона
+        if (!this.localStream || !this.elements.btnMute) return;
+        
+        const audioTracks = this.localStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+            const isEnabled = audioTracks[0].enabled;
+            // Если микрофон включен -> показываем "Выключить" (действие при нажатии)
+            // Если микрофон выключен -> показываем "Включить" (действие при нажатии)
+            if (isEnabled) {
+                this.elements.btnMute.textContent = '🔇 Выключить микрофон';
+                this.elements.btnMute.classList.remove('muted');
+            } else {
+                this.elements.btnMute.textContent = '🎤 Включить микрофон';
+                this.elements.btnMute.classList.add('muted');
             }
         }
     },
