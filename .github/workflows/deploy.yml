@@ -81,6 +81,22 @@ jobs:
             fi
             echo "✅ Файл server/server.mjs найден"
             
+            # Перезапуск сервиса после обновления кода, чтобы применить изменения
+            echo "Перезапуск сервиса voice-room для применения обновлений..."
+            if systemctl is-active --quiet voice-room; then
+              echo "Сервис запущен, выполняю перезапуск..."
+              systemctl restart voice-room || true
+              sleep 3
+              echo "✅ Сервис перезапущен"
+            elif systemctl is-enabled --quiet voice-room; then
+              echo "Сервис не запущен, но включен, запускаю..."
+              systemctl start voice-room || true
+              sleep 3
+              echo "✅ Сервис запущен"
+            else
+              echo "⚠️ Сервис не настроен, будет настроен далее"
+            fi
+            
             # Выполнение скрипта настройки или деплоя
             if [ -f "deploy.sh" ]; then
               bash deploy.sh $BRANCH || bash deploy.sh master || bash deploy.sh main
