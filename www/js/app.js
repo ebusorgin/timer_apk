@@ -349,21 +349,62 @@ const App = {
                 await this.handleOffer(pc, data);
             } else if (data.type === 'answer') {
                 console.log('📥 Получен answer от', data.fromSocketId);
-                await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
-                console.log('✅ Remote description установлен (answer)');
-                participant.connected = true;
-                this.updateParticipantUI(data.fromSocketId);
+                console.log('📊 Текущее состояние соединения:', pc.signalingState);
                 
-                // Добавляем отложенные ICE кандидаты если есть
-                if (participant.pendingCandidates) {
-                    for (const candidate of participant.pendingCandidates) {
-                        try {
-                            await pc.addIceCandidate(candidate);
-                        } catch (err) {
-                            console.error('Ошибка добавления отложенного кандидата:', err);
+                // Проверяем состояние перед установкой answer
+                if (pc.signalingState === 'stable' && pc.localDescription && pc.localDescription.type === 'offer') {
+                    // Если состояние stable и у нас есть локальный offer, значит мы уже установили remote description
+                    // Проверяем, не установлен ли уже remote description
+                    if (pc.remoteDescription) {
+                        console.log('⚠️ Remote description уже установлен, пропускаем answer');
+                        // Возможно, это дубликат или поздний answer
+                        return;
+                    }
+                }
+                
+                // Если состояние "have-local-offer", можем установить answer
+                if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'stable') {
+                    try {
+                        await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                        console.log('✅ Remote description установлен (answer)');
+                        participant.connected = true;
+                        this.updateParticipantUI(data.fromSocketId);
+                        
+                        // Добавляем отложенные ICE кандидаты если есть
+                        if (participant.pendingCandidates) {
+                            for (const candidate of participant.pendingCandidates) {
+                                try {
+                                    await pc.addIceCandidate(candidate);
+                                } catch (err) {
+                                    console.error('Ошибка добавления отложенного кандидата:', err);
+                                }
+                            }
+                            participant.pendingCandidates = [];
+                        }
+                    } catch (err) {
+                        console.error('❌ Ошибка установки answer:', err);
+                        // Если ошибка из-за состояния, пробуем rollback
+                        if (err.name === 'InvalidStateError' && pc.signalingState === 'stable') {
+                            console.log('🔄 Попытка rollback для установки answer');
+                            try {
+                                // Сохраняем текущее локальное описание
+                                const localDesc = pc.localDescription;
+                                // Сбрасываем локальное описание
+                                await pc.setLocalDescription(null);
+                                // Устанавливаем удаленное описание (answer)
+                                await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                                // Восстанавливаем локальное описание
+                                await pc.setLocalDescription(localDesc);
+                                console.log('✅ Answer установлен после rollback');
+                                participant.connected = true;
+                                this.updateParticipantUI(data.fromSocketId);
+                            } catch (rollbackErr) {
+                                console.error('❌ Ошибка при rollback:', rollbackErr);
+                            }
                         }
                     }
-                    participant.pendingCandidates = [];
+                } else {
+                    console.warn('⚠️ Неподходящее состояние для установки answer:', pc.signalingState);
                 }
             } else if (data.type === 'ice-candidate') {
                 console.log('🧊 Получен ICE кандидат от', data.fromSocketId);
