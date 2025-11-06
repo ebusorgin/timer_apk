@@ -192,12 +192,30 @@ const App = {
             const audioElement = document.createElement('audio');
             audioElement.autoplay = true;
             audioElement.controls = false;
+            audioElement.playsInline = true;
+            audioElement.volume = 1.0;
+            audioElement.style.display = 'none';
+            // Добавляем в DOM для работы
+            document.body.appendChild(audioElement);
             
             // Обработка входящих потоков
             peerConnection.ontrack = (event) => {
+                console.log('🎵 Получен аудио поток от', targetSocketId, event);
                 const remoteStream = event.streams[0];
-                audioElement.srcObject = remoteStream;
-                console.log('Получен поток от', targetSocketId);
+                if (remoteStream) {
+                    audioElement.srcObject = remoteStream;
+                    
+                    // Принудительное воспроизведение
+                    audioElement.play().then(() => {
+                        console.log('✅ Аудио воспроизводится от', targetSocketId);
+                    }).catch(err => {
+                        console.error('❌ Ошибка воспроизведения аудио:', err);
+                        // Пробуем еще раз после взаимодействия пользователя
+                        document.addEventListener('click', () => {
+                            audioElement.play().catch(e => console.error('Ошибка воспроизведения после клика:', e));
+                        }, { once: true });
+                    });
+                }
             };
             
             // ICE кандидаты
@@ -213,8 +231,28 @@ const App = {
             
             // Обработка изменения состояния соединения
             peerConnection.onconnectionstatechange = () => {
-                console.log(`Соединение с ${targetSocketId}: ${peerConnection.connectionState}`);
+                const state = peerConnection.connectionState;
+                console.log(`🔗 Соединение с ${targetSocketId}: ${state}`);
+                
+                if (state === 'connected') {
+                    console.log('✅ WebRTC соединение установлено с', targetSocketId);
+                    participant.connected = true;
+                    // Убеждаемся, что аудио воспроизводится
+                    if (participant.audioElement && participant.audioElement.srcObject) {
+                        participant.audioElement.play().catch(err => {
+                            console.error('Ошибка воспроизведения после подключения:', err);
+                        });
+                    }
+                } else if (state === 'failed' || state === 'disconnected') {
+                    console.warn('⚠️ WebRTC соединение потеряно с', targetSocketId, state);
+                }
+                
                 this.updateParticipantUI(targetSocketId);
+            };
+            
+            // Обработка ICE соединения
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log(`🧊 ICE соединение с ${targetSocketId}: ${peerConnection.iceConnectionState}`);
             };
             
             // Сохраняем информацию о соединении
@@ -226,8 +264,13 @@ const App = {
             
             // Если мы инициатор, создаем offer
             if (isInitiator) {
-                const offer = await peerConnection.createOffer();
+                console.log(`📤 Создание offer для ${targetSocketId}`);
+                const offer = await peerConnection.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: false
+                });
                 await peerConnection.setLocalDescription(offer);
+                console.log(`✅ Offer создан и отправлен для ${targetSocketId}`);
                 
                 this.socket.emit('webrtc-signal', {
                     targetSocketId: targetSocketId,
@@ -321,8 +364,10 @@ const App = {
             
             // Создаем answer только если у нас еще нет локального описания
             if (!pc.localDescription) {
+                console.log(`📥 Создание answer для ${data.fromSocketId}`);
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
+                console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
                 
                 this.socket.emit('webrtc-signal', {
                     targetSocketId: data.fromSocketId,
@@ -338,12 +383,16 @@ const App = {
     disconnectFromPeer(socketId) {
         const participant = this.participants.get(socketId);
         if (participant) {
+            console.log(`🔌 Отключение от ${socketId}`);
             if (participant.peerConnection) {
                 participant.peerConnection.close();
             }
             if (participant.audioElement) {
+                participant.audioElement.pause();
                 participant.audioElement.srcObject = null;
-                participant.audioElement.remove();
+                if (participant.audioElement.parentNode) {
+                    participant.audioElement.remove();
+                }
             }
             this.participants.delete(socketId);
             this.showMessage('Участник покинул конференцию', 'info');
