@@ -67,6 +67,8 @@ const App = {
             }
             
             console.log('Создание Socket.IO соединения...');
+            
+            // Устанавливаем обработчики ДО создания соединения
             this.socket = io(this.SERVER_URL, {
                 transports: ['websocket', 'polling'],
                 reconnection: true,
@@ -93,6 +95,27 @@ const App = {
                 this.showMessage('Отключено от сервера', 'error');
             });
             
+            // Устанавливаем обработчик users-list ДО подключения
+            this.socket.on('users-list', async (data) => {
+                console.log('📋 Получен список пользователей:', data);
+                // Подключаемся ко всем существующим участникам
+                if (data.users && data.users.length > 0) {
+                    console.log(`🔗 Подключение к ${data.users.length} участникам...`);
+                    for (const socketId of data.users) {
+                        await this.connectToPeer(socketId, true);
+                    }
+                } else {
+                    console.log('📭 Нет других участников в конференции');
+                }
+                
+                // Переходим в конференцию только если еще не перешли
+                if (document.getElementById('connectScreen').classList.contains('active')) {
+                    this.showScreen('conferenceScreen');
+                    this.updateConferenceStatus();
+                    this.showMessage('Подключено к конференции', 'success');
+                }
+            });
+            
             this.setupSocketEvents();
             
             // Получаем медиа поток
@@ -113,30 +136,18 @@ const App = {
                 return;
             }
             
-            // Ждем подключения и список пользователей
-            this.socket.once('users-list', async (data) => {
-                console.log('📋 Получен список пользователей:', data);
-                // Подключаемся ко всем существующим участникам
-                if (data.users && data.users.length > 0) {
-                    for (const socketId of data.users) {
-                        await this.connectToPeer(socketId, true);
+            // Ждем подключения Socket.IO перед переходом в конференцию
+            this.socket.once('connect', () => {
+                // Даем время серверу отправить users-list
+                setTimeout(() => {
+                    if (document.getElementById('connectScreen').classList.contains('active')) {
+                        console.log('⏱️ Таймаут: переходим в конференцию');
+                        this.showScreen('conferenceScreen');
+                        this.updateConferenceStatus();
+                        this.showMessage('Подключено к конференции', 'success');
                     }
-                }
-                
-                this.showScreen('conferenceScreen');
-                this.updateConferenceStatus();
-                this.showMessage('Подключено к конференции', 'success');
+                }, 1000);
             });
-            
-            // Таймаут на случай, если событие users-list не придет
-            setTimeout(() => {
-                if (this.socket && this.socket.connected && document.getElementById('connectScreen').classList.contains('active')) {
-                    console.log('⚠️ Событие users-list не получено, переходим в конференцию');
-                    this.showScreen('conferenceScreen');
-                    this.updateConferenceStatus();
-                    this.showMessage('Подключено к конференции', 'success');
-                }
-            }, 3000);
             
         } catch (error) {
             console.error('❌ Ошибка подключения:', error);
@@ -154,18 +165,26 @@ const App = {
     
     setupSocketEvents() {
         this.socket.on('user-connected', async (data) => {
-            console.log('Новый участник:', data.socketId);
+            console.log('👤 Новый участник присоединился:', data.socketId);
             this.showMessage('Новый участник присоединился', 'info');
+            
+            // Убеждаемся, что мы уже в конференции
+            if (document.getElementById('connectScreen').classList.contains('active')) {
+                this.showScreen('conferenceScreen');
+            }
+            
             await this.connectToPeer(data.socketId, true);
             this.updateConferenceStatus();
         });
         
         this.socket.on('user-disconnected', (data) => {
+            console.log('👋 Участник покинул:', data.socketId);
             this.disconnectFromPeer(data.socketId);
             this.updateConferenceStatus();
         });
         
         this.socket.on('webrtc-signal', async (data) => {
+            console.log('📡 Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);
             await this.handleWebRTCSignal(data);
         });
     },
