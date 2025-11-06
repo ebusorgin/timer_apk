@@ -4,6 +4,7 @@ plugins/
 *.apk
 *.log
 data/users.json
+data/test-users.json
 .DS_Store
 *.swp
 *.swo
