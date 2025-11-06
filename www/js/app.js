@@ -88,53 +88,55 @@ const App = {
                 rememberUpgrade: false
             });
             
-            // Устанавливаем обработчик users-list СРАЗУ после создания сокета
-            // Socket.IO буферизует события, которые приходят до регистрации обработчиков
-            let usersListHandled = false;
-            this.socket.once('users-list', async (data) => {
-                if (usersListHandled) {
-                    console.log('📋 [ONCE] Пропускаем повторное событие users-list');
-                    return;
-                }
-                usersListHandled = true;
-                
-                console.log('📋 [ONCE] Получен список пользователей:', data);
-                console.log('📋 [ONCE] Количество участников:', data.users ? data.users.length : 0);
-                console.log('📋 [ONCE] Мой socket.id:', this.socket.id);
-                
-                // Переходим в конференцию сразу
-                if (document.getElementById('connectScreen').classList.contains('active')) {
-                    this.showScreen('conferenceScreen');
-                    this.updateConferenceStatus();
-                    this.updateMuteButton();
-                }
-                
-                // Подключаемся ко всем существующим участникам
-                if (data.users && data.users.length > 0) {
-                    console.log(`🔗 Подключение к ${data.users.length} участникам...`);
-                    for (const socketId of data.users) {
-                        // Определяем роль на основе сравнения socketId
-                        const isInitiator = this.isInitiator(this.socket.id, socketId);
-                        console.log(`🔗 Инициирую соединение с ${socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
-                        await this.connectToPeer(socketId, isInitiator);
-                    }
-                    this.showMessage(`Подключено к ${data.users.length} участникам`, 'success');
-                } else {
-                    console.log('📭 Нет других участников в конференции');
-                    this.showMessage('Подключено к конференции', 'success');
-                }
-            });
-            
-            // Также устанавливаем обычный обработчик на случай повторных событий
-            this.socket.on('users-list', async (data) => {
-                console.log('📋 [ON] Получен список пользователей (повторное событие):', data);
-                console.log('📋 [ON] Количество участников:', data.users ? data.users.length : 0);
-            });
-            
             // Обработчики подключения Socket.IO
+            // Устанавливаем обработчик users-list ВНУТРИ события connect,
+            // чтобы гарантировать, что он зарегистрирован до получения события от сервера
             this.socket.on('connect', () => {
                 console.log('✅ Socket.IO подключен:', this.socket.id);
                 this.showMessage('Подключено к серверу', 'success');
+                
+                // Устанавливаем обработчик users-list СРАЗУ после подключения
+                // Сервер отправляет событие через setImmediate(), так что обработчик успеет зарегистрироваться
+                let usersListHandled = false;
+                this.socket.once('users-list', async (data) => {
+                    if (usersListHandled) {
+                        console.log('📋 [ONCE] Пропускаем повторное событие users-list');
+                        return;
+                    }
+                    usersListHandled = true;
+                    
+                    console.log('📋 [ONCE] Получен список пользователей:', data);
+                    console.log('📋 [ONCE] Количество участников:', data.users ? data.users.length : 0);
+                    console.log('📋 [ONCE] Мой socket.id:', this.socket.id);
+                    
+                    // Переходим в конференцию сразу
+                    if (document.getElementById('connectScreen').classList.contains('active')) {
+                        this.showScreen('conferenceScreen');
+                        this.updateConferenceStatus();
+                        this.updateMuteButton();
+                    }
+                    
+                    // Подключаемся ко всем существующим участникам
+                    if (data.users && data.users.length > 0) {
+                        console.log(`🔗 Подключение к ${data.users.length} участникам...`);
+                        for (const socketId of data.users) {
+                            // Определяем роль на основе сравнения socketId
+                            const isInitiator = this.isInitiator(this.socket.id, socketId);
+                            console.log(`🔗 Инициирую соединение с ${socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
+                            await this.connectToPeer(socketId, isInitiator);
+                        }
+                        this.showMessage(`Подключено к ${data.users.length} участникам`, 'success');
+                    } else {
+                        console.log('📭 Нет других участников в конференции');
+                        this.showMessage('Подключено к конференции', 'success');
+                    }
+                });
+                
+                // Также устанавливаем обычный обработчик на случай повторных событий
+                this.socket.on('users-list', async (data) => {
+                    console.log('📋 [ON] Получен список пользователей (повторное событие):', data);
+                    console.log('📋 [ON] Количество участников:', data.users ? data.users.length : 0);
+                });
             });
             
             this.socket.on('connect_error', (error) => {
