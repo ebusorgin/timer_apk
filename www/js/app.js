@@ -394,13 +394,38 @@ const App = {
             // это означает, что оба участника пытаются инициировать одновременно
             if (pc.localDescription && pc.localDescription.type === 'offer') {
                 console.log('⚠️ Оба участника инициировали соединение одновременно');
-                console.log('🔄 Устанавливаем удаленное описание и ждем answer на наш offer');
-                // Устанавливаем удаленное описание, но не создаем answer
-                // Будем ждать answer на наш offer
+                console.log('🔄 Устанавливаем удаленное описание и создаем answer');
+                
+                // Устанавливаем удаленное описание
                 try {
                     await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                    console.log('✅ Remote description установлен (offer при одновременной инициализации)');
+                    
+                    // Создаем answer - это разрешено в WebRTC
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
+                    
+                    this.socket.emit('webrtc-signal', {
+                        targetSocketId: data.fromSocketId,
+                        signal: answer,
+                        type: 'answer'
+                    });
+                    
+                    // Добавляем отложенные ICE кандидаты если есть
+                    const participant = Array.from(this.participants.values()).find(p => p.peerConnection === pc);
+                    if (participant && participant.pendingCandidates) {
+                        for (const candidate of participant.pendingCandidates) {
+                            try {
+                                await pc.addIceCandidate(candidate);
+                            } catch (err) {
+                                console.error('Ошибка добавления отложенного кандидата:', err);
+                            }
+                        }
+                        participant.pendingCandidates = [];
+                    }
                 } catch (err) {
-                    console.error('Ошибка установки удаленного описания:', err);
+                    console.error('❌ Ошибка обработки одновременного offer:', err);
                 }
                 return;
             }
@@ -421,19 +446,17 @@ const App = {
                 participant.pendingCandidates = [];
             }
             
-            // Создаем answer только если у нас еще нет локального описания
-            if (!pc.localDescription) {
-                console.log(`📥 Создание answer для ${data.fromSocketId}`);
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
-                
-                this.socket.emit('webrtc-signal', {
-                    targetSocketId: data.fromSocketId,
-                    signal: answer,
-                    type: 'answer'
-                });
-            }
+            // Создаем answer
+            console.log(`📥 Создание answer для ${data.fromSocketId}`);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
+            
+            this.socket.emit('webrtc-signal', {
+                targetSocketId: data.fromSocketId,
+                signal: answer,
+                type: 'answer'
+            });
         } catch (error) {
             console.error('Ошибка обработки offer:', error);
         }
