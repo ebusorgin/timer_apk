@@ -47,39 +47,58 @@ io.on('connection', (socket) => {
     connections.add(socket.id);
 
     // Отправляем новому пользователю список всех подключенных (кроме него самого)
-    const otherConnections = Array.from(connections).filter(id => id !== socket.id);
-    console.log(`📋 Отправка списка пользователей ${socket.id}:`, otherConnections.length, 'участников');
-    socket.emit('users-list', { users: otherConnections });
-    console.log('✅ Событие users-list отправлено');
+    // Используем setImmediate для асинхронной отправки, чтобы дать клиенту время зарегистрировать обработчики
+    setImmediate(() => {
+        const otherConnections = Array.from(connections).filter(id => id !== socket.id);
+        console.log(`📋 [${socket.id}] Подготовка к отправке списка пользователей:`, otherConnections.length, 'участников');
+        console.log(`📋 [${socket.id}] Список участников:`, otherConnections);
+        
+        if (socket.connected) {
+            socket.emit('users-list', { users: otherConnections });
+            console.log(`✅ [${socket.id}] Событие users-list отправлено (${otherConnections.length} участников)`);
+        } else {
+            console.warn(`⚠️ [${socket.id}] Сокет уже отключен, не отправляем users-list`);
+        }
+    });
 
-    // Уведомляем всех других о новом подключении
-    if (otherConnections.length > 0) {
-        console.log(`📢 Уведомление ${otherConnections.length} участников о новом подключении`);
-        socket.broadcast.emit('user-connected', { socketId: socket.id });
-    }
+    // Уведомляем всех других о новом подключении с небольшой задержкой
+    setImmediate(() => {
+        const otherConnections = Array.from(connections).filter(id => id !== socket.id);
+        if (otherConnections.length > 0 && socket.connected) {
+            console.log(`📢 [${socket.id}] Уведомление ${otherConnections.length} участников о новом подключении`);
+            socket.broadcast.emit('user-connected', { socketId: socket.id });
+            console.log(`✅ [${socket.id}] Событие user-connected отправлено всем остальным`);
+        }
+    });
 
     // WebRTC сигнализация - просто передаем сигналы между сокетами
     socket.on('webrtc-signal', ({ targetSocketId, signal, type }) => {
-        console.log(`📡 WebRTC сигнал: ${socket.id} -> ${targetSocketId}, тип: ${type}`);
+        console.log(`📡 [${socket.id}] WebRTC сигнал -> ${targetSocketId}, тип: ${type}`);
         if (connections.has(targetSocketId)) {
             io.to(targetSocketId).emit('webrtc-signal', {
                 fromSocketId: socket.id,
                 signal,
                 type
             });
-            console.log(`✅ Сигнал доставлен ${targetSocketId}`);
+            console.log(`✅ [${socket.id}] Сигнал доставлен ${targetSocketId}`);
         } else {
-            console.warn(`⚠️ Целевой сокет ${targetSocketId} не найден`);
+            console.warn(`⚠️ [${socket.id}] Целевой сокет ${targetSocketId} не найден в connections`);
+            console.warn(`⚠️ [${socket.id}] Доступные соединения:`, Array.from(connections));
         }
     });
 
     // Отключение
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+        const wasConnected = connections.has(socket.id);
         connections.delete(socket.id);
-        console.log('👋 Клиент отключен:', socket.id);
+        console.log(`👋 [${socket.id}] Клиент отключен, причина: ${reason}`);
+        console.log(`📊 [${socket.id}] Всего подключений после отключения: ${connections.size}`);
         
-        // Уведомляем других
-        socket.broadcast.emit('user-disconnected', { socketId: socket.id });
+        if (wasConnected) {
+            // Уведомляем других
+            socket.broadcast.emit('user-disconnected', { socketId: socket.id });
+            console.log(`✅ [${socket.id}] Событие user-disconnected отправлено всем остальным`);
+        }
     });
 });
 
