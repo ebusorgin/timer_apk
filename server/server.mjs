@@ -40,23 +40,33 @@ const connections = new Set();
 // Подключение пользователя
 io.on('connection', (socket) => {
     console.log('✅ Клиент подключен:', socket.id);
+    console.log('📊 Всего подключений:', connections.size + 1);
     connections.add(socket.id);
 
     // Отправляем новому пользователю список всех подключенных (кроме него самого)
     const otherConnections = Array.from(connections).filter(id => id !== socket.id);
+    console.log(`📋 Отправка списка пользователей ${socket.id}:`, otherConnections.length, 'участников');
     socket.emit('users-list', { users: otherConnections });
+    console.log('✅ Событие users-list отправлено');
 
     // Уведомляем всех других о новом подключении
-    socket.broadcast.emit('user-connected', { socketId: socket.id });
+    if (otherConnections.length > 0) {
+        console.log(`📢 Уведомление ${otherConnections.length} участников о новом подключении`);
+        socket.broadcast.emit('user-connected', { socketId: socket.id });
+    }
 
     // WebRTC сигнализация - просто передаем сигналы между сокетами
     socket.on('webrtc-signal', ({ targetSocketId, signal, type }) => {
+        console.log(`📡 WebRTC сигнал: ${socket.id} -> ${targetSocketId}, тип: ${type}`);
         if (connections.has(targetSocketId)) {
             io.to(targetSocketId).emit('webrtc-signal', {
                 fromSocketId: socket.id,
                 signal,
                 type
             });
+            console.log(`✅ Сигнал доставлен ${targetSocketId}`);
+        } else {
+            console.warn(`⚠️ Целевой сокет ${targetSocketId} не найден`);
         }
     });
 

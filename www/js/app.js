@@ -98,20 +98,24 @@ const App = {
             // Устанавливаем обработчик users-list ДО подключения
             this.socket.on('users-list', async (data) => {
                 console.log('📋 Получен список пользователей:', data);
+                console.log('📋 Количество участников:', data.users ? data.users.length : 0);
+                
+                // Переходим в конференцию сразу
+                if (document.getElementById('connectScreen').classList.contains('active')) {
+                    this.showScreen('conferenceScreen');
+                    this.updateConferenceStatus();
+                }
+                
                 // Подключаемся ко всем существующим участникам
                 if (data.users && data.users.length > 0) {
                     console.log(`🔗 Подключение к ${data.users.length} участникам...`);
                     for (const socketId of data.users) {
+                        console.log(`🔗 Инициирую соединение с ${socketId}`);
                         await this.connectToPeer(socketId, true);
                     }
+                    this.showMessage(`Подключено к ${data.users.length} участникам`, 'success');
                 } else {
                     console.log('📭 Нет других участников в конференции');
-                }
-                
-                // Переходим в конференцию только если еще не перешли
-                if (document.getElementById('connectScreen').classList.contains('active')) {
-                    this.showScreen('conferenceScreen');
-                    this.updateConferenceStatus();
                     this.showMessage('Подключено к конференции', 'success');
                 }
             });
