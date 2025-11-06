@@ -1,10 +1,8 @@
-// Конференция - веб-версия приложения
+// Простая конференция без регистрации
 const App = {
     socket: null,
-    userId: null,
-    userName: null,
     localStream: null,
-    participants: new Map(), // userId -> { peerConnection, audioElement, name }
+    participants: new Map(), // socketId -> { peerConnection, audioElement }
     
     SERVER_URL: window.location.origin,
     
@@ -23,7 +21,6 @@ const App = {
         this.elements = {
             connectScreen: document.getElementById('connectScreen'),
             conferenceScreen: document.getElementById('conferenceScreen'),
-            userName: document.getElementById('userName'),
             btnConnect: document.getElementById('btnConnect'),
             btnDisconnect: document.getElementById('btnDisconnect'),
             btnMute: document.getElementById('btnMute'),
@@ -39,12 +36,6 @@ const App = {
         if (this.elements.btnMute) {
             this.elements.btnMute.addEventListener('click', () => this.toggleMute());
         }
-        
-        this.elements.userName.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.connect();
-            }
-        });
     },
     
     showMessage(message, type = 'info') {
@@ -58,13 +49,6 @@ const App = {
     },
     
     async connect() {
-        const userName = this.elements.userName.value.trim();
-        if (!userName) {
-            this.showMessage('Введите ваше имя', 'error');
-            return;
-        }
-        
-        this.userName = userName;
         this.elements.btnConnect.disabled = true;
         
         try {
@@ -79,7 +63,7 @@ const App = {
             
             this.setupSocketEvents();
             
-            // Получаем медиа поток перед регистрацией
+            // Получаем медиа поток
             try {
                 this.localStream = await navigator.mediaDevices.getUserMedia({
                     audio: true,
@@ -92,27 +76,12 @@ const App = {
                 return;
             }
             
-            // Регистрация в конференции
-            this.socket.emit('register', {
-                name: userName
-            }, async (response) => {
-                if (response.error) {
-                    this.showMessage(response.error, 'error');
-                    this.elements.btnConnect.disabled = false;
-                    if (this.localStream) {
-                        this.localStream.getTracks().forEach(track => track.stop());
-                        this.localStream = null;
-                    }
-                    return;
-                }
-                
-                this.userId = response.user.id;
-                
+            // Ждем подключения и список пользователей
+            this.socket.once('users-list', async (data) => {
                 // Подключаемся ко всем существующим участникам
-                // Новый пользователь инициирует соединения
-                if (response.users && response.users.length > 0) {
-                    for (const user of response.users) {
-                        await this.connectToPeer(user.id, user.name, true);
+                if (data.users && data.users.length > 0) {
+                    for (const socketId of data.users) {
+                        await this.connectToPeer(socketId, true);
                     }
                 }
                 
@@ -134,34 +103,15 @@ const App = {
     
     setupSocketEvents() {
         this.socket.on('user-connected', async (data) => {
-            console.log('Новый участник:', data.user.name);
-            this.showMessage(`${data.user.name} присоединился к конференции`, 'info');
-            await this.connectToPeer(data.user.id, data.user.name, true);
+            console.log('Новый участник:', data.socketId);
+            this.showMessage('Новый участник присоединился', 'info');
+            await this.connectToPeer(data.socketId, true);
             this.updateConferenceStatus();
         });
         
         this.socket.on('user-disconnected', (data) => {
-            this.disconnectFromPeer(data.userId);
+            this.disconnectFromPeer(data.socketId);
             this.updateConferenceStatus();
-        });
-        
-        this.socket.on('users-list', async (data) => {
-            // Подключаемся к новым участникам из списка
-            // Инициируем соединения как новый пользователь
-            for (const user of data.users) {
-                if (!this.participants.has(user.id)) {
-                    await this.connectToPeer(user.id, user.name, true);
-                }
-            }
-            this.updateConferenceStatus();
-        });
-        
-        this.socket.on('peer-init', async (data) => {
-            // Другой участник инициирует соединение с нами
-            // Мы создаем соединение и ждем их offer
-            if (!this.participants.has(data.fromUserId)) {
-                await this.connectToPeer(data.fromUserId, data.fromName, false);
-            }
         });
         
         this.socket.on('webrtc-signal', async (data) => {
@@ -169,10 +119,10 @@ const App = {
         });
     },
     
-    async connectToPeer(targetUserId, targetName, isInitiator) {
+    async connectToPeer(targetSocketId, isInitiator) {
         // Проверяем, не подключены ли мы уже к этому участнику
-        if (this.participants.has(targetUserId)) {
-            console.log('Уже подключен к', targetName);
+        if (this.participants.has(targetSocketId)) {
+            console.log('Уже подключен к', targetSocketId);
             return;
         }
         
@@ -196,14 +146,14 @@ const App = {
             peerConnection.ontrack = (event) => {
                 const remoteStream = event.streams[0];
                 audioElement.srcObject = remoteStream;
-                console.log('Получен поток от', targetName);
+                console.log('Получен поток от', targetSocketId);
             };
             
             // ICE кандидаты
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     this.socket.emit('webrtc-signal', {
-                        targetUserId: targetUserId,
+                        targetSocketId: targetSocketId,
                         signal: event.candidate,
                         type: 'ice-candidate'
                     });
@@ -212,15 +162,14 @@ const App = {
             
             // Обработка изменения состояния соединения
             peerConnection.onconnectionstatechange = () => {
-                console.log(`Соединение с ${targetName}: ${peerConnection.connectionState}`);
-                this.updateParticipantUI(targetUserId);
+                console.log(`Соединение с ${targetSocketId}: ${peerConnection.connectionState}`);
+                this.updateParticipantUI(targetSocketId);
             };
             
             // Сохраняем информацию о соединении
-            this.participants.set(targetUserId, {
+            this.participants.set(targetSocketId, {
                 peerConnection,
                 audioElement,
-                name: targetName,
                 connected: false
             });
             
@@ -230,32 +179,31 @@ const App = {
                 await peerConnection.setLocalDescription(offer);
                 
                 this.socket.emit('webrtc-signal', {
-                    targetUserId: targetUserId,
+                    targetSocketId: targetSocketId,
                     signal: offer,
                     type: 'offer'
                 });
             }
-            // Если мы не инициатор, мы просто ждем offer от другого участника
             
             this.updateParticipantsList();
             
         } catch (error) {
-            console.error(`Ошибка подключения к ${targetName}:`, error);
-            this.participants.delete(targetUserId);
+            console.error(`Ошибка подключения к ${targetSocketId}:`, error);
+            this.participants.delete(targetSocketId);
         }
     },
     
     async handleWebRTCSignal(data) {
-        let participant = this.participants.get(data.fromUserId);
+        let participant = this.participants.get(data.fromSocketId);
         
         // Если соединения еще нет, создаем его (когда получаем offer)
         if (!participant && data.type === 'offer') {
-            await this.connectToPeer(data.fromUserId, data.fromName || 'Unknown', false);
-            participant = this.participants.get(data.fromUserId);
+            await this.connectToPeer(data.fromSocketId, false);
+            participant = this.participants.get(data.fromSocketId);
         }
         
         if (!participant || !participant.peerConnection) {
-            console.log('Соединение еще не создано для', data.fromUserId);
+            console.log('Соединение еще не создано для', data.fromSocketId);
             return;
         }
         
@@ -267,7 +215,7 @@ const App = {
             } else if (data.type === 'answer') {
                 await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
                 participant.connected = true;
-                this.updateParticipantUI(data.fromUserId);
+                this.updateParticipantUI(data.fromSocketId);
                 
                 // Добавляем отложенные ICE кандидаты если есть
                 if (participant.pendingCandidates) {
@@ -299,11 +247,8 @@ const App = {
     async handleOffer(pc, data) {
         try {
             // Если у нас уже есть локальное описание (мы тоже создали offer), 
-            // проверяем, не является ли удаленное описание answer
+            // игнорируем входящий offer и ждем answer на наш offer
             if (pc.localDescription && pc.localDescription.type === 'offer') {
-                // Если мы получили offer, но у нас уже есть offer, 
-                // это означает, что оба пытались инициировать
-                // В этом случае мы игнорируем входящий offer и ждем answer на наш offer
                 console.log('Оба участника инициировали соединение, ожидаем answer');
                 return;
             }
@@ -329,7 +274,7 @@ const App = {
                 await pc.setLocalDescription(answer);
                 
                 this.socket.emit('webrtc-signal', {
-                    targetUserId: data.fromUserId,
+                    targetSocketId: data.fromSocketId,
                     signal: answer,
                     type: 'answer'
                 });
@@ -339,8 +284,8 @@ const App = {
         }
     },
     
-    disconnectFromPeer(userId) {
-        const participant = this.participants.get(userId);
+    disconnectFromPeer(socketId) {
+        const participant = this.participants.get(socketId);
         if (participant) {
             if (participant.peerConnection) {
                 participant.peerConnection.close();
@@ -349,8 +294,8 @@ const App = {
                 participant.audioElement.srcObject = null;
                 participant.audioElement.remove();
             }
-            this.participants.delete(userId);
-            this.showMessage(`${participant.name} покинул конференцию`, 'info');
+            this.participants.delete(socketId);
+            this.showMessage('Участник покинул конференцию', 'info');
             this.updateParticipantsList();
         }
     },
@@ -380,28 +325,27 @@ const App = {
         const selfItem = document.createElement('div');
         selfItem.className = 'participant-item self';
         selfItem.innerHTML = `
-            <div class="participant-name">${this.userName} (Вы)</div>
+            <div class="participant-name">Вы</div>
             <div class="participant-status">Подключено</div>
         `;
         list.appendChild(selfItem);
         
         // Добавляем других участников
-        this.participants.forEach((participant, userId) => {
+        this.participants.forEach((participant, socketId) => {
             const item = document.createElement('div');
             item.className = 'participant-item';
             const status = participant.peerConnection.connectionState === 'connected' ? 'Подключено' : 
                           participant.peerConnection.connectionState === 'connecting' ? 'Подключение...' : 
                           'Ожидание';
             item.innerHTML = `
-                <div class="participant-name">${participant.name}</div>
+                <div class="participant-name">Участник ${socketId.substring(0, 8)}</div>
                 <div class="participant-status">${status}</div>
             `;
             list.appendChild(item);
         });
     },
     
-    updateParticipantUI(userId) {
-        // Обновляем UI для конкретного участника
+    updateParticipantUI(socketId) {
         this.updateParticipantsList();
     },
     
@@ -415,8 +359,8 @@ const App = {
     
     disconnect() {
         // Закрываем все соединения с участниками
-        this.participants.forEach((participant, userId) => {
-            this.disconnectFromPeer(userId);
+        this.participants.forEach((participant, socketId) => {
+            this.disconnectFromPeer(socketId);
         });
         
         // Останавливаем локальный поток
@@ -432,10 +376,7 @@ const App = {
         }
         
         this.showScreen('connectScreen');
-        this.elements.userName.value = '';
         this.elements.btnConnect.disabled = false;
-        this.userId = null;
-        this.userName = null;
     },
     
     showScreen(screenName) {

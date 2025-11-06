@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Конференция - Общение</title>
+    <title>Конференция</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -12,14 +12,8 @@
         <div id="connectScreen" class="screen active">
             <div class="container">
                 <h1>🎙️ Конференция</h1>
-                <p class="subtitle">Присоединитесь к конференции для общения</p>
-                
-                <div class="form-group">
-                    <input type="text" id="userName" placeholder="Ваше имя" maxlength="20">
-                </div>
-                
-                <button id="btnConnect" class="btn btn-primary">Присоединиться</button>
-                
+                <p class="subtitle">Нажмите кнопку для подключения</p>
+                <button id="btnConnect" class="btn btn-primary">Подключиться</button>
                 <div id="statusMessage" class="status-message"></div>
             </div>
         </div>
@@ -28,16 +22,12 @@
         <div id="conferenceScreen" class="screen">
             <div class="container conference-container">
                 <h2>Конференция</h2>
-                
                 <div id="conferenceStatus" class="conference-status"></div>
-                
                 <div id="participantsList" class="participants-list"></div>
-                
                 <div class="conference-controls">
                     <button id="btnMute" class="btn btn-control">🎤 Включить микрофон</button>
-                    <button id="btnDisconnect" class="btn btn-secondary">Покинуть конференцию</button>
+                    <button id="btnDisconnect" class="btn btn-secondary">Отключиться</button>
                 </div>
-                
                 <div id="statusMessage" class="status-message"></div>
             </div>
         </div>
@@ -47,4 +37,3 @@
     <script src="js/app.js"></script>
 </body>
 </html>
-

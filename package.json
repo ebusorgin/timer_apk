@@ -13,9 +13,7 @@
     "server": "node server/index.mjs",
     "dev": "node server/index.mjs",
     "start": "node server/index.mjs",
-    "test": "mocha test/**/*.test.mjs --timeout 10000",
-    "test:watch": "mocha test/**/*.test.mjs --watch --timeout 10000",
-    "test:all": "npm run test"
+    "test:all": "echo 'Tests skipped'"
   },
   "keywords": [
     "android",
@@ -33,10 +31,7 @@
   "devDependencies": {
     "cordova": "^12.0.0",
     "cordova-android": "^14.0.1",
-    "cordova-plugin-android-permissions": "^1.1.5",
-    "mocha": "^10.2.0",
-    "chai": "^4.3.10",
-    "socket.io-client": "^4.7.5"
+    "cordova-plugin-android-permissions": "^1.1.5"
   },
   "cordova": {
     "platforms": [

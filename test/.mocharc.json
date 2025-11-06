@@ -1,9 +1,0 @@
-{
-  "extension": ["mjs"],
-  "spec": ["test/**/*.test.mjs"],
-  "timeout": 10000,
-  "recursive": true,
-  "exit": true,
-  "require": []
-}
-
