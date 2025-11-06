@@ -7,8 +7,17 @@ const App = {
     SERVER_URL: window.location.origin,
     
     ICE_SERVERS: [
+        // Собственный STUN/TURN сервер (приоритет)
+        { urls: 'stun:aiternitas.ru:3478' },
+        { urls: 'turn:aiternitas.ru:3478?transport=udp' },
+        { urls: 'turn:aiternitas.ru:3478?transport=tcp' },
+        // Резервные публичные STUN серверы
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:stun.stunprotocol.org:3478' }
     ],
     
     // Определение, кто является инициатором соединения

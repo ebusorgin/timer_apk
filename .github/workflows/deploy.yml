@@ -81,6 +81,13 @@ jobs:
             fi
             echo "✅ Файл server/server.mjs найден"
             
+            # Установка и настройка coturn (STUN/TURN сервер) если нужно
+            if [ -f "install-coturn.sh" ]; then
+              echo "Проверка и установка coturn..."
+              chmod +x install-coturn.sh
+              bash install-coturn.sh || echo "⚠️ Ошибка установки coturn, продолжаем..."
+            fi
+            
             # Перезапуск сервиса после обновления кода, чтобы применить изменения
             echo "Перезапуск сервиса voice-room для применения обновлений..."
             if systemctl is-active --quiet voice-room; then
