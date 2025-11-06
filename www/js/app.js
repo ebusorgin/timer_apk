@@ -73,37 +73,31 @@ const App = {
             }
             
             console.log('Создание Socket.IO соединения...');
+            console.log('🌐 SERVER_URL:', this.SERVER_URL);
             
             // Устанавливаем обработчики ДО создания соединения
             this.socket = io(this.SERVER_URL, {
+                path: '/socket.io/',
                 transports: ['websocket', 'polling'],
                 reconnection: true,
                 reconnectionDelay: 1000,
                 reconnectionAttempts: 5,
                 timeout: 20000,
-                forceNew: false
+                forceNew: false,
+                upgrade: true,
+                rememberUpgrade: false
             });
             
-            // Обработчики подключения Socket.IO
-            this.socket.on('connect', () => {
-                console.log('✅ Socket.IO подключен:', this.socket.id);
-                this.showMessage('Подключено к серверу', 'success');
-            });
-            
-            this.socket.on('connect_error', (error) => {
-                console.error('❌ Ошибка подключения Socket.IO:', error);
-                this.showMessage('Ошибка подключения к серверу', 'error');
-                this.elements.btnConnect.disabled = false;
-            });
-            
-            this.socket.on('disconnect', (reason) => {
-                console.log('⚠️ Socket.IO отключен:', reason);
-                this.showMessage('Отключено от сервера', 'error');
-            });
-            
-            // Устанавливаем обработчик users-list сразу после создания сокета
-            // Используем once() для первого события, чтобы гарантировать обработку
+            // Устанавливаем обработчик users-list СРАЗУ после создания сокета
+            // Socket.IO буферизует события, которые приходят до регистрации обработчиков
+            let usersListHandled = false;
             this.socket.once('users-list', async (data) => {
+                if (usersListHandled) {
+                    console.log('📋 [ONCE] Пропускаем повторное событие users-list');
+                    return;
+                }
+                usersListHandled = true;
+                
                 console.log('📋 [ONCE] Получен список пользователей:', data);
                 console.log('📋 [ONCE] Количество участников:', data.users ? data.users.length : 0);
                 console.log('📋 [ONCE] Мой socket.id:', this.socket.id);
@@ -135,6 +129,23 @@ const App = {
             this.socket.on('users-list', async (data) => {
                 console.log('📋 [ON] Получен список пользователей (повторное событие):', data);
                 console.log('📋 [ON] Количество участников:', data.users ? data.users.length : 0);
+            });
+            
+            // Обработчики подключения Socket.IO
+            this.socket.on('connect', () => {
+                console.log('✅ Socket.IO подключен:', this.socket.id);
+                this.showMessage('Подключено к серверу', 'success');
+            });
+            
+            this.socket.on('connect_error', (error) => {
+                console.error('❌ Ошибка подключения Socket.IO:', error);
+                this.showMessage('Ошибка подключения к серверу', 'error');
+                this.elements.btnConnect.disabled = false;
+            });
+            
+            this.socket.on('disconnect', (reason) => {
+                console.log('⚠️ Socket.IO отключен:', reason);
+                this.showMessage('Отключено от сервера', 'error');
             });
             
             this.setupSocketEvents();

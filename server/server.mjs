@@ -13,13 +13,16 @@ const server = createServer(app);
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const io = new Server(server, {
+    path: '/socket.io/',
     cors: { 
         origin: CORS_ORIGIN,
         methods: ["GET", "POST"],
         credentials: true
     },
     transports: ['websocket', 'polling'],
-    allowEIO3: true
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
 // Статический контент для веб-версии
