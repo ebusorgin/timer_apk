@@ -14,7 +14,14 @@ const App = {
     init() {
         console.log('Conference App initializing...');
         this.initElements();
+        
+        if (!this.elements.btnConnect) {
+            console.error('❌ Кнопка подключения не найдена!');
+            return;
+        }
+        
         this.setupEventListeners();
+        console.log('✅ App инициализирован');
     },
     
     initElements() {
@@ -49,7 +56,9 @@ const App = {
     },
     
     async connect() {
+        console.log('Подключение к конференции...');
         this.elements.btnConnect.disabled = true;
+        this.showMessage('Подключение...', 'info');
         
         try {
             // Подключение к Socket.IO
@@ -57,6 +66,7 @@ const App = {
                 throw new Error('Socket.IO не загружен');
             }
             
+            console.log('Создание Socket.IO соединения...');
             this.socket = io(this.SERVER_URL, {
                 transports: ['websocket', 'polling'],
                 reconnection: true,
@@ -66,23 +76,46 @@ const App = {
                 forceNew: false
             });
             
+            // Обработчики подключения Socket.IO
+            this.socket.on('connect', () => {
+                console.log('✅ Socket.IO подключен:', this.socket.id);
+                this.showMessage('Подключено к серверу', 'success');
+            });
+            
+            this.socket.on('connect_error', (error) => {
+                console.error('❌ Ошибка подключения Socket.IO:', error);
+                this.showMessage('Ошибка подключения к серверу', 'error');
+                this.elements.btnConnect.disabled = false;
+            });
+            
+            this.socket.on('disconnect', (reason) => {
+                console.log('⚠️ Socket.IO отключен:', reason);
+                this.showMessage('Отключено от сервера', 'error');
+            });
+            
             this.setupSocketEvents();
             
             // Получаем медиа поток
+            console.log('Запрос доступа к микрофону...');
             try {
                 this.localStream = await navigator.mediaDevices.getUserMedia({
                     audio: true,
                     video: false
                 });
+                console.log('✅ Доступ к микрофону получен');
             } catch (error) {
-                console.error('Ошибка доступа к микрофону:', error);
-                this.showMessage('Не удалось получить доступ к микрофону', 'error');
+                console.error('❌ Ошибка доступа к микрофону:', error);
+                this.showMessage('Не удалось получить доступ к микрофону. Разрешите доступ и попробуйте снова.', 'error');
                 this.elements.btnConnect.disabled = false;
+                if (this.socket) {
+                    this.socket.disconnect();
+                }
                 return;
             }
             
             // Ждем подключения и список пользователей
             this.socket.once('users-list', async (data) => {
+                console.log('📋 Получен список пользователей:', data);
                 // Подключаемся ко всем существующим участникам
                 if (data.users && data.users.length > 0) {
                     for (const socketId of data.users) {
@@ -95,13 +128,26 @@ const App = {
                 this.showMessage('Подключено к конференции', 'success');
             });
             
+            // Таймаут на случай, если событие users-list не придет
+            setTimeout(() => {
+                if (this.socket && this.socket.connected && document.getElementById('connectScreen').classList.contains('active')) {
+                    console.log('⚠️ Событие users-list не получено, переходим в конференцию');
+                    this.showScreen('conferenceScreen');
+                    this.updateConferenceStatus();
+                    this.showMessage('Подключено к конференции', 'success');
+                }
+            }, 3000);
+            
         } catch (error) {
-            console.error('Ошибка подключения:', error);
-            this.showMessage('Ошибка подключения', 'error');
+            console.error('❌ Ошибка подключения:', error);
+            this.showMessage('Ошибка подключения: ' + error.message, 'error');
             this.elements.btnConnect.disabled = false;
             if (this.localStream) {
                 this.localStream.getTracks().forEach(track => track.stop());
                 this.localStream = null;
+            }
+            if (this.socket) {
+                this.socket.disconnect();
             }
         }
     },
