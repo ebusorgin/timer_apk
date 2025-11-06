@@ -101,10 +101,12 @@ const App = {
                 this.showMessage('Отключено от сервера', 'error');
             });
             
-            // Устанавливаем обработчик users-list ДО подключения
-            this.socket.on('users-list', async (data) => {
-                console.log('📋 Получен список пользователей:', data);
-                console.log('📋 Количество участников:', data.users ? data.users.length : 0);
+            // Устанавливаем обработчик users-list сразу после создания сокета
+            // Используем once() для первого события, чтобы гарантировать обработку
+            this.socket.once('users-list', async (data) => {
+                console.log('📋 [ONCE] Получен список пользователей:', data);
+                console.log('📋 [ONCE] Количество участников:', data.users ? data.users.length : 0);
+                console.log('📋 [ONCE] Мой socket.id:', this.socket.id);
                 
                 // Переходим в конференцию сразу
                 if (document.getElementById('connectScreen').classList.contains('active')) {
@@ -127,6 +129,12 @@ const App = {
                     console.log('📭 Нет других участников в конференции');
                     this.showMessage('Подключено к конференции', 'success');
                 }
+            });
+            
+            // Также устанавливаем обычный обработчик на случай повторных событий
+            this.socket.on('users-list', async (data) => {
+                console.log('📋 [ON] Получен список пользователей (повторное событие):', data);
+                console.log('📋 [ON] Количество участников:', data.users ? data.users.length : 0);
             });
             
             this.setupSocketEvents();
@@ -181,7 +189,11 @@ const App = {
     
     setupSocketEvents() {
         this.socket.on('user-connected', async (data) => {
-            console.log('👤 Новый участник присоединился:', data.socketId);
+            console.log('👤 [user-connected] Новый участник присоединился:', data);
+            console.log('👤 [user-connected] SocketId нового участника:', data.socketId);
+            console.log('👤 [user-connected] Мой socket.id:', this.socket.id);
+            console.log('👤 [user-connected] Текущее количество участников в this.participants:', this.participants.size);
+            
             this.showMessage('Новый участник присоединился', 'info');
             
             // Убеждаемся, что мы уже в конференции
@@ -192,19 +204,24 @@ const App = {
             
             // Определяем роль на основе сравнения socketId
             const isInitiator = this.isInitiator(this.socket.id, data.socketId);
-            console.log(`🔗 Подключение к новому участнику ${data.socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
+            console.log(`🔗 [user-connected] Подключение к новому участнику ${data.socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
             await this.connectToPeer(data.socketId, isInitiator);
+            console.log('👤 [user-connected] После connectToPeer, количество участников:', this.participants.size);
             this.updateConferenceStatus();
         });
         
         this.socket.on('user-disconnected', (data) => {
-            console.log('👋 Участник покинул:', data.socketId);
+            console.log('👋 [user-disconnected] Участник покинул:', data);
+            console.log('👋 [user-disconnected] SocketId:', data.socketId);
+            console.log('👋 [user-disconnected] Количество участников до отключения:', this.participants.size);
             this.disconnectFromPeer(data.socketId);
+            console.log('👋 [user-disconnected] Количество участников после отключения:', this.participants.size);
             this.updateConferenceStatus();
         });
         
         this.socket.on('webrtc-signal', async (data) => {
-            console.log('📡 Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);
+            console.log('📡 [webrtc-signal] Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);
+            console.log('📡 [webrtc-signal] Полные данные:', data);
             await this.handleWebRTCSignal(data);
         });
     },
@@ -635,6 +652,11 @@ const App = {
         if (!statusEl) return;
         
         const count = this.participants.size + 1; // +1 для себя
+        console.log('📊 [updateConferenceStatus] Обновление статуса:', {
+            participantsSize: this.participants.size,
+            totalCount: count,
+            participantIds: Array.from(this.participants.keys())
+        });
         statusEl.textContent = `Участников в конференции: ${count}`;
     },
     
