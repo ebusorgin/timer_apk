@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "description": "Severomorets - система голосовых звонков с мастер и slave приложениями",
   "type": "module",
-  "main": "server/index.mjs",
+  "main": "server/server.mjs",
   "scripts": {
     "init": "npx cordova platform add android",
     "build": "node build-script.js",
     "build:release": "node build-script.js --release",
     "build:master": "node build-script.js --master",
     "build:slave": "node build-script.js --slave",
-    "server": "node server/index.mjs",
-    "dev": "node server/index.mjs",
-    "start": "node server/index.mjs",
+    "server": "node server/server.mjs",
+    "dev": "node server/server.mjs",
+    "start": "node server/server.mjs",
     "test:all": "echo 'Tests skipped'"
   },
   "keywords": [

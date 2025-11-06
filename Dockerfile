@@ -10,4 +10,4 @@ COPY www ./www
 
 EXPOSE 3000
 
-CMD ["node", "server/index.mjs"]
+CMD ["node", "server/server.mjs"]
