@@ -286,9 +286,31 @@ const App = {
                 });
             }
 
-            const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+            let videoTransceiver = null;
+            let videoSender = null;
+
             if (this.videoTrack) {
-                videoTransceiver.sender.replaceTrack(this.videoTrack);
+                videoSender = peerConnection.addTrack(this.videoTrack, this.localStream);
+                if (videoSender && videoSender.setStreams) {
+                    try {
+                        videoSender.setStreams(this.localStream);
+                    } catch (err) {
+                        console.warn('⚠️ Не удалось привязать локальный поток к sender для', targetSocketId, err);
+                    }
+                }
+                if (typeof peerConnection.getTransceivers === 'function') {
+                    videoTransceiver = peerConnection.getTransceivers().find(t => t.sender === videoSender) || null;
+                }
+            } else {
+                videoTransceiver = peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+                if (this.localStream && videoTransceiver?.sender?.setStreams) {
+                    try {
+                        videoTransceiver.sender.setStreams(this.localStream);
+                    } catch (err) {
+                        console.warn('⚠️ Не удалось привязать локальный поток к sender для', targetSocketId, err);
+                    }
+                }
+                videoSender = videoTransceiver.sender;
             }
 
             const media = this.createParticipantMedia(targetSocketId);
@@ -301,7 +323,8 @@ const App = {
                 pendingCandidates: [],
                 connected: false,
                 videoEnabled: false,
-                videoSender: videoTransceiver.sender,
+                videoSender: videoSender,
+                videoTransceiver,
                 renegotiating: false,
                 pendingRenegotiation: false
             };
@@ -722,23 +745,44 @@ const App = {
                 return;
             }
 
-            if (participant.videoSender) {
-                participant.videoSender.replaceTrack(videoTrack).catch(err => {
-                    console.error('Ошибка замены видео-трека для участника', socketId, err);
-                });
-            } else {
-                const sender = participant.peerConnection
+            let sender = participant.videoSender;
+
+            if (!sender) {
+                sender = participant.peerConnection
                     .getSenders()
                     .find(s => s.track && s.track.kind === 'video');
 
-                if (sender) {
-                    sender.replaceTrack(videoTrack).catch(err => {
-                        console.error('Ошибка замены видео-трека для участника', socketId, err);
-                    });
-                } else {
-                    participant.peerConnection.addTrack(videoTrack, this.localStream);
+                if (!sender) {
+                    sender = participant.peerConnection.addTrack(videoTrack, this.localStream);
                 }
             }
+
+            if (sender && sender.setStreams) {
+                try {
+                    sender.setStreams(this.localStream);
+                } catch (err) {
+                    console.warn('⚠️ Не удалось привязать поток при включении видео для участника', socketId, err);
+                }
+            }
+
+            let transceiver = participant.videoTransceiver;
+            if (!transceiver && typeof participant.peerConnection.getTransceivers === 'function') {
+                transceiver = participant.peerConnection.getTransceivers().find(t => t.sender === sender) || null;
+            }
+            if (transceiver && transceiver.sender && transceiver.sender.setStreams && sender !== transceiver.sender) {
+                try {
+                    transceiver.sender.setStreams(this.localStream);
+                } catch (err) {
+                    console.warn('⚠️ Не удалось привязать поток при включении видео (через transceiver) для участника', socketId, err);
+                }
+            }
+
+            participant.videoSender = sender;
+            participant.videoTransceiver = transceiver || participant.videoTransceiver;
+
+            sender.replaceTrack(videoTrack).catch(err => {
+                console.error('Ошибка замены видео-трека для участника', socketId, err);
+            });
 
             this.updateParticipantVideoState(socketId);
         });
@@ -758,21 +802,41 @@ const App = {
                 return;
             }
 
-            if (participant.videoSender) {
-                participant.videoSender.replaceTrack(null).catch(err => {
+            let sender = participant.videoSender;
+
+            if (!sender) {
+                sender = participant.peerConnection
+                    .getSenders()
+                    .find(s => s.track && s.track.kind === 'video');
+            }
+
+            if (sender && sender.setStreams) {
+                try {
+                    sender.setStreams();
+                } catch (err) {
+                    console.warn('⚠️ Не удалось очистить поток при отключении видео для участника', socketId, err);
+                }
+            }
+
+            if (sender) {
+                sender.replaceTrack(null).catch(err => {
                     console.warn('⚠️ Не удалось удалить видео-трек у участника', socketId, err);
                 });
-            } else {
-                const videoSenders = participant.peerConnection
-                    .getSenders()
-                    .filter(sender => sender.track && sender.track.kind === 'video');
-
-                videoSenders.forEach(sender => {
-                    sender.replaceTrack(null).catch(err => {
-                        console.warn('⚠️ Не удалось удалить видео-трек у участника', socketId, err);
-                    });
-                });
             }
+
+            const transceiver = participant.videoTransceiver || (typeof participant.peerConnection.getTransceivers === 'function'
+                ? participant.peerConnection.getTransceivers().find(t => t.sender === sender) || null
+                : null);
+            if (transceiver && transceiver.sender && transceiver.sender !== sender && transceiver.sender.setStreams) {
+                try {
+                    transceiver.sender.setStreams();
+                } catch (err) {
+                    console.warn('⚠️ Не удалось очистить поток при отключении видео (через transceiver) для участника', socketId, err);
+                }
+            }
+
+            participant.videoSender = sender || participant.videoSender;
+            participant.videoTransceiver = transceiver || participant.videoTransceiver;
 
             this.updateParticipantVideoState(socketId);
         });
