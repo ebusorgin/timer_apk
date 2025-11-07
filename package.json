@@ -1,23 +1,16 @@
 {
   "name": "severomorets",
   "version": "1.0.0",
-  "description": "Severomorets - система голосовых звонков с мастер и slave приложениями",
+  "description": "Severomorets - веб-сервис голосовых звонков",
   "type": "module",
   "main": "server/server.mjs",
   "scripts": {
-    "init": "npx cordova platform add android",
-    "build": "node build-script.js",
-    "build:release": "node build-script.js --release",
-    "build:master": "node build-script.js --master",
-    "build:slave": "node build-script.js --slave",
     "server": "node server/server.mjs",
     "dev": "node server/server.mjs",
     "start": "node server/server.mjs",
     "test:all": "echo 'Tests skipped'"
   },
   "keywords": [
-    "android",
-    "cordova",
     "webrtc",
     "socket.io",
     "voice-call"
@@ -27,18 +20,5 @@
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
-  },
-  "devDependencies": {
-    "cordova": "^12.0.0",
-    "cordova-android": "^14.0.1",
-    "cordova-plugin-android-permissions": "^1.1.5"
-  },
-  "cordova": {
-    "platforms": [
-      "android"
-    ],
-    "plugins": {
-      "cordova-plugin-android-permissions": {}
-    }
   }
 }
