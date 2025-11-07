@@ -7,322 +7,69 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  SERVER_HOST: 82.146.44.126
-  SERVER_USER: root
-
 jobs:
   deploy:
     name: Deploy to aiternitas.ru
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Upload APK if exists
-        if: hashFiles('app-release.apk') != '' || hashFiles('app-debug.apk') != '' || hashFiles('platforms/android/app/build/outputs/apk/**/*.apk') != ''
-        uses: appleboy/scp-action@v0.1.5
-        with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 22
-          source: |
-            "app-release.apk"
-            "app-debug.apk"
-            "platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk"
-            "platforms/android/app/build/outputs/apk/debug/app-debug.apk"
-          target: "/opt/voice-room"
-          strip_components: 0
-          overwrite: true
-
-      - name: Deploy to production server
+      - name: Deploy application
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           script: |
-            export GIT_REPO_URL="${{ secrets.GIT_REPO_URL || 'https://github.com/ebusorgin/timer_apk.git' }}"
+            set -e
             BRANCH="${{ github.ref_name }}"
-            
-            # Создание директории и пользователя
-            if ! id "voice-room" &>/dev/null; then
-              useradd -r -s /bin/bash -d /opt/voice-room -m voice-room || true
-            fi
+
             mkdir -p /opt/voice-room
-            chown -R voice-room:voice-room /opt/voice-room || true
-            
-            # Клонирование или обновление репозитория
+            chown voice-room:voice-room /opt/voice-room || true
+
+            sudo -u voice-room bash <<'EOS'
+            set -e
             cd /opt/voice-room
-            if [ -d ".git" ]; then
-              echo "Обновление существующего репозитория..."
-              sudo -u voice-room git fetch origin || true
-              sudo -u voice-room git reset --hard origin/$BRANCH || sudo -u voice-room git reset --hard origin/master || true
-              sudo -u voice-room git clean -fd || true
+
+            if [ -d .git ]; then
+              git fetch origin
+              git reset --hard origin/$BRANCH 2>/dev/null || git reset --hard origin/master
             else
-              echo "Клонирование нового репозитория..."
-              rm -rf /opt/voice-room/* /opt/voice-room/.* 2>/dev/null || true
-              sudo -u voice-room git clone $GIT_REPO_URL .
+              git clone https://github.com/ebusorgin/timer_apk.git .
+              git checkout $BRANCH 2>/dev/null || git checkout master
             fi
-            chown -R voice-room:voice-room /opt/voice-room
-            
-            # Проверка наличия необходимых файлов
-            echo "Проверка структуры проекта..."
-            ls -la /opt/voice-room/ | head -20
-            if [ ! -f "/opt/voice-room/server/server.mjs" ]; then
-              echo "⚠️ server/server.mjs не найден! Проверяю структуру..."
-              find /opt/voice-room -name "*.mjs" -o -name "server.mjs" | head -10
-              echo "Содержимое директории:"
-              ls -la /opt/voice-room/server/ 2>/dev/null || echo "Директория server не существует"
-              exit 1
-            fi
-            echo "✅ Файл server/server.mjs найден"
-            
-            # Установка и настройка coturn (STUN/TURN сервер) если нужно
-            if [ -f "install-coturn.sh" ]; then
-              echo "Проверка и установка coturn..."
-              chmod +x install-coturn.sh
-              bash install-coturn.sh || echo "⚠️ Ошибка установки coturn, продолжаем..."
-            fi
-            
-            # Перезапуск сервиса после обновления кода, чтобы применить изменения
-            echo "Перезапуск сервиса voice-room для применения обновлений..."
-            if systemctl is-active --quiet voice-room; then
-              echo "Сервис запущен, выполняю перезапуск..."
-              systemctl restart voice-room || true
-              sleep 3
-              echo "✅ Сервис перезапущен"
-            elif systemctl is-enabled --quiet voice-room; then
-              echo "Сервис не запущен, но включен, запускаю..."
-              systemctl start voice-room || true
-              sleep 3
-              echo "✅ Сервис запущен"
-            else
-              echo "⚠️ Сервис не настроен, будет настроен далее"
-            fi
-            
-            # Выполнение скрипта настройки или деплоя
-            if [ -f "deploy.sh" ]; then
-              bash deploy.sh $BRANCH || bash deploy.sh master || bash deploy.sh main
-            elif [ -f "server-setup.sh" ]; then
-              bash server-setup.sh
-            else
-              # Минимальная настройка если скрипты отсутствуют
-              echo "Выполнение минимальной настройки..."
-              sudo -u voice-room npm ci --production || sudo -u voice-room npm install --production || true
-              
-              # Настройка nginx
-              if [ -f "nginx.conf" ]; then
-                cp nginx.conf /etc/nginx/sites-available/aiternitas.ru
-                ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
-                rm -f /etc/nginx/sites-enabled/default
-                nginx -t && (systemctl start nginx || systemctl restart nginx || systemctl reload nginx) || true
-              fi
-              
-              # Настройка systemd service
-              if [ -f "voice-room.service" ]; then
-                cp voice-room.service /etc/systemd/system/
-                systemctl daemon-reload
-                systemctl enable voice-room || true
-                systemctl start voice-room || systemctl restart voice-room || true
-              else
-                echo "⚠️ voice-room.service не найден, создаю базовый..."
-                printf '%s\n' '[Unit]' 'Description=Voice Room Application' 'After=network.target' '' '[Service]' 'Type=simple' 'User=voice-room' 'WorkingDirectory=/opt/voice-room' 'Environment="NODE_ENV=production"' 'Environment="PORT=3000"' 'Environment="HOST=0.0.0.0"' 'Environment="CORS_ORIGIN=https://aiternitas.ru"' 'EnvironmentFile=-/opt/voice-room/.env' 'ExecStart=/usr/bin/node server/server.mjs' 'Restart=always' 'RestartSec=10' 'StandardOutput=journal' 'StandardError=journal' 'SyslogIdentifier=voice-room' '' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/voice-room.service
-                systemctl daemon-reload
-                systemctl enable voice-room
-                systemctl start voice-room || true
-              fi
-            fi
-            
+
+            npm ci --production
+            EOS
+
+            systemctl restart voice-room || systemctl start voice-room
+
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
           script: |
-            sleep 10
-            # Проверка и установка systemd service если нужно
-            if [ ! -f "/etc/systemd/system/voice-room.service" ]; then
-              echo "⚠️ Service file not found, installing..."
-              cd /opt/voice-room
-              if [ -f "voice-room.service" ]; then
-                cp voice-room.service /etc/systemd/system/
-                systemctl daemon-reload
-                systemctl enable voice-room || true
-              else
-                echo "⚠️ voice-room.service не найден в репозитории, создаю базовый..."
-                printf '%s\n' '[Unit]' 'Description=Voice Room Application' 'After=network.target' '' '[Service]' 'Type=simple' 'User=voice-room' 'WorkingDirectory=/opt/voice-room' 'Environment="NODE_ENV=production"' 'Environment="PORT=3000"' 'Environment="HOST=0.0.0.0"' 'Environment="CORS_ORIGIN=https://aiternitas.ru"' 'EnvironmentFile=-/opt/voice-room/.env' 'ExecStart=/usr/bin/node server/server.mjs' 'Restart=always' 'RestartSec=10' 'StandardOutput=journal' 'StandardError=journal' 'SyslogIdentifier=voice-room' '' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/voice-room.service
-                systemctl daemon-reload
-                systemctl enable voice-room
-              fi
-            fi
-            
-            # Проверка статуса сервиса
-            if systemctl is-active --quiet voice-room; then
-              echo "✅ Service is running"
-              systemctl status voice-room --no-pager | head -10
-            else
-              echo "⚠️ Service not running, attempting to start..."
-              systemctl start voice-room || systemctl restart voice-room || true
-              sleep 5
-              systemctl status voice-room --no-pager | head -20 || true
-            fi
-            
-            # Проверка доступности приложения
-            sleep 5
-            if curl -f http://127.0.0.1:3000 > /dev/null 2>&1; then
-              echo "✅ Application is accessible"
-            else
-              echo "⚠️ Application not responding, checking logs..."
-              journalctl -u voice-room -n 30 --no-pager || true
-              ps aux | grep node | grep -v grep || echo "No node process found"
-              echo "Проверка структуры проекта на сервере:"
-              ls -la /opt/voice-room/ | head -20
-              ls -la /opt/voice-room/server/ 2>/dev/null || echo "Директория server не существует"
-              echo "Проверка файла:"
-              test -f /opt/voice-room/server/server.mjs && echo "✅ server.mjs существует" || echo "❌ server.mjs НЕ существует"
-              exit 1
-            fi
-            echo "✅ Deployment verified successfully"
-            
-      - name: Fix nginx configuration
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script: |
-            cd /opt/voice-room
-            if [ -f "fix-nginx.sh" ]; then
-              chmod +x fix-nginx.sh
-              bash fix-nginx.sh
-            else
-              echo "Принудительное исправление nginx конфигурации..."
-              rm -f /etc/nginx/sites-enabled/aiternitas.ru
-              rm -f /etc/nginx/sites-enabled/default
-              if [ -f "nginx.conf" ]; then
-                cp nginx.conf /etc/nginx/sites-available/aiternitas.ru
-                ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
-                if nginx -t; then
-                  systemctl restart nginx || systemctl start nginx || true
-                  sleep 2
-                  systemctl reload nginx || true
-                  echo "✅ Nginx конфигурация исправлена"
-                else
-                  echo "❌ Ошибка в конфигурации nginx"
-                  nginx -t
-                  exit 1
-                fi
-              fi
-            fi
-            
-      - name: Setup and start nginx
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script: |
-            # Установка nginx если не установлен
-            if ! command -v nginx &> /dev/null; then
-              apt update && apt install -y nginx || true
-            fi
-            
-            # Настройка конфигурации (принудительно обновляем)
-            if [ -f "/opt/voice-room/nginx.conf" ]; then
-              echo "Копирование конфигурации nginx..."
-              cp /opt/voice-room/nginx.conf /etc/nginx/sites-available/aiternitas.ru
-              ln -sf /etc/nginx/sites-available/aiternitas.ru /etc/nginx/sites-enabled/
-              rm -f /etc/nginx/sites-enabled/default
-              echo "✅ Конфигурация скопирована"
-              
-              # Проверяем что конфигурация применена
-              echo "Проверка активных конфигураций:"
-              ls -la /etc/nginx/sites-enabled/
-            fi
-            
-            # Проверка и запуск nginx
-            echo "Проверка конфигурации nginx..."
-            if nginx -t; then
-              echo "✅ Nginx configuration is valid"
-              systemctl enable nginx || true
-              systemctl start nginx || systemctl restart nginx || true
-              sleep 3
-              echo "Статус nginx:"
-              systemctl status nginx --no-pager | head -15 || true
-              
-              # Проверка что nginx прослушивает порты
-              echo "Проверка портов nginx:"
-              netstat -tulpn | grep nginx || ss -tulpn | grep nginx || echo "Nginx порты не найдены"
-            else
-              echo "❌ Nginx configuration error"
-              nginx -t
-              exit 1
-            fi
-            
-            # Проверка SSL сертификатов
-            echo "Проверка SSL сертификатов:"
-            if [ -f "/etc/letsencrypt/live/aiternitas.ru/fullchain.pem" ]; then
-              echo "✅ SSL сертификаты найдены"
-              certbot certificates 2>/dev/null | grep aiternitas.ru || echo "⚠️  Certbot не показывает сертификат"
-            else
-              echo "⚠️  SSL сертификаты не найдены"
-            fi
-            
-            # Проверка что приложение доступно
-            echo "Проверка доступности приложения на порту 3000..."
-            curl -v http://127.0.0.1:3000 2>&1 | head -20 || echo "Приложение не доступно"
-            
-            # Проверка через домен HTTP
-            echo "Проверка через домен HTTP..."
-            curl -v -L http://aiternitas.ru 2>&1 | head -30 || echo "HTTP домен не доступен"
-            
-            # Проверка через домен HTTPS
-            echo "Проверка через домен HTTPS..."
-            curl -v -k -L https://aiternitas.ru 2>&1 | head -30 || echo "HTTPS домен не доступен"
-            
-            # Проверка какой server block используется
-            echo "Проверка активных server blocks:"
-            nginx -T 2>/dev/null | grep -A 5 "server_name" | head -20 || true
-            
-            echo "✅ Nginx setup completed"
-            
-      - name: Check SSL certificate and final verification
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script: |
-            echo "Проверка SSL сертификатов:"
-            certbot certificates 2>/dev/null | grep aiternitas.ru || echo "⚠️  SSL certificate not found"
-            
-            echo "Проверка конфигурации nginx:"
-            nginx -t || exit 1
-            echo "✅ Nginx configuration verified"
-            
-            echo "Финальная проверка доступности:"
-            sleep 3
-            
-            # Проверка HTTP (должен редиректить на HTTPS)
+            set -e
+
+            systemctl status voice-room --no-pager | head -20
+
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -L http://aiternitas.ru || echo "000")
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
-              echo "✅ HTTP доступен (код: $HTTP_CODE)"
-            else
-              echo "⚠️  HTTP не доступен (код: $HTTP_CODE)"
-            fi
-            
-            # Проверка HTTPS
             HTTPS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k -L https://aiternitas.ru || echo "000")
-            if [ "$HTTPS_CODE" = "200" ]; then
-              echo "✅ HTTPS доступен (код: $HTTPS_CODE)"
-            else
-              echo "⚠️  HTTPS не доступен (код: $HTTPS_CODE)"
+
+            echo "HTTP status: $HTTP_CODE"
+            echo "HTTPS status: $HTTPS_CODE"
+
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "301" ] && [ "$HTTP_CODE" != "302" ]; then
+              echo "⚠️ HTTP check failed"
             fi
-            
-            echo "✅ Deployment verification completed"
+
+            if [ "$HTTPS_CODE" != "200" ]; then
+              echo "⚠️ HTTPS check failed"
+            fi
 
