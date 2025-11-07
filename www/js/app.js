@@ -374,7 +374,9 @@ const App = {
                     }, { once: true });
                 });
 
-                participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track => track.readyState === 'live' && track.enabled);
+                participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
+                    track.readyState === 'live' && track.enabled && !track.muted
+                );
                 this.updateParticipantVideoState(targetSocketId);
                 this.updateParticipantsList();
 
@@ -385,19 +387,25 @@ const App = {
                         this.updateParticipantsList();
                     };
                     event.track.onmute = () => {
-                        participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track => track.enabled);
+                        participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
+                            track.readyState === 'live' && track.enabled && !track.muted
+                        );
                         this.updateParticipantVideoState(targetSocketId);
                         this.updateParticipantsList();
                     };
                     event.track.onunmute = () => {
-                        participantRecord.videoEnabled = true;
+                        participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
+                            track.readyState === 'live' && track.enabled && !track.muted
+                        );
                         this.updateParticipantVideoState(targetSocketId);
                         this.updateParticipantsList();
                     };
                 }
 
                 remoteStream.onremovetrack = () => {
-                    participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track => track.readyState === 'live' && track.enabled);
+                    participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
+                        track.readyState === 'live' && track.enabled && !track.muted
+                    );
                     this.updateParticipantVideoState(targetSocketId);
                     this.updateParticipantsList();
                 };
@@ -1137,7 +1145,7 @@ const App = {
         if (participant.mediaElement && participant.mediaElement.srcObject) {
             const hasVideo = participant.mediaElement.srcObject
                 .getVideoTracks()
-                .some(track => track.readyState === 'live' && track.enabled);
+                .some(track => track.readyState === 'live' && track.enabled && !track.muted);
             participant.videoEnabled = hasVideo;
         } else {
             participant.videoEnabled = false;
