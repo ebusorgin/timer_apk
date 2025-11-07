@@ -301,7 +301,9 @@ const App = {
                 pendingCandidates: [],
                 connected: false,
                 videoEnabled: false,
-                videoSender: videoTransceiver.sender
+                videoSender: videoTransceiver.sender,
+                renegotiating: false,
+                pendingRenegotiation: false
             };
 
             this.participants.set(targetSocketId, participantRecord);
@@ -402,6 +404,15 @@ const App = {
 
                 this.updateParticipantUI(targetSocketId);
             };
+
+            peerConnection.addEventListener('signalingstatechange', () => {
+                const state = peerConnection.signalingState;
+                console.log(`🔄 Signaling state с ${targetSocketId}: ${state}`);
+                if (state === 'stable' && participantRecord.pendingRenegotiation) {
+                    participantRecord.pendingRenegotiation = false;
+                    this.renegotiateWithPeer(targetSocketId, participantRecord, 'signaling-stable');
+                }
+            });
 
             this.updateConferenceStatus();
 
@@ -719,6 +730,8 @@ const App = {
 
             this.updateParticipantVideoState(socketId);
         });
+
+        await this.renegotiateAllPeers('enable-video');
     },
 
     async disableVideo() {
@@ -760,6 +773,72 @@ const App = {
         this.videoTrack = null;
         this.isVideoEnabled = false;
         this.attachLocalStreamToPreview();
+
+        await this.renegotiateAllPeers('disable-video');
+    },
+
+    async renegotiateAllPeers(reason = 'manual') {
+        if (!this.socket) {
+            return;
+        }
+
+        const tasks = [];
+        this.participants.forEach((participant, socketId) => {
+            tasks.push(this.renegotiateWithPeer(socketId, participant, reason));
+        });
+
+        if (tasks.length > 0) {
+            await Promise.allSettled(tasks);
+        }
+    },
+
+    async renegotiateWithPeer(socketId, participant, reason = 'manual') {
+        const participantRecord = participant || this.participants.get(socketId);
+        if (!participantRecord || !participantRecord.peerConnection) {
+            return;
+        }
+
+        const peerConnection = participantRecord.peerConnection;
+        if (peerConnection.signalingState === 'closed') {
+            return;
+        }
+
+        if (peerConnection.signalingState !== 'stable') {
+            console.log(`⏳ Откладываем renegotiation с ${socketId}, signalingState=${peerConnection.signalingState}`);
+            participantRecord.pendingRenegotiation = true;
+            return;
+        }
+
+        if (participantRecord.renegotiating) {
+            participantRecord.pendingRenegotiation = true;
+            return;
+        }
+
+        participantRecord.renegotiating = true;
+
+        try {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            if (this.socket) {
+                this.socket.emit('webrtc-signal', {
+                    targetSocketId: socketId,
+                    signal: offer,
+                    type: 'offer',
+                    reason
+                });
+            }
+        } catch (error) {
+            console.error(`❌ Ошибка renegotiation с ${socketId}:`, error);
+        } finally {
+            participantRecord.renegotiating = false;
+            if (participantRecord.pendingRenegotiation) {
+                participantRecord.pendingRenegotiation = false;
+                setTimeout(() => {
+                    this.renegotiateWithPeer(socketId, participantRecord, reason);
+                }, 0);
+            }
+        }
     },
     
     toggleMute() {
