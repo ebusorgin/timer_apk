@@ -44,11 +44,14 @@ export function createServerApp(options = {}) {
   const participants = new Map();
   const connections = new Set();
 
-  const buildSnapshot = () => Array.from(participants.values()).map((participant) => ({
-    id: participant.id,
-    media: { ...participant.media },
-    connectedAt: participant.connectedAt,
-  }));
+  const buildSnapshot = (selfId) => ({
+    selfId,
+    participants: Array.from(participants.values()).map((participant) => ({
+      id: participant.id,
+      media: { ...participant.media },
+      connectedAt: participant.connectedAt,
+    })),
+  });
 
   io.on('connection', (socket) => {
     console.log('✅ Клиент подключен:', socket.id);
@@ -66,7 +69,7 @@ export function createServerApp(options = {}) {
     console.log('📊 Всего подключений:', participants.size);
 
     if (socket.connected) {
-      socket.emit('presence:sync', { participants: buildSnapshot() });
+      socket.emit('presence:sync', buildSnapshot(socket.id));
       socket.broadcast.emit('presence:update', {
         action: 'join',
         participant: participantRecord,
@@ -95,6 +98,10 @@ export function createServerApp(options = {}) {
 
     socket.on('webrtc-signal', ({ targetSocketId, signal, type }) => {
       console.log(`📡 [${socket.id}] WebRTC сигнал -> ${targetSocketId}, тип: ${type}`);
+      if (targetSocketId === socket.id) {
+        console.warn(`⚠️ [${socket.id}] Попытка отправить сигнал самому себе (${type}) — отклонено`);
+        return;
+      }
       if (participants.has(targetSocketId)) {
         io.to(targetSocketId).emit('webrtc-signal', {
           fromSocketId: socket.id,
