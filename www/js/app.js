@@ -5,6 +5,7 @@ const App = {
     participants: new Map(), // socketId -> { peerConnection, mediaElement, tileElement, pendingCandidates }
     presence: new Map(), // socketId -> { id, media, connectedAt }
     lastSentMediaStatus: { cam: false, mic: false },
+    selfId: null,
     presence: new Map(), // socketId -> { id, media: { cam, mic }, connectedAt }
     lastSentMediaStatus: { cam: false, mic: false },
     
@@ -85,6 +86,37 @@ const App = {
     resetPresenceState() {
         this.presence = new Map();
         this.lastSentMediaStatus = { cam: false, mic: false };
+        this.selfId = null;
+        this.removeSelfParticipantEntry();
+    },
+
+    removeSelfParticipantEntry() {
+        const selfId = this.selfId || this.socket?.id;
+        if (!selfId) {
+            return;
+        }
+        const participant = this.participants.get(selfId);
+        if (!participant) {
+            return;
+        }
+        if (participant.peerConnection) {
+            try {
+                participant.peerConnection.close();
+            } catch (err) {
+                console.warn('⚠️ Ошибка закрытия self peerConnection:', err);
+            }
+        }
+        if (participant.mediaElement) {
+            participant.mediaElement.pause();
+            participant.mediaElement.srcObject = null;
+            if (participant.mediaElement.parentNode) {
+                participant.mediaElement.parentNode.removeChild(participant.mediaElement);
+            }
+        }
+        if (participant.tileElement && participant.tileElement.parentNode) {
+            participant.tileElement.parentNode.removeChild(participant.tileElement);
+        }
+        this.participants.delete(selfId);
     },
 
     ensurePresenceRecord(socketId, data = {}) {
@@ -136,17 +168,25 @@ const App = {
         this.lastSentMediaStatus = nextStatus;
         this.socket.emit('status:change', { media: nextStatus });
 
-        if (this.socket.id) {
-            const record = this.ensurePresenceRecord(this.socket.id);
+        const selfId = this.selfId || this.socket.id;
+        if (selfId) {
+            const record = this.ensurePresenceRecord(selfId);
             record.media = { ...record.media, ...nextStatus };
-            this.presence.set(this.socket.id, record);
+            this.presence.set(selfId, record);
             this.updateParticipantsList();
         }
     },
 
     async handlePresenceSync(data = {}) {
         const participants = Array.isArray(data.participants) ? data.participants : [];
-        console.log('📡 [presence:sync] Получен снимок участников:', participants);
+        const selfIdFromServer = typeof data.selfId === 'string' ? data.selfId : null;
+        if (selfIdFromServer) {
+            this.selfId = selfIdFromServer;
+        } else if (this.socket?.id) {
+            this.selfId = this.socket.id;
+        }
+
+        console.log('📡 [presence:sync] Получен снимок участников:', participants, 'selfId:', this.selfId);
 
         this.presence = new Map();
         const toConnect = [];
@@ -166,23 +206,30 @@ const App = {
                 connectedAt: participant.connectedAt
             });
 
-            if (participant.id !== this.socket?.id) {
+            if (participant.id !== this.selfId) {
                 toConnect.push(participant.id);
             }
         });
 
-        if (this.socket?.id && !this.presence.has(this.socket.id)) {
-            this.ensurePresenceRecord(this.socket.id, {
+        const selfId = this.selfId || this.socket?.id;
+        if (selfId && !this.presence.has(selfId)) {
+            this.ensurePresenceRecord(selfId, {
                 media: this.getLocalMediaState(),
                 connectedAt: Date.now()
             });
         }
 
+        this.removeSelfParticipantEntry();
+
         this.updateParticipantsList();
         this.updateConferenceStatus();
 
         for (const otherId of toConnect) {
-            const isInitiator = this.isInitiator(this.socket.id, otherId);
+            const baseId = this.selfId || this.socket?.id;
+            if (!baseId) {
+                continue;
+            }
+            const isInitiator = this.isInitiator(baseId, otherId);
             try {
                 await this.connectToPeer(otherId, isInitiator);
             } catch (err) {
@@ -196,7 +243,7 @@ const App = {
         console.log('📡 [presence:update]', data);
 
         if (action === 'join' && participant?.id) {
-            if (participant.id === this.socket?.id) {
+            if (participant.id === (this.selfId || this.socket?.id)) {
                 return;
             }
 
@@ -215,7 +262,11 @@ const App = {
             this.updateParticipantsList();
             this.updateConferenceStatus();
 
-            const isInitiator = this.isInitiator(this.socket.id, participant.id);
+            const baseId = this.selfId || this.socket?.id;
+            if (!baseId) {
+                return;
+            }
+            const isInitiator = this.isInitiator(baseId, participant.id);
             try {
                 await this.connectToPeer(participant.id, isInitiator);
             } catch (err) {
@@ -248,7 +299,7 @@ const App = {
         };
         this.presence.set(id, record);
 
-        if (id === this.socket?.id) {
+        if (id === (this.selfId || this.socket?.id)) {
             this.lastSentMediaStatus = {
                 cam: record.media.cam,
                 mic: record.media.mic
@@ -299,6 +350,8 @@ const App = {
             this.socket.on('connect', () => {
                 console.log('✅ Socket.IO подключен:', this.socket.id);
                 this.showMessage('Подключено к серверу', 'success');
+
+                this.selfId = this.socket.id;
 
                 this.ensurePresenceRecord(this.socket.id, {
                     media: this.getLocalMediaState(),
@@ -377,6 +430,12 @@ const App = {
     },
     
     async connectToPeer(targetSocketId, isInitiator) {
+        const selfId = this.selfId || this.socket?.id;
+        if (!targetSocketId || targetSocketId === selfId) {
+            console.log('⏭️ Пропускаем подключение к самому себе', targetSocketId);
+            return;
+        }
+
         if (this.participants.has(targetSocketId)) {
             console.log('Уже подключен к', targetSocketId);
             return;
@@ -1105,14 +1164,16 @@ const App = {
         
         const remoteIds = new Set();
 
+        const selfId = this.selfId || this.socket?.id;
+
         this.presence.forEach((_, socketId) => {
-            if (socketId && socketId !== this.socket?.id) {
+            if (socketId && socketId !== selfId) {
                 remoteIds.add(socketId);
             }
         });
 
         this.participants.forEach((_, socketId) => {
-            if (socketId && socketId !== this.socket?.id) {
+            if (socketId && socketId !== selfId) {
                 remoteIds.add(socketId);
             }
         });
@@ -1194,18 +1255,28 @@ const App = {
         const statusEl = this.elements.conferenceStatus;
         if (!statusEl) return;
         
-        const presenceCount = this.presence?.size || 0;
-        const fallbackCount = this.participants.size + (this.socket ? 1 : 0);
-        const count = presenceCount > 0 ? presenceCount : fallbackCount;
+        const selfId = this.selfId || this.socket?.id || null;
+        let remotePresenceCount = 0;
+        if (this.presence && this.presence.size > 0) {
+            this.presence.forEach((_, id) => {
+                if (!selfId || id !== selfId) {
+                    remotePresenceCount += 1;
+                }
+            });
+        } else {
+            remotePresenceCount = Array.from(this.participants.keys()).filter((id) => !selfId || id !== selfId).length;
+        }
+
+        const totalCount = (this.socket ? 1 : 0) + remotePresenceCount;
 
         console.log('📊 [updateConferenceStatus] Обновление статуса:', {
-            presenceSize: presenceCount,
+            presenceSize: this.presence?.size || 0,
             participantsSize: this.participants.size,
-            totalCount: count,
+            totalCount,
             presenceIds: this.presence ? Array.from(this.presence.keys()) : [],
             participantIds: Array.from(this.participants.keys())
         });
-        statusEl.textContent = `Участников в конференции: ${count}`;
+        statusEl.textContent = `Участников в конференции: ${totalCount}`;
     },
     
     disconnect() {
@@ -1217,6 +1288,7 @@ const App = {
         this.participants = new Map();
         this.presence = new Map();
         this.lastSentMediaStatus = { cam: false, mic: false };
+        this.selfId = null;
         
         // Останавливаем локальный поток
         if (this.localStream) {
