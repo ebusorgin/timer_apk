@@ -312,13 +312,31 @@ const App = {
                 const trackKind = event.track ? event.track.kind : 'unknown';
                 console.log('🎥 Получен трек от', targetSocketId, trackKind, event);
 
-                const remoteStream = event.streams[0];
-                if (!remoteStream || !participantRecord.mediaElement) {
+                if (!participantRecord.mediaElement) {
                     return;
                 }
 
-                if (!participantRecord.mediaElement.srcObject || participantRecord.mediaElement.srcObject.id !== remoteStream.id) {
+                let remoteStream = event.streams && event.streams[0];
+
+                if (!remoteStream) {
+                    const currentStream = participantRecord.mediaElement.srcObject;
+                    if (currentStream instanceof MediaStream) {
+                        remoteStream = currentStream;
+                    } else {
+                        remoteStream = new MediaStream();
+                        participantRecord.mediaElement.srcObject = remoteStream;
+                    }
+
+                    if (event.track && !remoteStream.getTracks().includes(event.track)) {
+                        remoteStream.addTrack(event.track);
+                    }
+                } else if (!participantRecord.mediaElement.srcObject || participantRecord.mediaElement.srcObject.id !== remoteStream.id) {
                     participantRecord.mediaElement.srcObject = remoteStream;
+                }
+
+                if (!remoteStream) {
+                    console.warn('⚠️ Не удалось получить удаленный поток для', targetSocketId);
+                    return;
                 }
 
                 participantRecord.mediaElement.autoplay = true;
