@@ -157,4 +157,68 @@ describe('conference App UI', () => {
     expect(App.elements.btnVideo.textContent).toContain('Включить камеру');
     expect(App.elements.participantsList.textContent).toContain('Камера выключена');
   });
+
+  it('sends renegotiation offer to peers when enabling video', async () => {
+    const videoTrack = {
+      kind: 'video',
+      stop: vi.fn(),
+      enabled: true,
+      readyState: 'live',
+    };
+    const mockStream = {
+      getVideoTracks: () => [videoTrack],
+      getTracks: () => [videoTrack],
+    };
+
+    const peerConnection = {
+      signalingState: 'stable',
+      createOffer: vi.fn(async () => ({ type: 'offer', sdp: 'test' })),
+      setLocalDescription: vi.fn(async () => {}),
+      getSenders: vi.fn(() => []),
+      addTrack: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+
+    const participantRecord = {
+      peerConnection,
+      mediaElement: document.createElement('video'),
+      tileElement: document.createElement('div'),
+      labelElement: document.createElement('div'),
+      pendingCandidates: [],
+      connected: true,
+      videoEnabled: false,
+      videoSender: { replaceTrack: vi.fn(() => Promise.resolve()) },
+      renegotiating: false,
+      pendingRenegotiation: false,
+    };
+    participantRecord.tileElement.appendChild(participantRecord.mediaElement);
+    participantRecord.mediaElement.srcObject = {
+      getVideoTracks: () => [{ readyState: 'live', enabled: true }],
+    };
+
+    App.socket = { emit: vi.fn() };
+    App.localStream = {
+      getAudioTracks: vi.fn(() => []),
+      addTrack: vi.fn(),
+      removeTrack: vi.fn(),
+      getTracks: vi.fn(() => []),
+    };
+    App.participants = new Map([[ 'peer-1', participantRecord ]]);
+    App.updateVideoButton();
+
+    navigator.mediaDevices.getUserMedia.mockResolvedValueOnce(mockStream);
+
+    await App.toggleVideo();
+
+    expect(peerConnection.createOffer).toHaveBeenCalledTimes(1);
+    expect(peerConnection.setLocalDescription).toHaveBeenCalledTimes(1);
+    expect(App.socket.emit).toHaveBeenCalledWith(
+      'webrtc-signal',
+      expect.objectContaining({
+        targetSocketId: 'peer-1',
+        type: 'offer',
+        reason: 'enable-video',
+      })
+    );
+  });
 });
