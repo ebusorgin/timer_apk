@@ -23,8 +23,15 @@
             <div class="container conference-container">
                 <h2>Конференция</h2>
                 <div id="conferenceStatus" class="conference-status"></div>
+                <div id="videoGrid" class="video-grid">
+                    <div class="video-tile self video-off">
+                        <video id="localVideo" class="video-element" autoplay muted playsinline></video>
+                        <div class="video-label">Вы</div>
+                    </div>
+                </div>
                 <div id="participantsList" class="participants-list"></div>
                 <div class="conference-controls">
+                    <button id="btnVideo" class="btn btn-control video">📹 Включить камеру</button>
                     <button id="btnMute" class="btn btn-control">🎤 Включить микрофон</button>
                     <button id="btnDisconnect" class="btn btn-secondary">Отключиться</button>
                 </div>
