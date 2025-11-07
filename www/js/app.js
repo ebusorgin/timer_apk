@@ -725,6 +725,10 @@ const App = {
     }
 };
 
+if (typeof globalThis !== 'undefined') {
+    globalThis.App = App;
+}
+
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', () => {
     App.init();

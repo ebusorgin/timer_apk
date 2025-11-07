@@ -8,7 +8,8 @@
     "server": "node server/server.mjs",
     "dev": "node server/server.mjs",
     "start": "node server/server.mjs",
-    "test:all": "echo 'Tests skipped'"
+    "test": "vitest",
+    "test:all": "vitest run"
   },
   "keywords": [
     "webrtc",
@@ -20,5 +21,11 @@
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "patch-package": "^8.0.0",
+    "supertest": "^6.3.4",
+    "vitest": "^1.6.0"
   }
 }
