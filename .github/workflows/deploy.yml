@@ -11,17 +11,33 @@ jobs:
   deploy:
     name: Deploy to aiternitas.ru
     runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
+      SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Check required secrets
+        shell: bash
+        run: |
+          if [ -z "$SSH_PASSWORD" ]; then
+            echo "⚠️  SSH_PASSWORD secret not set. Deployment steps will be skipped."
+            echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+        id: secrets_check
+
       - name: Deploy application
         uses: appleboy/ssh-action@v1.0.0
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USER }}
+          password: ${{ env.SSH_PASSWORD }}
           port: 22
           script: |
             set -e
@@ -49,10 +65,11 @@ jobs:
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.0
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USER }}
+          password: ${{ env.SSH_PASSWORD }}
           port: 22
           script: |
             set -e
@@ -72,4 +89,8 @@ jobs:
             if [ "$HTTPS_CODE" != "200" ]; then
               echo "⚠️ HTTPS check failed"
             fi
+
+      - name: Skip notice
+        if: steps.secrets_check.outputs.skip_deploy == 'true'
+        run: echo "🔕 Deployment skipped because SSH secrets are not configured."
 
