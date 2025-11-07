@@ -42,7 +42,6 @@ export function createServerApp(options = {}) {
   });
 
   const participants = new Map();
-  const connections = new Set();
 
   const buildSnapshot = (selfId) => ({
     selfId,
@@ -55,8 +54,6 @@ export function createServerApp(options = {}) {
 
   io.on('connection', (socket) => {
     console.log('✅ Клиент подключен:', socket.id);
-    connections.add(socket.id);
-
     const participantRecord = {
       id: socket.id,
       media: {
@@ -76,25 +73,6 @@ export function createServerApp(options = {}) {
       });
       console.log(`✅ [${socket.id}] Снимок присутствия отправлен, уведомление о новом участнике разослано`);
     }
-
-    setTimeout(() => {
-      if (!socket.connected) return;
-      const otherConnections = Array.from(connections).filter((id) => id !== socket.id);
-      console.log(`📋 [${socket.id}] Подготовка к отправке списка пользователей:`, otherConnections.length, 'участников');
-      console.log(`📋 [${socket.id}] Список участников:`, otherConnections);
-
-      socket.emit('users-list', { users: otherConnections });
-      console.log(`✅ [${socket.id}] Событие users-list отправлено (${otherConnections.length} участников)`);
-    }, 100);
-
-    setTimeout(() => {
-      const otherConnections = Array.from(connections).filter((id) => id !== socket.id);
-      if (otherConnections.length > 0 && socket.connected) {
-        console.log(`📢 [${socket.id}] Уведомление ${otherConnections.length} участников о новом подключении`);
-        socket.broadcast.emit('user-connected', { socketId: socket.id });
-        console.log(`✅ [${socket.id}] Событие user-connected отправлено всем остальным`);
-      }
-    }, 100);
 
     socket.on('webrtc-signal', ({ targetSocketId, signal, type }) => {
       console.log(`📡 [${socket.id}] WebRTC сигнал -> ${targetSocketId}, тип: ${type}`);
@@ -148,12 +126,10 @@ export function createServerApp(options = {}) {
       const participant = participants.get(socket.id);
       const wasConnected = Boolean(participant);
       participants.delete(socket.id);
-      connections.delete(socket.id);
       console.log(`👋 [${socket.id}] Клиент отключен, причина: ${reason}`);
       console.log(`📊 [${socket.id}] Всего подключений после отключения: ${participants.size}`);
 
       if (wasConnected) {
-        socket.broadcast.emit('user-disconnected', { socketId: socket.id });
         socket.broadcast.emit('presence:update', {
           action: 'leave',
           participantId: socket.id,

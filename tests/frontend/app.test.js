@@ -190,6 +190,7 @@ describe('conference App UI', () => {
       videoSender: { replaceTrack: vi.fn(() => Promise.resolve()) },
       renegotiating: false,
       pendingRenegotiation: false,
+      isInitiator: true,
     };
     participantRecord.tileElement.appendChild(participantRecord.mediaElement);
     participantRecord.mediaElement.srcObject = {
@@ -204,6 +205,7 @@ describe('conference App UI', () => {
       getTracks: vi.fn(() => []),
     };
     App.participants = new Map([[ 'peer-1', participantRecord ]]);
+    App.selfId = 'self-1';
     App.updateVideoButton();
 
     navigator.mediaDevices.getUserMedia.mockResolvedValueOnce(mockStream);
@@ -219,6 +221,71 @@ describe('conference App UI', () => {
         type: 'offer',
         reason: 'enable-video',
       })
+    );
+  });
+
+  it('запрашивает повторное согласование у инициатора, если сам не инициатор', async () => {
+    const peerConnection = {
+      addTrack: vi.fn(),
+      getSenders: vi.fn(() => []),
+      getTransceivers: vi.fn(() => []),
+      createOffer: vi.fn(),
+      setLocalDescription: vi.fn(),
+      connectionState: 'connected',
+      signalingState: 'stable',
+      iceConnectionState: 'connected',
+      close: vi.fn(),
+    };
+
+    const mockVideoTrack = { stop: vi.fn(), kind: 'video', enabled: true, readyState: 'live' };
+    const mockStream = {
+      getTracks: vi.fn(() => [mockVideoTrack]),
+      getVideoTracks: vi.fn(() => [mockVideoTrack]),
+      getAudioTracks: vi.fn(() => []),
+      addTrack: vi.fn(),
+    };
+
+    const participantRecord = {
+      peerConnection,
+      mediaElement: document.createElement('video'),
+      tileElement: document.createElement('div'),
+      labelElement: document.createElement('div'),
+      pendingCandidates: [],
+      connected: true,
+      videoEnabled: false,
+      videoSender: null,
+      renegotiating: false,
+      pendingRenegotiation: false,
+      isInitiator: false,
+    };
+    participantRecord.tileElement.appendChild(participantRecord.mediaElement);
+    participantRecord.mediaElement.srcObject = {
+      getVideoTracks: () => [],
+    };
+
+    App.socket = { emit: vi.fn() };
+    App.localStream = {
+      getAudioTracks: vi.fn(() => []),
+      addTrack: vi.fn(),
+      removeTrack: vi.fn(),
+      getTracks: vi.fn(() => []),
+    };
+    App.participants = new Map([[ 'peer-1', participantRecord ]]);
+    App.selfId = 'self-99';
+    App.updateVideoButton();
+
+    navigator.mediaDevices.getUserMedia.mockResolvedValueOnce(mockStream);
+
+    await App.toggleVideo();
+
+    expect(peerConnection.createOffer).not.toHaveBeenCalled();
+    expect(peerConnection.setLocalDescription).not.toHaveBeenCalled();
+    expect(App.socket.emit).toHaveBeenCalledWith(
+      'webrtc-signal',
+      expect.objectContaining({
+        targetSocketId: 'peer-1',
+        type: 'renegotiate-request',
+      }),
     );
   });
 });

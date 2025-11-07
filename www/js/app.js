@@ -490,7 +490,8 @@ const App = {
                 videoSender: videoSender,
                 videoTransceiver,
                 renegotiating: false,
-                pendingRenegotiation: false
+                pendingRenegotiation: false,
+                isInitiator
             };
 
             this.participants.set(targetSocketId, participantRecord);
@@ -732,6 +733,14 @@ const App = {
                     }
                     participant.pendingCandidates.push(new RTCIceCandidate(data.signal));
                 }
+            } else if (data.type === 'renegotiate-request') {
+                console.log('🔁 Получен запрос на повторное согласование от', data.fromSocketId, data.reason);
+                await this.renegotiateWithPeer(
+                    data.fromSocketId,
+                    participant,
+                    data.reason || 'remote-request',
+                    { forceInitiator: true }
+                );
             }
         } catch (error) {
             console.error('Ошибка обработки WebRTC сигнала:', error);
@@ -1045,9 +1054,26 @@ const App = {
         }
     },
 
-    async renegotiateWithPeer(socketId, participant, reason = 'manual') {
+    async renegotiateWithPeer(socketId, participant, reason = 'manual', { forceInitiator = false } = {}) {
         const participantRecord = participant || this.participants.get(socketId);
         if (!participantRecord || !participantRecord.peerConnection) {
+            return;
+        }
+
+        const baseId = this.selfId || this.socket?.id || null;
+        const isInitiator = forceInitiator
+            ? true
+            : (participantRecord.isInitiator ??
+                (baseId ? this.isInitiator(baseId, socketId) : false));
+
+        if (!isInitiator) {
+            if (this.socket && !forceInitiator) {
+                this.socket.emit('webrtc-signal', {
+                    targetSocketId: socketId,
+                    type: 'renegotiate-request',
+                    reason
+                });
+            }
             return;
         }
 
