@@ -2,7 +2,7 @@
 const App = {
     socket: null,
     localStream: null,
-    participants: new Map(), // socketId -> { peerConnection, audioElement }
+    participants: new Map(), // socketId -> { peerConnection, mediaElement, tileElement, pendingCandidates }
     
     SERVER_URL: window.location.origin,
     
@@ -44,6 +44,7 @@ const App = {
         }
         
         this.setupEventListeners();
+        this.updateVideoButton();
         console.log('✅ App инициализирован');
     },
     
@@ -56,7 +57,12 @@ const App = {
             btnMute: document.getElementById('btnMute'),
             participantsList: document.getElementById('participantsList'),
             statusMessage: document.getElementById('statusMessage'),
-            conferenceStatus: document.getElementById('conferenceStatus')
+            conferenceStatus: document.getElementById('conferenceStatus'),
+            videoGrid: document.getElementById('videoGrid'),
+            localVideo: document.getElementById('localVideo'),
+            localVideoTile: document.querySelector('#videoGrid .video-tile.self'),
+            localVideoLabel: document.querySelector('#videoGrid .video-tile.self .video-label'),
+            btnVideo: document.getElementById('btnVideo') // Добавляем кнопку видео
         };
     },
     
@@ -65,6 +71,9 @@ const App = {
         this.elements.btnDisconnect.addEventListener('click', () => this.disconnect());
         if (this.elements.btnMute) {
             this.elements.btnMute.addEventListener('click', () => this.toggleMute());
+        }
+        if (this.elements.btnVideo) {
+            this.elements.btnVideo.addEventListener('click', () => this.toggleVideo());
         }
     },
     
@@ -131,6 +140,7 @@ const App = {
                         this.showScreen('conferenceScreen');
                         this.updateConferenceStatus();
                         this.updateMuteButton();
+                        this.updateVideoButton();
                     }
                     
                     // Подключаемся ко всем существующим участникам
@@ -145,6 +155,10 @@ const App = {
                         this.showMessage(`Подключено к ${data.users.length} участникам`, 'success');
                     } else {
                         console.log('📭 Нет других участников в конференции');
+                        this.showScreen('conferenceScreen');
+                        this.updateConferenceStatus();
+                        this.updateMuteButton();
+                        this.updateVideoButton();
                         this.showMessage('Подключено к конференции', 'success');
                     }
                 });
@@ -198,6 +212,7 @@ const App = {
                         this.showScreen('conferenceScreen');
                         this.updateConferenceStatus();
                         this.updateMuteButton();
+                        this.updateVideoButton();
                         this.showMessage('Подключено к конференции', 'success');
                     }
                 }, 1000);
@@ -257,142 +272,168 @@ const App = {
     },
     
     async connectToPeer(targetSocketId, isInitiator) {
-        // Проверяем, не подключены ли мы уже к этому участнику
         if (this.participants.has(targetSocketId)) {
             console.log('Уже подключен к', targetSocketId);
             return;
         }
-        
+
         try {
-            // Создаем RTCPeerConnection для этого участника
             const peerConnection = new RTCPeerConnection({ iceServers: this.ICE_SERVERS });
-            
-            // Добавляем локальный поток
+
             if (this.localStream) {
-                this.localStream.getTracks().forEach(track => {
+                this.localStream.getAudioTracks().forEach(track => {
                     peerConnection.addTrack(track, this.localStream);
                 });
             }
-            
-            // Создаем аудио элемент для удаленного потока
-            const audioElement = document.createElement('audio');
-            audioElement.autoplay = true;
-            audioElement.controls = false;
-            audioElement.playsInline = true;
-            audioElement.volume = 1.0;
-            audioElement.style.display = 'none';
-            // Добавляем в DOM для работы
-            document.body.appendChild(audioElement);
-            
-            // Обработка входящих потоков
-            peerConnection.ontrack = (event) => {
-                console.log('🎵 Получен аудио поток от', targetSocketId, event);
-                const remoteStream = event.streams[0];
-                if (remoteStream) {
-                    audioElement.srcObject = remoteStream;
-                    
-                    // Принудительное воспроизведение
-                    audioElement.play().then(() => {
-                        console.log('✅ Аудио воспроизводится от', targetSocketId);
-                    }).catch(err => {
-                        console.error('❌ Ошибка воспроизведения аудио:', err);
-                        // Пробуем еще раз после взаимодействия пользователя
-                        document.addEventListener('click', () => {
-                            audioElement.play().catch(e => console.error('Ошибка воспроизведения после клика:', e));
-                        }, { once: true });
-                    });
-                }
+
+            const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+            if (this.videoTrack) {
+                videoTransceiver.sender.replaceTrack(this.videoTrack);
+            }
+
+            const media = this.createParticipantMedia(targetSocketId);
+
+            const participantRecord = {
+                peerConnection,
+                mediaElement: media.mediaElement,
+                tileElement: media.tileElement,
+                labelElement: media.labelElement,
+                pendingCandidates: [],
+                connected: false,
+                videoEnabled: false,
+                videoSender: videoTransceiver.sender
             };
-            
-            // ICE кандидаты
+
+            this.participants.set(targetSocketId, participantRecord);
+
+            peerConnection.ontrack = (event) => {
+                const trackKind = event.track ? event.track.kind : 'unknown';
+                console.log('🎥 Получен трек от', targetSocketId, trackKind, event);
+
+                const remoteStream = event.streams[0];
+                if (!remoteStream || !participantRecord.mediaElement) {
+                    return;
+                }
+
+                if (!participantRecord.mediaElement.srcObject || participantRecord.mediaElement.srcObject.id !== remoteStream.id) {
+                    participantRecord.mediaElement.srcObject = remoteStream;
+                }
+
+                participantRecord.mediaElement.autoplay = true;
+                participantRecord.mediaElement.playsInline = true;
+                participantRecord.mediaElement.muted = false;
+                participantRecord.mediaElement.controls = false;
+
+                participantRecord.mediaElement.play().catch(err => {
+                    console.error('❌ Ошибка воспроизведения медиа для', targetSocketId, err);
+                    document.addEventListener('click', () => {
+                        participantRecord.mediaElement.play().catch(e => console.error('Ошибка воспроизведения после клика:', e));
+                    }, { once: true });
+                });
+
+                participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track => track.readyState === 'live' && track.enabled);
+                this.updateParticipantVideoState(targetSocketId);
+                this.updateParticipantsList();
+
+                if (event.track && event.track.kind === 'video') {
+                    event.track.onended = () => {
+                        participantRecord.videoEnabled = false;
+                        this.updateParticipantVideoState(targetSocketId);
+                        this.updateParticipantsList();
+                    };
+                    event.track.onmute = () => {
+                        participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track => track.enabled);
+                        this.updateParticipantVideoState(targetSocketId);
+                        this.updateParticipantsList();
+                    };
+                    event.track.onunmute = () => {
+                        participantRecord.videoEnabled = true;
+                        this.updateParticipantVideoState(targetSocketId);
+                        this.updateParticipantsList();
+                    };
+                }
+
+                remoteStream.onremovetrack = () => {
+                    participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track => track.readyState === 'live' && track.enabled);
+                    this.updateParticipantVideoState(targetSocketId);
+                    this.updateParticipantsList();
+                };
+            };
+
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     this.socket.emit('webrtc-signal', {
-                        targetSocketId: targetSocketId,
+                        targetSocketId,
                         signal: event.candidate,
                         type: 'ice-candidate'
                     });
                 }
             };
-            
-            // Обработка изменения состояния соединения
+
             peerConnection.onconnectionstatechange = () => {
                 const state = peerConnection.connectionState;
                 console.log(`🔗 Соединение с ${targetSocketId}: ${state}`);
-                
-                const participant = this.participants.get(targetSocketId);
-                if (participant) {
-                    if (state === 'connected') {
-                        console.log('✅ WebRTC соединение установлено с', targetSocketId);
-                        participant.connected = true;
-                        // Убеждаемся, что аудио воспроизводится
-                        if (participant.audioElement && participant.audioElement.srcObject) {
-                            participant.audioElement.play().catch(err => {
-                                console.error('Ошибка воспроизведения после подключения:', err);
-                            });
-                        }
-                    } else if (state === 'failed' || state === 'disconnected') {
-                        console.warn('⚠️ WebRTC соединение потеряно с', targetSocketId, state);
-                    }
+
+                participantRecord.connected = state === 'connected';
+                if (participantRecord.mediaElement && participantRecord.mediaElement.srcObject) {
+                    participantRecord.mediaElement.play().catch(err => {
+                        console.error('Ошибка воспроизведения после подключения:', err);
+                    });
                 }
-                
+
                 this.updateParticipantUI(targetSocketId);
             };
-            
-            // Обработка ICE соединения
+
             peerConnection.oniceconnectionstatechange = () => {
                 const iceState = peerConnection.iceConnectionState;
                 console.log(`🧊 ICE соединение с ${targetSocketId}: ${iceState}`);
-                
-                const participant = this.participants.get(targetSocketId);
-                if (participant) {
-                    if (iceState === 'connected' || iceState === 'completed') {
-                        participant.connected = true;
-                        console.log(`✅ ICE соединение установлено с ${targetSocketId}`);
-                        // Убеждаемся, что аудио воспроизводится
-                        if (participant.audioElement && participant.audioElement.srcObject) {
-                            participant.audioElement.play().catch(err => {
-                                console.error('Ошибка воспроизведения после ICE подключения:', err);
-                            });
-                        }
-                    } else if (iceState === 'failed' || iceState === 'disconnected') {
-                        console.warn(`⚠️ ICE соединение потеряно с ${targetSocketId}: ${iceState}`);
+
+                if (iceState === 'connected' || iceState === 'completed') {
+                    participantRecord.connected = true;
+                    if (participantRecord.mediaElement && participantRecord.mediaElement.srcObject) {
+                        participantRecord.mediaElement.play().catch(err => {
+                            console.error('Ошибка воспроизведения после ICE подключения:', err);
+                        });
                     }
-                    this.updateParticipantUI(targetSocketId);
+                } else if (iceState === 'failed' || iceState === 'disconnected') {
+                    participantRecord.connected = false;
+                    console.warn(`⚠️ ICE соединение потеряно с ${targetSocketId}: ${iceState}`);
                 }
+
+                this.updateParticipantUI(targetSocketId);
             };
-            
-            // Сохраняем информацию о соединении
-            this.participants.set(targetSocketId, {
-                peerConnection,
-                audioElement,
-                connected: false
-            });
-            
-            // Обновляем статус конференции после добавления участника
+
             this.updateConferenceStatus();
-            
-            // Если мы инициатор, создаем offer
+
             if (isInitiator) {
                 console.log(`📤 Создание offer для ${targetSocketId}`);
                 const offer = await peerConnection.createOffer({
                     offerToReceiveAudio: true,
-                    offerToReceiveVideo: false
+                    offerToReceiveVideo: true
                 });
                 await peerConnection.setLocalDescription(offer);
                 console.log(`✅ Offer создан и отправлен для ${targetSocketId}`);
-                
+
                 this.socket.emit('webrtc-signal', {
-                    targetSocketId: targetSocketId,
+                    targetSocketId,
                     signal: offer,
                     type: 'offer'
                 });
             }
-            
+
             this.updateParticipantsList();
-            
+            this.updateParticipantVideoState(targetSocketId);
         } catch (error) {
             console.error(`Ошибка подключения к ${targetSocketId}:`, error);
+            const participant = this.participants.get(targetSocketId);
+            if (participant) {
+                if (participant.tileElement && participant.tileElement.parentNode) {
+                    participant.tileElement.remove();
+                }
+                if (participant.mediaElement && participant.mediaElement.parentNode && participant.mediaElement.parentNode !== participant.tileElement) {
+                    participant.mediaElement.remove();
+                }
+            }
             this.participants.delete(targetSocketId);
         }
     },
@@ -566,23 +607,159 @@ const App = {
     
     disconnectFromPeer(socketId) {
         const participant = this.participants.get(socketId);
-        if (participant) {
-            console.log(`🔌 Отключение от ${socketId}`);
-            if (participant.peerConnection) {
-                participant.peerConnection.close();
+        if (!participant) {
+            return;
+        }
+
+        console.log(`🔌 Отключение от ${socketId}`);
+
+        if (participant.peerConnection) {
+            participant.peerConnection.close();
+        }
+
+        if (participant.mediaElement) {
+            participant.mediaElement.pause();
+            participant.mediaElement.srcObject = null;
+            if (participant.mediaElement.parentNode && participant.mediaElement.parentNode !== (participant.tileElement || null)) {
+                participant.mediaElement.remove();
             }
-            if (participant.audioElement) {
-                participant.audioElement.pause();
-                participant.audioElement.srcObject = null;
-                if (participant.audioElement.parentNode) {
-                    participant.audioElement.remove();
-                }
+        }
+
+        if (participant.tileElement && participant.tileElement.parentNode) {
+            participant.tileElement.remove();
+        }
+
+        this.participants.delete(socketId);
+        this.updateConferenceStatus();
+        this.showMessage('Участник покинул конференцию', 'info');
+        this.updateParticipantsList();
+        this.updateParticipantVideoState(socketId);
+    },
+    
+    async toggleVideo() {
+        if (!this.localStream || this.videoToggleInProgress) {
+            return;
+        }
+
+        this.videoToggleInProgress = true;
+        this.updateVideoButton();
+
+        try {
+            if (this.isVideoEnabled) {
+                await this.disableVideo();
+                this.showMessage('Камера выключена', 'info');
+            } else {
+                await this.enableVideo();
+                this.showMessage('Камера включена', 'success');
             }
-            this.participants.delete(socketId);
-            this.updateConferenceStatus();
-            this.showMessage('Участник покинул конференцию', 'info');
+        } catch (error) {
+            console.error('❌ Ошибка переключения видео:', error);
+            this.showMessage('Не удалось переключить камеру: ' + error.message, 'error');
+        } finally {
+            this.videoToggleInProgress = false;
+            this.updateVideoButton();
             this.updateParticipantsList();
         }
+    },
+
+    async enableVideo() {
+        if (this.isVideoEnabled) {
+            return;
+        }
+
+        console.log('📹 Запрос доступа к камере...');
+        let stream;
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: true
+            });
+        } catch (error) {
+            throw new Error('Камера недоступна или отключена');
+        }
+
+        const [videoTrack] = stream.getVideoTracks();
+        if (!videoTrack) {
+            throw new Error('Видео трек не найден');
+        }
+
+        stream.getTracks().forEach(track => {
+            if (track !== videoTrack) {
+                track.stop();
+            }
+        });
+
+        this.videoTrack = videoTrack;
+        this.localStream.addTrack(videoTrack);
+        this.isVideoEnabled = true;
+        this.attachLocalStreamToPreview();
+
+        this.participants.forEach((participant, socketId) => {
+            if (!participant.peerConnection) {
+                return;
+            }
+
+            if (participant.videoSender) {
+                participant.videoSender.replaceTrack(videoTrack).catch(err => {
+                    console.error('Ошибка замены видео-трека для участника', socketId, err);
+                });
+            } else {
+                const sender = participant.peerConnection
+                    .getSenders()
+                    .find(s => s.track && s.track.kind === 'video');
+
+                if (sender) {
+                    sender.replaceTrack(videoTrack).catch(err => {
+                        console.error('Ошибка замены видео-трека для участника', socketId, err);
+                    });
+                } else {
+                    participant.peerConnection.addTrack(videoTrack, this.localStream);
+                }
+            }
+
+            this.updateParticipantVideoState(socketId);
+        });
+    },
+
+    async disableVideo() {
+        if (!this.isVideoEnabled) {
+            return;
+        }
+
+        const videoTrack = this.videoTrack;
+
+        this.participants.forEach((participant, socketId) => {
+            if (!participant.peerConnection) {
+                return;
+            }
+
+            if (participant.videoSender) {
+                participant.videoSender.replaceTrack(null).catch(err => {
+                    console.warn('⚠️ Не удалось удалить видео-трек у участника', socketId, err);
+                });
+            } else {
+                const videoSenders = participant.peerConnection
+                    .getSenders()
+                    .filter(sender => sender.track && sender.track.kind === 'video');
+
+                videoSenders.forEach(sender => {
+                    sender.replaceTrack(null).catch(err => {
+                        console.warn('⚠️ Не удалось удалить видео-трек у участника', socketId, err);
+                    });
+                });
+            }
+
+            this.updateParticipantVideoState(socketId);
+        });
+
+        if (videoTrack) {
+            this.localStream.removeTrack(videoTrack);
+            videoTrack.stop();
+        }
+
+        this.videoTrack = null;
+        this.isVideoEnabled = false;
+        this.attachLocalStreamToPreview();
     },
     
     toggleMute() {
@@ -638,36 +815,51 @@ const App = {
         
         list.innerHTML = '';
         
-        // Добавляем себя
+        const selfVideoEnabled = this.isVideoEnabled;
         const selfItem = document.createElement('div');
         selfItem.className = 'participant-item self';
         selfItem.innerHTML = `
             <div class="participant-name">Вы</div>
-            <div class="participant-status">Подключено</div>
+            <div class="participant-status">
+                <span class="status-pill success">Подключено</span>
+                <span class="status-pill ${selfVideoEnabled ? 'success' : 'muted'}">${selfVideoEnabled ? '📹 Камера включена' : '🚫 Камера выключена'}</span>
+            </div>
         `;
         list.appendChild(selfItem);
         
-        // Добавляем других участников
         this.participants.forEach((participant, socketId) => {
             const item = document.createElement('div');
             item.className = 'participant-item';
             
-            // Проверяем оба состояния для более точного статуса
-            const connState = participant.peerConnection.connectionState;
-            const iceState = participant.peerConnection.iceConnectionState;
+            const connState = participant.peerConnection ? participant.peerConnection.connectionState : 'new';
+            const iceState = participant.peerConnection ? participant.peerConnection.iceConnectionState : 'new';
             
             let status = 'Ожидание';
+            let statusClass = 'neutral';
             if (connState === 'connected' || iceState === 'connected' || iceState === 'completed') {
                 status = 'Подключено';
+                statusClass = 'success';
             } else if (connState === 'connecting' || iceState === 'checking' || iceState === 'connecting') {
                 status = 'Подключение...';
+                statusClass = 'warning';
             } else if (connState === 'failed' || iceState === 'failed') {
                 status = 'Ошибка';
+                statusClass = 'muted';
+            } else if (connState === 'disconnected') {
+                status = 'Отключено';
+                statusClass = 'muted';
             }
+            
+            const videoActive = !!participant.videoEnabled;
+            const videoClass = videoActive ? 'success' : 'muted';
+            const videoText = videoActive ? '📹 Камера включена' : '🚫 Камера выключена';
             
             item.innerHTML = `
                 <div class="participant-name">Участник ${socketId.substring(0, 8)}</div>
-                <div class="participant-status">${status}</div>
+                <div class="participant-status">
+                    <span class="status-pill ${statusClass}">${status}</span>
+                    <span class="status-pill ${videoClass}">${videoText}</span>
+                </div>
             `;
             list.appendChild(item);
         });
@@ -675,6 +867,9 @@ const App = {
     
     updateParticipantUI(socketId) {
         this.updateParticipantsList();
+        if (socketId) {
+            this.updateParticipantVideoState(socketId);
+        }
     },
     
     updateConferenceStatus() {
@@ -701,7 +896,11 @@ const App = {
             this.localStream.getTracks().forEach(track => track.stop());
             this.localStream = null;
         }
-        
+        this.videoTrack = null;
+        this.isVideoEnabled = false;
+        this.attachLocalStreamToPreview();
+        this.updateVideoButton();
+
         // Отключаемся от сервера
         if (this.socket) {
             this.socket.disconnect();
@@ -721,6 +920,145 @@ const App = {
         
         if (this.elements[screenName]) {
             this.elements[screenName].classList.add('active');
+        }
+    },
+
+    createParticipantMedia(socketId) {
+        const grid = this.elements.videoGrid;
+
+        if (!grid) {
+            const audioElement = document.createElement('audio');
+            audioElement.autoplay = true;
+            audioElement.controls = false;
+            audioElement.playsInline = true;
+            audioElement.volume = 1.0;
+            audioElement.style.display = 'none';
+            document.body.appendChild(audioElement);
+
+            return {
+                tileElement: null,
+                mediaElement: audioElement,
+                labelElement: null
+            };
+        }
+
+        const existingTile = grid.querySelector(`[data-socket-id="${socketId}"]`);
+        if (existingTile) {
+            existingTile.remove();
+        }
+
+        const tileElement = document.createElement('div');
+        tileElement.className = 'video-tile video-off';
+        tileElement.dataset.socketId = socketId;
+
+        const videoElement = document.createElement('video');
+        videoElement.className = 'video-element';
+        videoElement.autoplay = true;
+        videoElement.playsInline = true;
+        videoElement.controls = false;
+        videoElement.muted = false;
+
+        const labelElement = document.createElement('div');
+        labelElement.className = 'video-label';
+        labelElement.textContent = `Участник ${socketId.substring(0, 8)}`;
+
+        tileElement.appendChild(videoElement);
+        tileElement.appendChild(labelElement);
+        grid.appendChild(tileElement);
+
+        return {
+            tileElement,
+            mediaElement: videoElement,
+            labelElement
+        };
+    },
+
+    updateParticipantVideoState(socketId) {
+        const participant = this.participants.get(socketId);
+        if (!participant) {
+            return;
+        }
+
+        if (participant.mediaElement && participant.mediaElement.srcObject) {
+            const hasVideo = participant.mediaElement.srcObject
+                .getVideoTracks()
+                .some(track => track.readyState === 'live' && track.enabled);
+            participant.videoEnabled = hasVideo;
+        } else {
+            participant.videoEnabled = false;
+        }
+
+        if (participant.tileElement) {
+            participant.tileElement.classList.toggle('video-off', !participant.videoEnabled);
+        }
+
+        if (participant.labelElement) {
+            const baseLabel = `Участник ${socketId.substring(0, 8)}`;
+            participant.labelElement.textContent = participant.videoEnabled ? baseLabel : `${baseLabel} (камера выкл.)`;
+        }
+    },
+
+    updateVideoButton() {
+        const btn = this.elements.btnVideo;
+        if (!btn) {
+            this.updateLocalVideoState(!!this.localStream && this.isVideoEnabled);
+            return;
+        }
+ 
+        if (!this.localStream) {
+            btn.disabled = true;
+            btn.textContent = '📹 Включить камеру';
+            btn.classList.add('muted');
+            this.updateLocalVideoState(false);
+            return;
+        }
+ 
+        btn.disabled = !!this.videoToggleInProgress;
+        if (this.isVideoEnabled) {
+            btn.textContent = '📷 Выключить камеру';
+            btn.classList.remove('muted');
+            this.updateLocalVideoState(true);
+        } else {
+            btn.textContent = '📹 Включить камеру';
+            btn.classList.add('muted');
+            this.updateLocalVideoState(false);
+        }
+    },
+
+    updateLocalVideoState(isEnabled = this.isVideoEnabled) {
+        const tile = this.elements.localVideoTile;
+        const label = this.elements.localVideoLabel;
+
+        if (tile) {
+            tile.classList.toggle('video-off', !isEnabled);
+        }
+
+        if (label) {
+            label.textContent = isEnabled ? 'Вы' : 'Вы (камера выкл.)';
+        }
+    },
+
+    attachLocalStreamToPreview() {
+        const localVideo = this.elements.localVideo;
+        if (!localVideo) return;
+        if (this.localStream) {
+            localVideo.srcObject = this.localStream;
+            localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.autoplay = true;
+            localVideo.style.visibility = 'visible';
+            this.updateLocalVideoState(this.isVideoEnabled);
+            const attemptPlay = () => localVideo.play().catch(err => {
+                console.warn('⚠️ Не удалось автоматически воспроизвести локальное превью:', err);
+                document.addEventListener('click', () => {
+                    localVideo.play().catch(e => console.warn('Ошибка воспроизведения превью после клика:', e));
+                }, { once: true });
+            });
+            attemptPlay();
+        } else {
+            localVideo.srcObject = null;
+            localVideo.style.visibility = 'hidden';
+            this.updateLocalVideoState(false);
         }
     }
 };

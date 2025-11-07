@@ -225,6 +225,10 @@ input[type="text"]:focus {
 .participant-status {
     font-size: 14px;
     color: #666;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
 }
 
 .conference-controls {
@@ -232,5 +236,122 @@ input[type="text"]:focus {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.video-tile {
+    position: relative;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 160px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.video-tile.self {
+    border: 2px solid #28a745;
+}
+
+.video-element {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.video-label {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.btn-control.video {
+    background: #007bff;
+}
+
+.btn-control.video:hover {
+    background: #0069d9;
+}
+
+.btn-control.video.disabled {
+    background: #6c757d;
+}
+
+.video-tile.video-off .video-element {
+    filter: grayscale(100%);
+    opacity: 0.2;
+}
+
+.video-tile.video-off::after {
+    content: 'Камера выключена';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e0e0e0;
+    color: #333;
+    margin-right: 6px;
+}
+
+.status-pill.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-pill.muted {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-pill.warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-pill.neutral {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+@media (min-width: 768px) {
+    .conference-controls {
+        flex-direction: row;
+    }
+
+    .conference-controls .btn {
+        flex: 1;
+    }
 }
 
