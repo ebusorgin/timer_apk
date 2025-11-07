@@ -374,13 +374,13 @@ const App = {
                     }, { once: true });
                 });
 
-                participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
-                    track.readyState === 'live' && track.enabled && !track.muted
-                );
-                this.updateParticipantVideoState(targetSocketId);
-                this.updateParticipantsList();
-
                 if (event.track && event.track.kind === 'video') {
+                    participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
+                        track.readyState === 'live' && track.enabled && !track.muted
+                    );
+                    this.updateParticipantVideoState(targetSocketId);
+                    this.updateParticipantsList();
+
                     event.track.onended = () => {
                         participantRecord.videoEnabled = false;
                         this.updateParticipantVideoState(targetSocketId);
@@ -403,11 +403,14 @@ const App = {
                 }
 
                 remoteStream.onremovetrack = () => {
-                    participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
+                    const hasActiveVideo = remoteStream.getVideoTracks().some(track =>
                         track.readyState === 'live' && track.enabled && !track.muted
                     );
-                    this.updateParticipantVideoState(targetSocketId);
-                    this.updateParticipantsList();
+                    if (participantRecord.videoEnabled !== hasActiveVideo) {
+                        participantRecord.videoEnabled = hasActiveVideo;
+                        this.updateParticipantVideoState(targetSocketId);
+                        this.updateParticipantsList();
+                    }
                 };
             };
 
