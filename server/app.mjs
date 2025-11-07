@@ -41,24 +41,47 @@ export function createServerApp(options = {}) {
     res.send('// Cordova.js placeholder\n');
   });
 
+  const participants = new Map();
   const connections = new Set();
+
+  const buildSnapshot = () => Array.from(participants.values()).map((participant) => ({
+    id: participant.id,
+    media: { ...participant.media },
+    connectedAt: participant.connectedAt,
+  }));
 
   io.on('connection', (socket) => {
     console.log('✅ Клиент подключен:', socket.id);
-    console.log('📊 Всего подключений:', connections.size + 1);
     connections.add(socket.id);
 
+    const participantRecord = {
+      id: socket.id,
+      media: {
+        cam: false,
+        mic: true,
+      },
+      connectedAt: Date.now(),
+    };
+    participants.set(socket.id, participantRecord);
+    console.log('📊 Всего подключений:', participants.size);
+
+    if (socket.connected) {
+      socket.emit('presence:sync', { participants: buildSnapshot() });
+      socket.broadcast.emit('presence:update', {
+        action: 'join',
+        participant: participantRecord,
+      });
+      console.log(`✅ [${socket.id}] Снимок присутствия отправлен, уведомление о новом участнике разослано`);
+    }
+
     setTimeout(() => {
+      if (!socket.connected) return;
       const otherConnections = Array.from(connections).filter((id) => id !== socket.id);
       console.log(`📋 [${socket.id}] Подготовка к отправке списка пользователей:`, otherConnections.length, 'участников');
       console.log(`📋 [${socket.id}] Список участников:`, otherConnections);
 
-      if (socket.connected) {
-        socket.emit('users-list', { users: otherConnections });
-        console.log(`✅ [${socket.id}] Событие users-list отправлено (${otherConnections.length} участников)`);
-      } else {
-        console.warn(`⚠️ [${socket.id}] Сокет уже отключен, не отправляем users-list`);
-      }
+      socket.emit('users-list', { users: otherConnections });
+      console.log(`✅ [${socket.id}] Событие users-list отправлено (${otherConnections.length} участников)`);
     }, 100);
 
     setTimeout(() => {
@@ -72,7 +95,7 @@ export function createServerApp(options = {}) {
 
     socket.on('webrtc-signal', ({ targetSocketId, signal, type }) => {
       console.log(`📡 [${socket.id}] WebRTC сигнал -> ${targetSocketId}, тип: ${type}`);
-      if (connections.has(targetSocketId)) {
+      if (participants.has(targetSocketId)) {
         io.to(targetSocketId).emit('webrtc-signal', {
           fromSocketId: socket.id,
           signal,
@@ -80,20 +103,59 @@ export function createServerApp(options = {}) {
         });
         console.log(`✅ [${socket.id}] Сигнал доставлен ${targetSocketId}`);
       } else {
-        console.warn(`⚠️ [${socket.id}] Целевой сокет ${targetSocketId} не найден в connections`);
-        console.warn(`⚠️ [${socket.id}] Доступные соединения:`, Array.from(connections));
+        console.warn(`⚠️ [${socket.id}] Целевой сокет ${targetSocketId} не найден в участниках`);
+        console.warn(`⚠️ [${socket.id}] Доступные участники:`, Array.from(participants.keys()));
+      }
+    });
+
+    socket.on('status:change', (payload = {}) => {
+      const participant = participants.get(socket.id);
+      if (!participant) {
+        console.warn(`⚠️ [${socket.id}] Статус не обновлён: участник не найден`);
+        return;
+      }
+
+      const { media = {} } = payload;
+      let dirty = false;
+
+      if (typeof media.cam === 'boolean' && participant.media.cam !== media.cam) {
+        participant.media.cam = media.cam;
+        dirty = true;
+      }
+      if (typeof media.mic === 'boolean' && participant.media.mic !== media.mic) {
+        participant.media.mic = media.mic;
+        dirty = true;
+      }
+
+      if (dirty) {
+        participants.set(socket.id, participant);
+        io.emit('status:update', {
+          id: socket.id,
+          media: { ...participant.media },
+        });
+        console.log(`✅ [${socket.id}] Статус обновлён и разослан:`, participant.media);
       }
     });
 
     socket.on('disconnect', (reason) => {
-      const wasConnected = connections.has(socket.id);
+      const participant = participants.get(socket.id);
+      const wasConnected = Boolean(participant);
+      participants.delete(socket.id);
       connections.delete(socket.id);
       console.log(`👋 [${socket.id}] Клиент отключен, причина: ${reason}`);
-      console.log(`📊 [${socket.id}] Всего подключений после отключения: ${connections.size}`);
+      console.log(`📊 [${socket.id}] Всего подключений после отключения: ${participants.size}`);
 
       if (wasConnected) {
         socket.broadcast.emit('user-disconnected', { socketId: socket.id });
-        console.log(`✅ [${socket.id}] Событие user-disconnected отправлено всем остальным`);
+        socket.broadcast.emit('presence:update', {
+          action: 'leave',
+          participantId: socket.id,
+        });
+        io.emit('status:update', {
+          id: socket.id,
+          media: { cam: false, mic: false },
+        });
+        console.log(`✅ [${socket.id}] Отправлены события ухода, presence update и сброс статуса`);
       }
     });
   });

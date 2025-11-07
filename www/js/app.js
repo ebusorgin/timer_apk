@@ -3,6 +3,10 @@ const App = {
     socket: null,
     localStream: null,
     participants: new Map(), // socketId -> { peerConnection, mediaElement, tileElement, pendingCandidates }
+    presence: new Map(), // socketId -> { id, media, connectedAt }
+    lastSentMediaStatus: { cam: false, mic: false },
+    presence: new Map(), // socketId -> { id, media: { cam, mic }, connectedAt }
+    lastSentMediaStatus: { cam: false, mic: false },
     
     SERVER_URL: window.location.origin,
     
@@ -37,7 +41,8 @@ const App = {
     init() {
         console.log('Conference App initializing...');
         this.initElements();
-        
+        this.resetPresenceState();
+
         if (!this.elements.btnConnect) {
             console.error('❌ Кнопка подключения не найдена!');
             return;
@@ -75,6 +80,182 @@ const App = {
         if (this.elements.btnVideo) {
             this.elements.btnVideo.addEventListener('click', () => this.toggleVideo());
         }
+    },
+
+    resetPresenceState() {
+        this.presence = new Map();
+        this.lastSentMediaStatus = { cam: false, mic: false };
+    },
+
+    ensurePresenceRecord(socketId, data = {}) {
+        if (!socketId) {
+            return null;
+        }
+
+        const existing = this.presence.get(socketId) || {
+            id: socketId,
+            media: { cam: false, mic: false },
+            connectedAt: Date.now()
+        };
+
+        if (data.media) {
+            const nextMedia = {
+                cam: typeof data.media.cam === 'boolean' ? data.media.cam : existing.media.cam,
+                mic: typeof data.media.mic === 'boolean' ? data.media.mic : existing.media.mic
+            };
+            existing.media = nextMedia;
+        }
+
+        if (data.connectedAt) {
+            existing.connectedAt = data.connectedAt;
+        }
+
+        this.presence.set(socketId, existing);
+        return existing;
+    },
+
+    getLocalMediaState() {
+        const audioTrack = this.localStream?.getAudioTracks()[0];
+        const mic = !!(audioTrack && audioTrack.enabled);
+        const cam = !!this.isVideoEnabled;
+        return { cam, mic };
+    },
+
+    syncLocalMediaStatus({ force = false } = {}) {
+        if (!this.socket) {
+            return;
+        }
+
+        const nextStatus = this.getLocalMediaState();
+        const prev = this.lastSentMediaStatus || { cam: false, mic: false };
+
+        if (!force && prev.cam === nextStatus.cam && prev.mic === nextStatus.mic) {
+            return;
+        }
+
+        this.lastSentMediaStatus = nextStatus;
+        this.socket.emit('status:change', { media: nextStatus });
+
+        if (this.socket.id) {
+            const record = this.ensurePresenceRecord(this.socket.id);
+            record.media = { ...record.media, ...nextStatus };
+            this.presence.set(this.socket.id, record);
+            this.updateParticipantsList();
+        }
+    },
+
+    async handlePresenceSync(data = {}) {
+        const participants = Array.isArray(data.participants) ? data.participants : [];
+        console.log('📡 [presence:sync] Получен снимок участников:', participants);
+
+        this.presence = new Map();
+        const toConnect = [];
+
+        participants.forEach((participant) => {
+            if (!participant?.id) {
+                return;
+            }
+
+            const media = {
+                cam: !!(participant.media && participant.media.cam),
+                mic: typeof participant.media?.mic === 'boolean' ? participant.media.mic : false
+            };
+
+            this.ensurePresenceRecord(participant.id, {
+                media,
+                connectedAt: participant.connectedAt
+            });
+
+            if (participant.id !== this.socket?.id) {
+                toConnect.push(participant.id);
+            }
+        });
+
+        if (this.socket?.id && !this.presence.has(this.socket.id)) {
+            this.ensurePresenceRecord(this.socket.id, {
+                media: this.getLocalMediaState(),
+                connectedAt: Date.now()
+            });
+        }
+
+        this.updateParticipantsList();
+        this.updateConferenceStatus();
+
+        for (const otherId of toConnect) {
+            const isInitiator = this.isInitiator(this.socket.id, otherId);
+            try {
+                await this.connectToPeer(otherId, isInitiator);
+            } catch (err) {
+                console.error(`❌ Ошибка подключения к участнику ${otherId} после presence:sync`, err);
+            }
+        }
+    },
+
+    async handlePresenceUpdate(data = {}) {
+        const { action, participant, participantId } = data;
+        console.log('📡 [presence:update]', data);
+
+        if (action === 'join' && participant?.id) {
+            if (participant.id === this.socket?.id) {
+                return;
+            }
+
+            const media = {
+                cam: !!(participant.media && participant.media.cam),
+                mic: typeof participant.media?.mic === 'boolean' ? participant.media.mic : false
+            };
+
+            this.ensurePresenceRecord(participant.id, {
+                media,
+                connectedAt: participant.connectedAt
+            });
+
+            this.showMessage('Новый участник присоединился', 'info');
+
+            this.updateParticipantsList();
+            this.updateConferenceStatus();
+
+            const isInitiator = this.isInitiator(this.socket.id, participant.id);
+            try {
+                await this.connectToPeer(participant.id, isInitiator);
+            } catch (err) {
+                console.error(`❌ Ошибка подключения к новому участнику ${participant.id}`, err);
+            }
+        } else if (action === 'leave' && participantId) {
+            this.presence.delete(participantId);
+            this.disconnectFromPeer(participantId);
+            this.updateConferenceStatus();
+            this.updateParticipantsList();
+            this.showMessage('Участник покинул конференцию', 'info');
+        }
+    },
+
+    handleStatusUpdate(data = {}) {
+        const { id, media } = data;
+        if (!id) {
+            return;
+        }
+
+        const normalizedMedia = {
+            cam: typeof media?.cam === 'boolean' ? media.cam : undefined,
+            mic: typeof media?.mic === 'boolean' ? media.mic : undefined
+        };
+
+        const record = this.ensurePresenceRecord(id);
+        record.media = {
+            cam: normalizedMedia.cam !== undefined ? normalizedMedia.cam : record.media.cam,
+            mic: normalizedMedia.mic !== undefined ? normalizedMedia.mic : record.media.mic
+        };
+        this.presence.set(id, record);
+
+        if (id === this.socket?.id) {
+            this.lastSentMediaStatus = {
+                cam: record.media.cam,
+                mic: record.media.mic
+            };
+        }
+
+        this.updateParticipantUI(id);
     },
     
     showMessage(message, type = 'info') {
@@ -115,59 +296,24 @@ const App = {
             });
             
             // Обработчики подключения Socket.IO
-            // Устанавливаем обработчик users-list ВНУТРИ события connect,
-            // чтобы гарантировать, что он зарегистрирован до получения события от сервера
             this.socket.on('connect', () => {
                 console.log('✅ Socket.IO подключен:', this.socket.id);
                 this.showMessage('Подключено к серверу', 'success');
-                
-                // Устанавливаем обработчик users-list СРАЗУ после подключения
-                // Сервер отправляет событие через setImmediate(), так что обработчик успеет зарегистрироваться
-                let usersListHandled = false;
-                this.socket.once('users-list', async (data) => {
-                    if (usersListHandled) {
-                        console.log('📋 [ONCE] Пропускаем повторное событие users-list');
-                        return;
-                    }
-                    usersListHandled = true;
-                    
-                    console.log('📋 [ONCE] Получен список пользователей:', data);
-                    console.log('📋 [ONCE] Количество участников:', data.users ? data.users.length : 0);
-                    console.log('📋 [ONCE] Мой socket.id:', this.socket.id);
-                    
-                    // Переходим в конференцию сразу
-                    if (document.getElementById('connectScreen').classList.contains('active')) {
-                        this.showScreen('conferenceScreen');
-                        this.updateConferenceStatus();
-                        this.updateMuteButton();
-                        this.updateVideoButton();
-                    }
-                    
-                    // Подключаемся ко всем существующим участникам
-                    if (data.users && data.users.length > 0) {
-                        console.log(`🔗 Подключение к ${data.users.length} участникам...`);
-                        for (const socketId of data.users) {
-                            // Определяем роль на основе сравнения socketId
-                            const isInitiator = this.isInitiator(this.socket.id, socketId);
-                            console.log(`🔗 Инициирую соединение с ${socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
-                            await this.connectToPeer(socketId, isInitiator);
-                        }
-                        this.showMessage(`Подключено к ${data.users.length} участникам`, 'success');
-                    } else {
-                        console.log('📭 Нет других участников в конференции');
-                        this.showScreen('conferenceScreen');
-                        this.updateConferenceStatus();
-                        this.updateMuteButton();
-                        this.updateVideoButton();
-                        this.showMessage('Подключено к конференции', 'success');
-                    }
+
+                this.ensurePresenceRecord(this.socket.id, {
+                    media: this.getLocalMediaState(),
+                    connectedAt: Date.now()
                 });
-                
-                // Также устанавливаем обычный обработчик на случай повторных событий
-                this.socket.on('users-list', async (data) => {
-                    console.log('📋 [ON] Получен список пользователей (повторное событие):', data);
-                    console.log('📋 [ON] Количество участников:', data.users ? data.users.length : 0);
-                });
+
+                if (document.getElementById('connectScreen').classList.contains('active')) {
+                    this.showScreen('conferenceScreen');
+                }
+
+                this.updateConferenceStatus();
+                this.updateParticipantsList();
+                this.updateMuteButton();
+                this.updateVideoButton();
+                this.syncLocalMediaStatus({ force: true });
             });
             
             this.socket.on('connect_error', (error) => {
@@ -193,6 +339,7 @@ const App = {
                 console.log('✅ Доступ к микрофону получен');
                 // Обновляем текст кнопки микрофона (микрофон включен по умолчанию)
                 this.updateMuteButton();
+                this.syncLocalMediaStatus({ force: true });
             } catch (error) {
                 console.error('❌ Ошибка доступа к микрофону:', error);
                 this.showMessage('Не удалось получить доступ к микрофону. Разрешите доступ и попробуйте снова.', 'error');
@@ -202,21 +349,6 @@ const App = {
                 }
                 return;
             }
-            
-            // Ждем подключения Socket.IO перед переходом в конференцию
-            this.socket.once('connect', () => {
-                // Даем время серверу отправить users-list
-                setTimeout(() => {
-                    if (document.getElementById('connectScreen').classList.contains('active')) {
-                        console.log('⏱️ Таймаут: переходим в конференцию');
-                        this.showScreen('conferenceScreen');
-                        this.updateConferenceStatus();
-                        this.updateMuteButton();
-                        this.updateVideoButton();
-                        this.showMessage('Подключено к конференции', 'success');
-                    }
-                }, 1000);
-            });
             
         } catch (error) {
             console.error('❌ Ошибка подключения:', error);
@@ -233,37 +365,10 @@ const App = {
     },
     
     setupSocketEvents() {
-        this.socket.on('user-connected', async (data) => {
-            console.log('👤 [user-connected] Новый участник присоединился:', data);
-            console.log('👤 [user-connected] SocketId нового участника:', data.socketId);
-            console.log('👤 [user-connected] Мой socket.id:', this.socket.id);
-            console.log('👤 [user-connected] Текущее количество участников в this.participants:', this.participants.size);
-            
-            this.showMessage('Новый участник присоединился', 'info');
-            
-            // Убеждаемся, что мы уже в конференции
-            if (document.getElementById('connectScreen').classList.contains('active')) {
-                this.showScreen('conferenceScreen');
-                this.updateMuteButton();
-            }
-            
-            // Определяем роль на основе сравнения socketId
-            const isInitiator = this.isInitiator(this.socket.id, data.socketId);
-            console.log(`🔗 [user-connected] Подключение к новому участнику ${data.socketId}, роль: ${isInitiator ? 'инициатор' : 'ответчик'}`);
-            await this.connectToPeer(data.socketId, isInitiator);
-            console.log('👤 [user-connected] После connectToPeer, количество участников:', this.participants.size);
-            this.updateConferenceStatus();
-        });
-        
-        this.socket.on('user-disconnected', (data) => {
-            console.log('👋 [user-disconnected] Участник покинул:', data);
-            console.log('👋 [user-disconnected] SocketId:', data.socketId);
-            console.log('👋 [user-disconnected] Количество участников до отключения:', this.participants.size);
-            this.disconnectFromPeer(data.socketId);
-            console.log('👋 [user-disconnected] Количество участников после отключения:', this.participants.size);
-            this.updateConferenceStatus();
-        });
-        
+        this.socket.on('presence:sync', (data) => this.handlePresenceSync(data));
+        this.socket.on('presence:update', (data) => this.handlePresenceUpdate(data));
+        this.socket.on('status:update', (data) => this.handleStatusUpdate(data));
+
         this.socket.on('webrtc-signal', async (data) => {
             console.log('📡 [webrtc-signal] Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);
             console.log('📡 [webrtc-signal] Полные данные:', data);
@@ -750,6 +855,7 @@ const App = {
         this.localStream.addTrack(videoTrack);
         this.isVideoEnabled = true;
         this.attachLocalStreamToPreview();
+        this.syncLocalMediaStatus();
 
         this.participants.forEach((participant, socketId) => {
             if (!participant.peerConnection) {
@@ -860,6 +966,7 @@ const App = {
         this.videoTrack = null;
         this.isVideoEnabled = false;
         this.attachLocalStreamToPreview();
+        this.syncLocalMediaStatus();
 
         await this.renegotiateAllPeers('disable-video');
     },
@@ -953,6 +1060,8 @@ const App = {
                     this.elements.btnMute.classList.add('muted');
                 }
             }
+
+            this.syncLocalMediaStatus();
         }
     },
     
@@ -981,33 +1090,56 @@ const App = {
         
         list.innerHTML = '';
         
-        const selfVideoEnabled = this.isVideoEnabled;
+        const selfMedia = this.getLocalMediaState();
         const selfItem = document.createElement('div');
         selfItem.className = 'participant-item self';
         selfItem.innerHTML = `
             <div class="participant-name">Вы</div>
             <div class="participant-status">
                 <span class="status-pill success">Подключено</span>
-                <span class="status-pill ${selfVideoEnabled ? 'success' : 'muted'}">${selfVideoEnabled ? '📹 Камера включена' : '🚫 Камера выключена'}</span>
+                <span class="status-pill ${selfMedia.mic ? 'success' : 'muted'}">${selfMedia.mic ? '🎙️ Микрофон включен' : '🔇 Микрофон выключен'}</span>
+                <span class="status-pill ${selfMedia.cam ? 'success' : 'muted'}">${selfMedia.cam ? '📹 Камера включена' : '🚫 Камера выключена'}</span>
             </div>
         `;
         list.appendChild(selfItem);
         
-        this.participants.forEach((participant, socketId) => {
-            const item = document.createElement('div');
-            item.className = 'participant-item';
-            
-            const connState = participant.peerConnection ? participant.peerConnection.connectionState : 'new';
-            const iceState = participant.peerConnection ? participant.peerConnection.iceConnectionState : 'new';
-            
-            let status = 'Ожидание';
-            let statusClass = 'neutral';
+        const remoteIds = new Set();
+
+        this.presence.forEach((_, socketId) => {
+            if (socketId && socketId !== this.socket?.id) {
+                remoteIds.add(socketId);
+            }
+        });
+
+        this.participants.forEach((_, socketId) => {
+            if (socketId && socketId !== this.socket?.id) {
+                remoteIds.add(socketId);
+            }
+        });
+
+        const orderedIds = Array.from(remoteIds);
+        orderedIds.sort((a, b) => {
+            const aPresence = this.presence.get(a);
+            const bPresence = this.presence.get(b);
+            if (aPresence && bPresence) {
+                return (aPresence.connectedAt || 0) - (bPresence.connectedAt || 0);
+            }
+            return a.localeCompare(b);
+        });
+
+        orderedIds.forEach((socketId) => {
+            const participant = this.participants.get(socketId);
+            const presenceRecord = this.presence.get(socketId);
+            const media = presenceRecord?.media || { cam: false, mic: false };
+
+            const connState = participant?.peerConnection ? participant.peerConnection.connectionState : 'new';
+            const iceState = participant?.peerConnection ? participant.peerConnection.iceConnectionState : 'new';
+
+            let status = 'Ожидание соединения';
+            let statusClass = 'warning';
             if (connState === 'connected' || iceState === 'connected' || iceState === 'completed') {
                 status = 'Подключено';
                 statusClass = 'success';
-            } else if (connState === 'connecting' || iceState === 'checking' || iceState === 'connecting') {
-                status = 'Подключение...';
-                statusClass = 'warning';
             } else if (connState === 'failed' || iceState === 'failed') {
                 status = 'Ошибка';
                 statusClass = 'muted';
@@ -1015,15 +1147,35 @@ const App = {
                 status = 'Отключено';
                 statusClass = 'muted';
             }
-            
-            const videoActive = !!participant.videoEnabled;
-            const videoClass = videoActive ? 'success' : 'muted';
-            const videoText = videoActive ? '📹 Камера включена' : '🚫 Камера выключена';
-            
+
+            const expectsVideo = !!media.cam;
+            const actualVideo = !!participant?.videoEnabled;
+            let videoClass;
+            let videoText;
+            if (expectsVideo && actualVideo) {
+                videoClass = 'success';
+                videoText = '📹 Камера включена';
+            } else if (expectsVideo && !actualVideo) {
+                videoClass = 'warning';
+                videoText = '⏳ Камера включена (ожидание видео)';
+            } else if (!expectsVideo && actualVideo) {
+                videoClass = 'warning';
+                videoText = '⚠️ Видео получено (статус выкл.)';
+            } else {
+                videoClass = 'muted';
+                videoText = '🚫 Камера выключена';
+            }
+
+            const micClass = media.mic ? 'success' : 'muted';
+            const micText = media.mic ? '🎙️ Микрофон включен' : '🔇 Микрофон выключен';
+
+            const item = document.createElement('div');
+            item.className = 'participant-item';
             item.innerHTML = `
                 <div class="participant-name">Участник ${socketId.substring(0, 8)}</div>
                 <div class="participant-status">
                     <span class="status-pill ${statusClass}">${status}</span>
+                    <span class="status-pill ${micClass}">${micText}</span>
                     <span class="status-pill ${videoClass}">${videoText}</span>
                 </div>
             `;
@@ -1042,10 +1194,15 @@ const App = {
         const statusEl = this.elements.conferenceStatus;
         if (!statusEl) return;
         
-        const count = this.participants.size + 1; // +1 для себя
+        const presenceCount = this.presence?.size || 0;
+        const fallbackCount = this.participants.size + (this.socket ? 1 : 0);
+        const count = presenceCount > 0 ? presenceCount : fallbackCount;
+
         console.log('📊 [updateConferenceStatus] Обновление статуса:', {
+            presenceSize: presenceCount,
             participantsSize: this.participants.size,
             totalCount: count,
+            presenceIds: this.presence ? Array.from(this.presence.keys()) : [],
             participantIds: Array.from(this.participants.keys())
         });
         statusEl.textContent = `Участников в конференции: ${count}`;
@@ -1056,6 +1213,10 @@ const App = {
         this.participants.forEach((participant, socketId) => {
             this.disconnectFromPeer(socketId);
         });
+
+        this.participants = new Map();
+        this.presence = new Map();
+        this.lastSentMediaStatus = { cam: false, mic: false };
         
         // Останавливаем локальный поток
         if (this.localStream) {
@@ -1073,6 +1234,7 @@ const App = {
             this.socket = null;
         }
         
+        this.resetPresenceState();
         this.showScreen('connectScreen');
         this.elements.btnConnect.disabled = false;
     },
@@ -1159,8 +1321,22 @@ const App = {
         }
 
         if (participant.labelElement) {
+            const presenceRecord = this.presence.get(socketId);
+            const expectedCam = !!presenceRecord?.media?.cam;
             const baseLabel = `Участник ${socketId.substring(0, 8)}`;
-            participant.labelElement.textContent = participant.videoEnabled ? baseLabel : `${baseLabel} (камера выкл.)`;
+            let labelText = baseLabel;
+
+            if (expectedCam && participant.videoEnabled) {
+                labelText = baseLabel;
+            } else if (expectedCam && !participant.videoEnabled) {
+                labelText = `${baseLabel} (ожидание видео)`;
+            } else if (!expectedCam && participant.videoEnabled) {
+                labelText = `${baseLabel} (статус: выкл.)`;
+            } else {
+                labelText = `${baseLabel} (камера выкл.)`;
+            }
+
+            participant.labelElement.textContent = labelText;
         }
     },
 
