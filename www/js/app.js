@@ -471,13 +471,7 @@ const App = {
             } else if (data.type === 'answer') {
                 console.log('📥 Получен answer от', data.fromSocketId);
                 console.log('📊 Текущее состояние соединения:', pc.signalingState);
-                
-                // Проверяем, не установлен ли уже remote description
-                if (pc.remoteDescription) {
-                    console.log('⚠️ Remote description уже установлен, пропускаем answer');
-                    return;
-                }
-                
+
                 // Устанавливаем answer только если состояние "have-local-offer"
                 // Это означает, что мы отправили offer и ждем answer
                 if (pc.signalingState === 'have-local-offer') {
@@ -486,7 +480,7 @@ const App = {
                         console.log('✅ Remote description установлен (answer)');
                         participant.connected = true;
                         this.updateParticipantUI(data.fromSocketId);
-                        
+
                         // Добавляем отложенные ICE кандидаты если есть
                         if (participant.pendingCandidates) {
                             for (const candidate of participant.pendingCandidates) {
