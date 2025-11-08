@@ -52,6 +52,7 @@ const scenarios = [
     initiator: 'A',
     actions: [{ type: 'wait', ms: 3_000 }],
     expectations: [
+      { page: 'A', expectLocalAudio: true },
       { page: 'B', expectAudioFrom: 'A', minPackets: 20 },
     ],
   },
@@ -228,6 +229,8 @@ async function extractState(page) {
           presenceCam: typeof presenceRecord?.media?.cam === 'boolean' ? presenceRecord.media.cam : null,
           presenceMic: typeof presenceRecord?.media?.mic === 'boolean' ? presenceRecord.media.mic : null,
           hasMediaElement: !!participant?.mediaElement,
+          mediaElementMuted: participant?.mediaElement?.muted ?? null,
+          mediaElementVolume: participant?.mediaElement?.volume ?? null,
           signalingState: participant?.peerConnection?.signalingState,
           connectionState: participant?.peerConnection?.connectionState,
           iceState: participant?.peerConnection?.iceConnectionState,
@@ -249,6 +252,7 @@ async function extractState(page) {
     return {
       socketId: globalThis.App.socket?.id ?? null,
       isVideoEnabled: !!globalThis.App.isVideoEnabled,
+      localAudioMuted: !!globalThis.App.localStream?.getAudioTracks()?.some((track) => track.muted),
       participants,
       localTracks,
     };
@@ -399,6 +403,22 @@ async function runScenario(def) {
         };
       }
 
+      if (expectation.expectLocalAudio) {
+        const tracks = pageState.localTracks || [];
+        const audioTrack = tracks.find((track) => track.kind === 'audio');
+        const hasLiveAudio =
+          !!audioTrack &&
+          audioTrack.readyState === 'live' &&
+          audioTrack.enabled === true &&
+          audioTrack.muted === false;
+
+        return {
+          expectation,
+          passed: hasLiveAudio,
+          localAudioTrack: audioTrack ?? null,
+        };
+      }
+
       if (expectation.expectAudioFrom) {
         const remoteId =
           expectation.expectAudioFrom === 'A' ? stateA.socketId : stateB.socketId;
@@ -421,12 +441,23 @@ async function runScenario(def) {
         );
         const minPackets =
           typeof expectation.minPackets === 'number' ? expectation.minPackets : 1;
+        const remoteAudioTrack = remoteEntry?.tracks?.find((track) => track.kind === 'audio') ?? null;
+        const trackLive =
+          !!remoteAudioTrack &&
+          remoteAudioTrack.readyState === 'live' &&
+          remoteAudioTrack.enabled === true &&
+          remoteAudioTrack.muted === false;
+        const playbackOk =
+          remoteEntry?.mediaElementMuted === false ||
+          remoteEntry?.mediaElementMuted === null;
 
         return {
           expectation,
-          passed: packetsReceived >= minPackets,
+          passed: packetsReceived >= minPackets && trackLive && playbackOk,
           packetsReceived,
           minPackets,
+          trackLive,
+          playbackMuted: remoteEntry?.mediaElementMuted ?? null,
         };
       }
 
