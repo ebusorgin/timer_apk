@@ -48,6 +48,14 @@ const scenarios = [
     expectations: [{ page: 'A', remoteIdFrom: 'B', expectVideo: true }],
   },
   {
+    name: 'audio_stream_active',
+    initiator: 'A',
+    actions: [{ type: 'wait', ms: 3_000 }],
+    expectations: [
+      { page: 'B', expectAudioFrom: 'A', minPackets: 20 },
+    ],
+  },
+  {
     name: 'initiator_hangup_all',
     initiator: 'A',
     actions: [
@@ -59,6 +67,20 @@ const scenarios = [
     expectations: [
       { page: 'A', expectDisconnected: true },
       { page: 'B', expectDisconnected: true },
+    ],
+  },
+  {
+    name: 'server_restart_cleanup',
+    initiator: 'A',
+    actions: [
+      { type: 'camera', participant: 'A', enable: true },
+      { type: 'wait', ms: 2_000 },
+      { type: 'restart-server' },
+      { type: 'wait', ms: 4_000 },
+    ],
+    expectations: [
+      { page: 'A', expectParticipantCount: 1 },
+      { page: 'B', expectParticipantCount: 1 },
     ],
   },
 ];
@@ -106,6 +128,29 @@ function startServer() {
         reject(new Error(`Server exited prematurely with code ${code}`));
       }
     });
+  });
+}
+
+function stopServer(server) {
+  return new Promise((resolve) => {
+    if (!server) {
+      resolve();
+      return;
+    }
+
+    let settled = false;
+    const finalize = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+
+    server.once('exit', finalize);
+    server.once('error', finalize);
+
+    server.kill('SIGTERM');
+    setTimeout(finalize, 2_000);
   });
 }
 
@@ -296,6 +341,11 @@ async function runScenario(def) {
         await page.click('#btnHangupAll');
         continue;
       }
+      if (action.type === 'restart-server') {
+        await stopServer(server);
+        server = await startServer();
+        continue;
+      }
       if (action.type === 'rejoin') {
         const label = action.participant;
         const context = contexts[label];
@@ -339,6 +389,46 @@ async function runScenario(def) {
            participantCount: pageState.participants?.length ?? 0,
          };
        }
+
+      if (typeof expectation.expectParticipantCount === 'number') {
+        const participantCount = pageState.participants?.length ?? 0;
+        return {
+          expectation,
+          passed: participantCount === expectation.expectParticipantCount,
+          participantCount,
+        };
+      }
+
+      if (expectation.expectAudioFrom) {
+        const remoteId =
+          expectation.expectAudioFrom === 'A' ? stateA.socketId : stateB.socketId;
+        if (!remoteId) {
+          return {
+            expectation,
+            passed: false,
+            reason: `SocketId for ${expectation.expectAudioFrom} missing`,
+          };
+        }
+
+        const remoteEntry =
+          pageState.participants.find((p) => p.id === remoteId) || null;
+        const audioStats = remoteEntry?.stats?.filter(
+          (s) => s.type === 'inbound-rtp' && s.kind === 'audio'
+        ) || [];
+        const packetsReceived = audioStats.reduce(
+          (sum, stat) => sum + (stat.packetsReceived ?? 0),
+          0
+        );
+        const minPackets =
+          typeof expectation.minPackets === 'number' ? expectation.minPackets : 1;
+
+        return {
+          expectation,
+          passed: packetsReceived >= minPackets,
+          packetsReceived,
+          minPackets,
+        };
+      }
 
       const expectedRemoteId =
         expectation.remoteIdFrom === 'A' ? stateA.socketId : stateB.socketId;
@@ -386,7 +476,7 @@ async function runScenario(def) {
     result.success = false;
   } finally {
     await browser?.close();
-    server?.kill('SIGTERM');
+    await stopServer(server);
   }
 
   if (!result.success) {

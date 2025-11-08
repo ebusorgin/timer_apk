@@ -243,6 +243,34 @@ const App = {
         this.updateHangupAllButton();
     },
 
+    handleSocketDisconnect(reason) {
+        console.log('⚠️ Socket.IO отключен:', reason);
+        this.showMessage('Отключено от сервера', 'error');
+
+        this.participants.forEach((_, socketId) => {
+            this.disconnectFromPeer(socketId);
+        });
+        this.participants = new Map();
+
+        const videoGrid = this.elements.videoGrid;
+        if (videoGrid) {
+            videoGrid.querySelectorAll('.video-tile').forEach((tile) => {
+                if (!tile.classList.contains('self')) {
+                    tile.remove();
+                }
+            });
+        }
+
+        this.presence = new Map();
+        this.selfId = null;
+        this.lastSentMediaStatus = this.getLocalMediaState();
+        this.hangupAllInProgress = false;
+
+        this.updateParticipantsList();
+        this.updateConferenceStatus();
+        this.updateHangupAllButton();
+    },
+
     async handlePresenceSync(data = {}) {
         const participants = Array.isArray(data.participants) ? data.participants : [];
         const selfIdFromServer = typeof data.selfId === 'string' ? data.selfId : null;
@@ -449,10 +477,7 @@ const App = {
             });
             
             this.socket.on('disconnect', (reason) => {
-                console.log('⚠️ Socket.IO отключен:', reason);
-                this.showMessage('Отключено от сервера', 'error');
-                this.hangupAllInProgress = false;
-                this.updateHangupAllButton();
+                this.handleSocketDisconnect(reason);
             });
             
             this.setupSocketEvents();
@@ -1521,7 +1546,7 @@ const App = {
             remotePresenceCount = Array.from(this.participants.keys()).filter((id) => !selfId || id !== selfId).length;
         }
 
-        const totalCount = (this.socket ? 1 : 0) + remotePresenceCount;
+        const totalCount = (this.socket && this.socket.connected ? 1 : 0) + remotePresenceCount;
 
         console.log('📊 [updateConferenceStatus] Обновление статуса:', {
             presenceSize: this.presence?.size || 0,
