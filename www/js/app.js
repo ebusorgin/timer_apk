@@ -751,7 +751,11 @@ const App = {
         try {
             // Если у нас уже есть локальное описание (мы тоже создали offer), 
             // это означает, что оба участника пытаются инициировать одновременно
-            if (pc.localDescription && pc.localDescription.type === 'offer') {
+            if (
+                pc.signalingState === 'have-local-offer' &&
+                pc.localDescription &&
+                pc.localDescription.type === 'offer'
+            ) {
                 console.log('⚠️ Оба участника инициировали соединение одновременно');
                 
                 // Определяем, кто должен быть инициатором
@@ -925,54 +929,16 @@ const App = {
         this.attachLocalStreamToPreview();
         this.syncLocalMediaStatus();
 
-        this.participants.forEach((participant, socketId) => {
-            if (!participant.peerConnection) {
-                return;
-            }
+        const updateTasks = [];
+        for (const [socketId, participant] of this.participants.entries()) {
+            updateTasks.push(this.attachVideoTrackToParticipant(socketId, participant, videoTrack));
+        }
 
-            let sender = participant.videoSender;
+        if (updateTasks.length > 0) {
+            await Promise.allSettled(updateTasks);
+        }
 
-            if (!sender) {
-                sender = participant.peerConnection
-                    .getSenders()
-                    .find(s => s.track && s.track.kind === 'video');
-
-                if (!sender) {
-                    sender = participant.peerConnection.addTrack(videoTrack, this.localStream);
-                }
-            }
-
-            if (sender && sender.setStreams) {
-                try {
-                    sender.setStreams(this.localStream);
-                } catch (err) {
-                    console.warn('⚠️ Не удалось привязать поток при включении видео для участника', socketId, err);
-                }
-            }
-
-            let transceiver = participant.videoTransceiver;
-            if (!transceiver && typeof participant.peerConnection.getTransceivers === 'function') {
-                transceiver = participant.peerConnection.getTransceivers().find(t => t.sender === sender) || null;
-            }
-            if (transceiver && transceiver.sender && transceiver.sender.setStreams && sender !== transceiver.sender) {
-                try {
-                    transceiver.sender.setStreams(this.localStream);
-                } catch (err) {
-                    console.warn('⚠️ Не удалось привязать поток при включении видео (через transceiver) для участника', socketId, err);
-                }
-            }
-
-            participant.videoSender = sender;
-            participant.videoTransceiver = transceiver || participant.videoTransceiver;
-
-            sender.replaceTrack(videoTrack).catch(err => {
-                console.error('Ошибка замены видео-трека для участника', socketId, err);
-            });
-
-            this.updateParticipantVideoState(socketId);
-        });
-
-        await this.renegotiateAllPeers('enable-video');
+        await this.renegotiateAllPeers('enable-video', { forceLocalInitiator: true });
     },
 
     async disableVideo() {
@@ -982,49 +948,14 @@ const App = {
 
         const videoTrack = this.videoTrack;
 
-        this.participants.forEach((participant, socketId) => {
-            if (!participant.peerConnection) {
-                return;
-            }
+        const detachTasks = [];
+        for (const [socketId, participant] of this.participants.entries()) {
+            detachTasks.push(this.detachVideoTrackFromParticipant(socketId, participant));
+        }
 
-            let sender = participant.videoSender;
-
-            if (!sender) {
-                sender = participant.peerConnection
-                    .getSenders()
-                    .find(s => s.track && s.track.kind === 'video');
-            }
-
-            if (sender && sender.setStreams) {
-                try {
-                    sender.setStreams();
-                } catch (err) {
-                    console.warn('⚠️ Не удалось очистить поток при отключении видео для участника', socketId, err);
-                }
-            }
-
-            if (sender) {
-                sender.replaceTrack(null).catch(err => {
-                    console.warn('⚠️ Не удалось удалить видео-трек у участника', socketId, err);
-                });
-            }
-
-            const transceiver = participant.videoTransceiver || (typeof participant.peerConnection.getTransceivers === 'function'
-                ? participant.peerConnection.getTransceivers().find(t => t.sender === sender) || null
-                : null);
-            if (transceiver && transceiver.sender && transceiver.sender !== sender && transceiver.sender.setStreams) {
-                try {
-                    transceiver.sender.setStreams();
-                } catch (err) {
-                    console.warn('⚠️ Не удалось очистить поток при отключении видео (через transceiver) для участника', socketId, err);
-                }
-            }
-
-            participant.videoSender = sender || participant.videoSender;
-            participant.videoTransceiver = transceiver || participant.videoTransceiver;
-
-            this.updateParticipantVideoState(socketId);
-        });
+        if (detachTasks.length > 0) {
+            await Promise.allSettled(detachTasks);
+        }
 
         if (videoTrack) {
             this.localStream.removeTrack(videoTrack);
@@ -1036,17 +967,238 @@ const App = {
         this.attachLocalStreamToPreview();
         this.syncLocalMediaStatus();
 
-        await this.renegotiateAllPeers('disable-video');
+        await this.renegotiateAllPeers('disable-video', { forceLocalInitiator: true });
     },
 
-    async renegotiateAllPeers(reason = 'manual') {
+    async attachVideoTrackToParticipant(socketId, participant, videoTrack) {
+        if (!participant || !participant.peerConnection) {
+            return;
+        }
+
+        const { sender, transceiver } = this.ensureVideoSender(socketId, participant);
+
+        if (!sender) {
+            console.warn('⚠️ Не удалось получить sender для участника', socketId);
+            return;
+        }
+
+        let senderParams = null;
+        if (sender && typeof sender.getParameters === 'function') {
+            try {
+                senderParams = sender.getParameters();
+            } catch (err) {
+                console.warn('⚠️ Не удалось получить параметры sender для', socketId, err);
+            }
+        }
+
+        const attachEncodings = senderParams?.encodings?.map((enc) => enc.active ?? null) ?? null;
+        console.log('🎯 attachVideoTrackToParticipant', socketId,
+            'hasSender', !!sender,
+            'hasTransceiver', !!transceiver,
+            'streamTracks', this.localStream?.getVideoTracks()?.length || 0,
+            'enc', JSON.stringify(attachEncodings));
+
+        if (transceiver) {
+            try {
+                if (typeof transceiver.setDirection === 'function') {
+                    const maybePromise = transceiver.setDirection('sendrecv');
+                    if (maybePromise instanceof Promise) {
+                        await maybePromise;
+                    }
+                } else if (transceiver.direction !== 'sendrecv') {
+                    transceiver.direction = 'sendrecv';
+                }
+            } catch (err) {
+                console.warn('⚠️ Не удалось установить направление sendrecv для участника', socketId, err);
+            }
+        }
+
+        if (sender && sender.setStreams) {
+            try {
+                sender.setStreams(this.localStream);
+            } catch (err) {
+                console.warn('⚠️ Не удалось привязать поток при включении видео для участника', socketId, err);
+            }
+        }
+
+        if (transceiver && transceiver.sender && transceiver.sender !== sender && transceiver.sender.setStreams) {
+            try {
+                transceiver.sender.setStreams(this.localStream);
+            } catch (err) {
+                console.warn('⚠️ Не удалось привязать поток при включении видео (через transceiver) для участника', socketId, err);
+            }
+        }
+
+        if (sender && senderParams && Array.isArray(senderParams.encodings) && senderParams.encodings.length > 0 && typeof sender.setParameters === 'function') {
+            const nextParams = {
+                ...senderParams,
+                encodings: senderParams.encodings.map((enc) => ({ ...enc, active: true })),
+            };
+            try {
+                await sender.setParameters(nextParams);
+            } catch (err) {
+                console.warn('⚠️ Не удалось обновить параметры sender для участника', socketId, err);
+            }
+        }
+
+        if (sender) {
+            try {
+                await sender.replaceTrack(videoTrack);
+                if (typeof sender.getParameters === 'function') {
+                    const updatedParams = sender.getParameters();
+                    const updatedEncodings = updatedParams?.encodings?.map((enc) => enc.active ?? null) ?? null;
+                    console.log('✅ attachVideoTrackToParticipant replaceTrack success', socketId, 'enc', JSON.stringify(updatedEncodings));
+                } else {
+                    console.log('✅ attachVideoTrackToParticipant replaceTrack success', socketId);
+                }
+            } catch (err) {
+                console.error('Ошибка замены видео-трека для участника', socketId, err);
+            }
+        }
+
+        participant.videoSender = sender;
+        participant.videoTransceiver = transceiver || null;
+        this.updateParticipantVideoState(socketId);
+    },
+
+    async detachVideoTrackFromParticipant(socketId, participant) {
+        if (!participant || !participant.peerConnection) {
+            return;
+        }
+
+        const { sender, transceiver } = this.ensureVideoSender(socketId, participant);
+
+        if (!sender) {
+            console.warn('⚠️ Не удалось получить sender при отключении видео для участника', socketId);
+            return;
+        }
+
+        let senderParams = null;
+        if (sender && typeof sender.getParameters === 'function') {
+            try {
+                senderParams = sender.getParameters();
+            } catch (err) {
+                console.warn('⚠️ Не удалось получить параметры sender при отключении видео для', socketId, err);
+            }
+        }
+
+        const detachEncodings = senderParams?.encodings?.map((enc) => enc.active ?? null) ?? null;
+        console.log('🎯 detachVideoTrackFromParticipant', socketId,
+            'hasSender', !!sender,
+            'hasTransceiver', !!participant.videoTransceiver,
+            'enc', JSON.stringify(detachEncodings));
+
+        if (sender && sender.setStreams) {
+            try {
+                sender.setStreams();
+            } catch (err) {
+                console.warn('⚠️ Не удалось очистить поток при отключении видео для участника', socketId, err);
+            }
+        }
+
+        if (sender && senderParams && Array.isArray(senderParams.encodings) && senderParams.encodings.length > 0 && typeof sender.setParameters === 'function') {
+            const nextParams = {
+                ...senderParams,
+                encodings: senderParams.encodings.map((enc) => ({ ...enc, active: false })),
+            };
+            try {
+                await sender.setParameters(nextParams);
+            } catch (err) {
+                console.warn('⚠️ Не удалось обновить параметры sender при отключении видео для участника', socketId, err);
+            }
+        }
+
+        if (sender) {
+            try {
+                await sender.replaceTrack(null);
+                if (typeof sender.getParameters === 'function') {
+                    const updatedParams = sender.getParameters();
+                    const updatedEncodings = updatedParams?.encodings?.map((enc) => enc.active ?? null) ?? null;
+                    console.log('✅ detachVideoTrackFromParticipant replaceTrack success', socketId, 'enc', JSON.stringify(updatedEncodings));
+                } else {
+                    console.log('✅ detachVideoTrackFromParticipant replaceTrack success', socketId);
+                }
+            } catch (err) {
+                console.warn('⚠️ Не удалось удалить видео-трек у участника', socketId, err);
+            }
+        }
+
+        if (transceiver) {
+            if (transceiver.sender && transceiver.sender !== sender && transceiver.sender.setStreams) {
+                try {
+                    transceiver.sender.setStreams();
+                } catch (err) {
+                    console.warn('⚠️ Не удалось очистить поток при отключении видео (через transceiver) для участника', socketId, err);
+                }
+            }
+
+            try {
+                if (typeof transceiver.setDirection === 'function') {
+                    const maybePromise = transceiver.setDirection('recvonly');
+                    if (maybePromise instanceof Promise) {
+                        await maybePromise;
+                    }
+                } else if (transceiver.direction !== 'recvonly') {
+                    transceiver.direction = 'recvonly';
+                }
+            } catch (err) {
+                console.warn('⚠️ Не удалось остановить трансивер при отключении видео для участника', socketId, err);
+            }
+            participant.videoTransceiver = transceiver;
+        }
+
+        participant.videoSender = sender;
+        this.updateParticipantVideoState(socketId);
+    },
+
+    ensureVideoSender(socketId, participant) {
+        if (!participant || !participant.peerConnection) {
+            return { sender: null, transceiver: null };
+        }
+
+        let sender = participant.videoSender || null;
+        let transceiver = participant.videoTransceiver || null;
+
+        if (!sender && typeof participant.peerConnection.getSenders === 'function') {
+            sender = participant.peerConnection.getSenders().find((s) => s.track && s.track.kind === 'video') || null;
+        }
+
+        if (!transceiver && typeof participant.peerConnection.getTransceivers === 'function') {
+            transceiver = participant.peerConnection.getTransceivers().find((t) => t.sender === sender) || null;
+        }
+
+        if (!sender && typeof participant.peerConnection.addTransceiver === 'function') {
+            transceiver = participant.peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+            sender = transceiver.sender;
+        } else if (!sender) {
+            sender = participant.peerConnection.addTrack(this.videoTrack, this.localStream);
+            if (typeof participant.peerConnection.getTransceivers === 'function') {
+                transceiver = participant.peerConnection.getTransceivers().find((t) => t.sender === sender) || null;
+            }
+        }
+
+        if (sender) {
+            participant.videoSender = sender;
+        }
+        if (transceiver) {
+            participant.videoTransceiver = transceiver;
+        }
+
+        return { sender: participant.videoSender || null, transceiver: participant.videoTransceiver || null };
+    },
+
+    async renegotiateAllPeers(reason = 'manual', options = {}) {
         if (!this.socket) {
             return;
         }
 
         const tasks = [];
         this.participants.forEach((participant, socketId) => {
-            tasks.push(this.renegotiateWithPeer(socketId, participant, reason));
+            tasks.push(
+                this.renegotiateWithPeer(socketId, participant, reason, {
+                    forceInitiator: !!options.forceLocalInitiator,
+                })
+            );
         });
 
         if (tasks.length > 0) {

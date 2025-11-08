@@ -278,13 +278,13 @@ describe('conference App UI', () => {
 
     await App.toggleVideo();
 
-    expect(peerConnection.createOffer).not.toHaveBeenCalled();
-    expect(peerConnection.setLocalDescription).not.toHaveBeenCalled();
+    expect(peerConnection.createOffer).toHaveBeenCalledTimes(1);
+    expect(peerConnection.setLocalDescription).toHaveBeenCalledTimes(1);
     expect(App.socket.emit).toHaveBeenCalledWith(
       'webrtc-signal',
       expect.objectContaining({
         targetSocketId: 'peer-1',
-        type: 'renegotiate-request',
+        type: 'offer',
       }),
     );
   });
