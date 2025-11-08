@@ -290,35 +290,27 @@ describe('conference App UI', () => {
     );
   });
 
-  it('показывает кнопку завершения только инициатору', () => {
+  it('делает кнопку завершения доступной после подключения', () => {
     const button = App.elements.btnHangupAll;
     expect(button.style.display).toBe('none');
 
-    App.socket = { id: 'aaa' };
-    App.selfId = 'aaa';
-    App.presence = new Map([
-      ['aaa', { id: 'aaa', media: { cam: false, mic: true }, connectedAt: Date.now() }],
-      ['bbb', { id: 'bbb', media: { cam: false, mic: true }, connectedAt: Date.now() }],
-    ]);
+    App.socket = { id: 'aaa', emit: vi.fn() };
+    App.hangupAllInProgress = false;
     App.updateHangupAllButton();
     expect(button.style.display).toBe('');
     expect(button.disabled).toBe(false);
 
-    App.selfId = 'bbb';
-    App.socket.id = 'bbb';
+    App.hangupAllInProgress = true;
     App.updateHangupAllButton();
     expect(button.style.display).toBe('none');
+    expect(button.disabled).toBe(true);
   });
 
-  it('инициатор отправляет событие глобального отключения', () => {
+  it('любой участник отправляет событие глобального отключения', () => {
     const emit = vi.fn();
     const showMessageSpy = vi.spyOn(App, 'showMessage').mockImplementation(() => {});
 
     App.socket = { id: 'aaa', emit };
-    App.selfId = 'aaa';
-    App.presence = new Map([
-      ['aaa', { id: 'aaa', media: { cam: false, mic: true }, connectedAt: Date.now() }],
-    ]);
     App.hangupAllInProgress = false;
     App.updateHangupAllButton();
 
@@ -327,28 +319,5 @@ describe('conference App UI', () => {
     expect(emit).toHaveBeenCalledWith('conference:hangup-all');
     expect(App.hangupAllInProgress).toBe(true);
     expect(showMessageSpy).toHaveBeenCalledWith(expect.any(String), 'info');
-  });
-
-  it('не инициатор не может завершить конференцию для всех', () => {
-    const emit = vi.fn();
-    const showMessageSpy = vi.spyOn(App, 'showMessage').mockImplementation(() => {});
-
-    App.socket = { id: 'bbb', emit };
-    App.selfId = 'bbb';
-    App.presence = new Map([
-      ['aaa', { id: 'aaa', media: { cam: false, mic: true }, connectedAt: Date.now() }],
-      ['bbb', { id: 'bbb', media: { cam: false, mic: true }, connectedAt: Date.now() }],
-    ]);
-    App.hangupAllInProgress = false;
-    App.updateHangupAllButton();
-
-    App.hangupAll();
-
-    expect(emit).not.toHaveBeenCalled();
-    expect(showMessageSpy).toHaveBeenCalledWith(
-      'Только инициатор может завершить конференцию для всех',
-      'error',
-    );
-    expect(App.hangupAllInProgress).toBe(false);
   });
 });
