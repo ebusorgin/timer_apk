@@ -5,21 +5,24 @@ import { collectConsole, resolveAppUrl, saveArtifact } from './helpers.js';
 
 const TEST_PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : 4100;
 
-const scenarios = [
+const baseScenarios = [
   {
     name: 'initiator_a_camera_on',
+    participants: ['A', 'B'],
     initiator: 'A',
     actions: [{ type: 'camera', participant: 'A', enable: true }],
     expectations: [{ page: 'B', remoteIdFrom: 'A', expectVideo: true }],
   },
   {
     name: 'non_initiator_camera_on',
+    participants: ['A', 'B'],
     initiator: 'A',
     actions: [{ type: 'camera', participant: 'B', enable: true }],
     expectations: [{ page: 'A', remoteIdFrom: 'B', expectVideo: true }],
   },
   {
     name: 'toggle_camera_twice',
+    participants: ['A', 'B'],
     initiator: 'A',
     actions: [
       { type: 'camera', participant: 'A', enable: true },
@@ -72,6 +75,7 @@ const scenarios = [
   },
   {
     name: 'server_restart_cleanup',
+    participants: ['A', 'B'],
     initiator: 'A',
     actions: [
       { type: 'camera', participant: 'A', enable: true },
@@ -85,6 +89,67 @@ const scenarios = [
     ],
   },
 ];
+
+const AUDIO_PERMUTATIONS = [
+  ['A', 'B', 'C'],
+  ['A', 'C', 'B'],
+  ['B', 'A', 'C'],
+  ['B', 'C', 'A'],
+  ['C', 'A', 'B'],
+  ['C', 'B', 'A'],
+];
+
+const audioMatrixScenario = {
+  name: 'audio_matrix_all_pairs',
+  participants: ['A', 'B', 'C'],
+  initiator: 'A',
+  actions: [{ type: 'wait', ms: 3_000 }],
+  expectations: [
+    { page: 'A', expectLocalAudio: true },
+    { page: 'B', expectLocalAudio: true },
+    { page: 'C', expectLocalAudio: true },
+    { page: 'B', expectAudioFrom: 'A', minPackets: 20 },
+    { page: 'C', expectAudioFrom: 'A', minPackets: 20 },
+    { page: 'A', expectAudioFrom: 'B', minPackets: 20 },
+    { page: 'C', expectAudioFrom: 'B', minPackets: 20 },
+    { page: 'A', expectAudioFrom: 'C', minPackets: 20 },
+    { page: 'B', expectAudioFrom: 'C', minPackets: 20 },
+  ],
+};
+
+const permutationScenarios = AUDIO_PERMUTATIONS.map((order) => {
+  const participants = ['A', 'B', 'C'];
+  const phases = order.map((speaker, index) => {
+    const listeners = participants.filter((p) => p !== speaker);
+    return {
+      label: `phase_${index + 1}_${speaker}`,
+      actions: participants.map((participant) => ({
+        type: 'microphone',
+        participant,
+        enable: participant === speaker,
+      })),
+      waitAfter: 2_500,
+      expectations: [
+        { page: speaker, expectLocalAudio: true },
+        ...listeners.map((listener) => ({
+          page: listener,
+          expectAudioFrom: speaker,
+          minPackets: 10,
+        })),
+      ],
+    };
+  });
+
+  return {
+    name: `audio_perm_${order.join('').toLowerCase()}`,
+    participants,
+    initiator: order[0],
+    actions: [{ type: 'wait', ms: 2_000 }],
+    phases,
+  };
+});
+
+const scenarios = [...baseScenarios, audioMatrixScenario, ...permutationScenarios];
 
 function createContext(browser) {
   if (typeof browser.createBrowserContext === 'function') {
@@ -186,6 +251,35 @@ async function setCameraState(page, enable) {
   }
 }
 
+async function setMicrophoneState(page, enable) {
+  await page.waitForSelector('#btnMute', { visible: true, timeout: 10_000 });
+  await page.waitForFunction(() => !!globalThis.App?.localStream, { timeout: 15_000 });
+
+  const changed = await page.evaluate((desired) => {
+    const app = globalThis.App;
+    if (!app?.localStream) return false;
+    const [audioTrack] = app.localStream.getAudioTracks();
+    if (!audioTrack) return false;
+    const current = audioTrack.enabled;
+    if (current === desired) return false;
+    document.getElementById('btnMute')?.click();
+    return true;
+  }, enable);
+
+  if (changed) {
+    await page.waitForFunction(
+      (desired) => {
+        const app = globalThis.App;
+        if (!app?.localStream) return false;
+        const [audioTrack] = app.localStream.getAudioTracks();
+        return audioTrack ? audioTrack.enabled === desired : false;
+      },
+      {},
+      enable
+    );
+  }
+}
+
 async function extractState(page) {
   return page.evaluate(async () => {
     const participants = await Promise.all(
@@ -260,9 +354,155 @@ async function extractState(page) {
 }
 
 function hasLiveRemoteVideo(state, remoteId) {
-  const remote = state.participants.find((p) => p.id === remoteId);
+  const remote = state?.participants?.find((p) => p.id === remoteId);
   if (!remote) return false;
   return remote.tracks.some((track) => track.kind === 'video' && track.readyState === 'live');
+}
+
+function evaluateExpectations(expectations = [], states, participantLabels) {
+  return expectations.map((expectation) => {
+    const pageLabel = expectation.page;
+    const pageState = pageLabel ? states[pageLabel] : null;
+    if (!pageLabel || !pageState) {
+      return { expectation, passed: false, reason: `State for ${pageLabel ?? 'unknown'} missing` };
+    }
+
+    if (expectation.expectDisconnected) {
+      const isDisconnected =
+        !pageState.socketId &&
+        (!pageState.participants || pageState.participants.length === 0);
+
+      return {
+        expectation,
+        passed: isDisconnected,
+        isDisconnected,
+        socketId: pageState.socketId,
+        participantCount: pageState.participants?.length ?? 0,
+      };
+    }
+
+    if (typeof expectation.expectParticipantCount === 'number') {
+      const participantCount = pageState.participants?.length ?? 0;
+      return {
+        expectation,
+        passed: participantCount === expectation.expectParticipantCount,
+        participantCount,
+      };
+    }
+
+    if (expectation.expectLocalAudio) {
+      const tracks = pageState.localTracks || [];
+      const audioTrack = tracks.find((track) => track.kind === 'audio');
+      const hasLiveAudio =
+        !!audioTrack &&
+        audioTrack.readyState === 'live' &&
+        audioTrack.enabled === true &&
+        audioTrack.muted === false;
+
+      return {
+        expectation,
+        passed: hasLiveAudio,
+        localAudioTrack: audioTrack ?? null,
+      };
+    }
+
+    if (expectation.expectAudioFrom) {
+      const remoteLabel = expectation.expectAudioFrom;
+      if (!participantLabels.includes(remoteLabel)) {
+        return {
+          expectation,
+          passed: false,
+          reason: `Unknown participant label ${remoteLabel}`,
+        };
+      }
+
+      const remoteState = states[remoteLabel];
+      const remoteSocketId = remoteState?.socketId ?? null;
+      if (!remoteSocketId) {
+        return {
+          expectation,
+          passed: false,
+          reason: `SocketId for ${remoteLabel} missing`,
+        };
+      }
+
+      const remoteEntry =
+        pageState.participants?.find((p) => p.id === remoteSocketId) || null;
+      const audioStats = remoteEntry?.stats?.filter(
+        (s) => s.type === 'inbound-rtp' && s.kind === 'audio'
+      ) || [];
+      const packetsReceived = audioStats.reduce(
+        (sum, stat) => sum + (stat.packetsReceived ?? 0),
+        0
+      );
+      const minPackets =
+        typeof expectation.minPackets === 'number' ? expectation.minPackets : 1;
+      const remoteAudioTrack =
+        remoteEntry?.tracks?.find((track) => track.kind === 'audio') ?? null;
+      const trackLive =
+        !!remoteAudioTrack &&
+        remoteAudioTrack.readyState === 'live' &&
+        remoteAudioTrack.enabled === true &&
+        remoteAudioTrack.muted === false;
+      const playbackOk =
+        remoteEntry?.mediaElementMuted === false ||
+        remoteEntry?.mediaElementMuted === null;
+
+      return {
+        expectation,
+        passed: packetsReceived >= minPackets && trackLive && playbackOk,
+        packetsReceived,
+        minPackets,
+        trackLive,
+        playbackMuted: remoteEntry?.mediaElementMuted ?? null,
+      };
+    }
+
+    if (expectation.remoteIdFrom) {
+      const remoteLabel = expectation.remoteIdFrom;
+      if (!participantLabels.includes(remoteLabel)) {
+        return {
+          expectation,
+          passed: false,
+          reason: `Unknown participant label ${remoteLabel}`,
+        };
+      }
+
+      const remoteState = states[remoteLabel];
+      const expectedRemoteId = remoteState?.socketId ?? null;
+      if (!expectedRemoteId) {
+        return {
+          expectation,
+          passed: false,
+          reason: `SocketId for ${remoteLabel} missing`,
+        };
+      }
+
+      const remoteEntry =
+        pageState.participants?.find((p) => p.id === expectedRemoteId) || null;
+      const hasVideo = hasLiveRemoteVideo(pageState, expectedRemoteId);
+      const desired = !!expectation.expectVideo;
+
+      const videoFlagMatches = remoteEntry ? remoteEntry.videoEnabled === hasVideo : !desired;
+      const presenceValue = remoteEntry?.presenceCam;
+      const presenceMatches = presenceValue == null ? true : presenceValue === desired;
+      const expectationMatches = desired ? hasVideo : !hasVideo;
+
+      const passed = expectationMatches && videoFlagMatches && presenceMatches;
+
+      return {
+        expectation,
+        passed,
+        hasVideo,
+        remoteId: expectedRemoteId,
+        videoFlag: remoteEntry?.videoEnabled ?? null,
+        presenceCam: remoteEntry?.presenceCam ?? null,
+        presenceMic: remoteEntry?.presenceMic ?? null,
+      };
+    }
+
+    return { expectation, passed: false, reason: 'Unknown expectation type' };
+  });
 }
 
 async function runScenario(def) {
@@ -271,6 +511,19 @@ async function runScenario(def) {
   let server;
   let browser;
   const artifacts = {};
+
+  const participantLabels = Array.from(new Set(def.participants ?? ['A', 'B']));
+  if (participantLabels.length === 0) {
+    throw new Error(`Scenario ${def.name} must declare at least one participant`);
+  }
+
+  const initiatorLabel = participantLabels.includes(def.initiator)
+    ? def.initiator
+    : participantLabels[0];
+  const connectionOrder = [
+    initiatorLabel,
+    ...participantLabels.filter((label) => label !== initiatorLabel),
+  ];
 
   try {
     server = await startServer();
@@ -299,57 +552,72 @@ async function runScenario(def) {
       pages[label] = page;
     }
 
-    if (def.initiator === 'A') {
-      await openParticipant('A');
-      await clickConnect(pages.A);
-      await openParticipant('B');
-      await clickConnect(pages.B);
-    } else {
-      await openParticipant('B');
-      await clickConnect(pages.B);
-      await openParticipant('A');
-      await clickConnect(pages.A);
+    for (const label of connectionOrder) {
+      await openParticipant(label);
+      await clickConnect(pages[label]);
     }
 
-    for (const action of def.actions) {
-      if (action.type === 'wait') {
-        await delay(action.ms);
-        continue;
+    async function resolveHostLabel() {
+      const entries = await Promise.all(
+        participantLabels.map(async (label) => {
+          const page = pages[label];
+          if (!page) return null;
+          const socketId = await page.evaluate(() => globalThis.App?.socket?.id || null);
+          if (!socketId) return null;
+          return { label, socketId };
+        })
+      );
+      const available = entries.filter(Boolean);
+      if (available.length === 0) {
+        return initiatorLabel;
       }
+      available.sort((a, b) => a.socketId.localeCompare(b.socketId));
+      return available[0].label;
+    }
+
+    async function performAction(action) {
+      if (!action || typeof action.type !== 'string') {
+        return;
+      }
+
+      if (action.type === 'wait') {
+        await delay(action.ms ?? 1_000);
+        return;
+      }
+
       if (action.type === 'camera') {
         const page = pages[action.participant];
         if (!page) throw new Error(`Page for participant ${action.participant} not found`);
         await setCameraState(page, action.enable);
-        continue;
+        return;
       }
+
+      if (action.type === 'microphone') {
+        const page = pages[action.participant];
+        if (!page) throw new Error(`Page for participant ${action.participant} not found`);
+        await setMicrophoneState(page, action.enable);
+        return;
+      }
+
       if (action.type === 'hangup-all') {
         let participantLabel = action.participant;
         if (participantLabel === 'host') {
-          const [idA, idB] = await Promise.all([
-            pages.A?.evaluate(() => globalThis.App?.socket?.id || null),
-            pages.B?.evaluate(() => globalThis.App?.socket?.id || null),
-          ]);
-
-          if (idA && (!idB || idA <= idB)) {
-            participantLabel = 'A';
-          } else if (idB) {
-            participantLabel = 'B';
-          } else {
-            participantLabel = def.initiator ?? 'A';
-          }
+          participantLabel = await resolveHostLabel();
         }
 
         const page = pages[participantLabel];
-        if (!page) throw new Error(`Page for participant ${action.participant} not found`);
+        if (!page) throw new Error(`Page for participant ${participantLabel} not found`);
         await page.waitForSelector('#btnHangupAll', { visible: true, timeout: 15_000 });
         await page.click('#btnHangupAll');
-        continue;
+        return;
       }
+
       if (action.type === 'restart-server') {
         await stopServer(server);
         server = await startServer();
-        continue;
+        return;
       }
+
       if (action.type === 'rejoin') {
         const label = action.participant;
         const context = contexts[label];
@@ -361,142 +629,73 @@ async function runScenario(def) {
         await delay(1_000);
         await openParticipant(label);
         await clickConnect(pages[label]);
-        continue;
+        return;
       }
+
       throw new Error(`Unknown action type: ${action.type}`);
     }
 
-    await delay(5_000);
+    async function performActions(actions = []) {
+      if (!Array.isArray(actions)) return;
+      for (const action of actions) {
+        await performAction(action);
+      }
+    }
 
-    const stateA = await extractState(pages.A);
-    const stateB = await extractState(pages.B);
+    await performActions(def.actions);
 
-    result.details.stateA = stateA;
-    result.details.stateB = stateB;
+    const phases = Array.isArray(def.phases) && def.phases.length > 0
+      ? def.phases
+      : [
+          {
+            label: 'final',
+            waitAfter: def.waitAfter ?? 5_000,
+            expectations: def.expectations ?? [],
+          },
+        ];
 
-    const expectationResults = def.expectations.map((expectation) => {
-      const pageState = expectation.page === 'A' ? stateA : stateB;
-      if (!pageState) {
-        return { expectation, passed: false, reason: 'Page state missing' };
+    const phasesResults = [];
+    let allPassed = true;
+
+    async function captureStates() {
+      const snapshot = {};
+      for (const label of participantLabels) {
+        const page = pages[label];
+        snapshot[label] = page ? await extractState(page) : null;
+      }
+      return snapshot;
+    }
+
+    for (const phase of phases) {
+      if (phase.actions) {
+        await performActions(phase.actions);
       }
 
-       if (expectation.expectDisconnected) {
-         const isDisconnected =
-           !pageState.socketId &&
-           (!pageState.participants || pageState.participants.length === 0);
-
-         return {
-           expectation,
-           passed: isDisconnected,
-           isDisconnected,
-           socketId: pageState.socketId,
-           participantCount: pageState.participants?.length ?? 0,
-         };
-       }
-
-      if (typeof expectation.expectParticipantCount === 'number') {
-        const participantCount = pageState.participants?.length ?? 0;
-        return {
-          expectation,
-          passed: participantCount === expectation.expectParticipantCount,
-          participantCount,
-        };
+      const waitMs = phase.waitAfter ?? 5_000;
+      if (waitMs > 0) {
+        await delay(waitMs);
       }
 
-      if (expectation.expectLocalAudio) {
-        const tracks = pageState.localTracks || [];
-        const audioTrack = tracks.find((track) => track.kind === 'audio');
-        const hasLiveAudio =
-          !!audioTrack &&
-          audioTrack.readyState === 'live' &&
-          audioTrack.enabled === true &&
-          audioTrack.muted === false;
-
-        return {
-          expectation,
-          passed: hasLiveAudio,
-          localAudioTrack: audioTrack ?? null,
-        };
+      const states = await captureStates();
+      const expectationResults = evaluateExpectations(
+        phase.expectations ?? [],
+        states,
+        participantLabels
+      );
+      if (!expectationResults.every((item) => item.passed)) {
+        allPassed = false;
       }
 
-      if (expectation.expectAudioFrom) {
-        const remoteId =
-          expectation.expectAudioFrom === 'A' ? stateA.socketId : stateB.socketId;
-        if (!remoteId) {
-          return {
-            expectation,
-            passed: false,
-            reason: `SocketId for ${expectation.expectAudioFrom} missing`,
-          };
-        }
+      phasesResults.push({
+        label: phase.label ?? null,
+        expectations: expectationResults,
+        states,
+      });
+    }
 
-        const remoteEntry =
-          pageState.participants.find((p) => p.id === remoteId) || null;
-        const audioStats = remoteEntry?.stats?.filter(
-          (s) => s.type === 'inbound-rtp' && s.kind === 'audio'
-        ) || [];
-        const packetsReceived = audioStats.reduce(
-          (sum, stat) => sum + (stat.packetsReceived ?? 0),
-          0
-        );
-        const minPackets =
-          typeof expectation.minPackets === 'number' ? expectation.minPackets : 1;
-        const remoteAudioTrack = remoteEntry?.tracks?.find((track) => track.kind === 'audio') ?? null;
-        const trackLive =
-          !!remoteAudioTrack &&
-          remoteAudioTrack.readyState === 'live' &&
-          remoteAudioTrack.enabled === true &&
-          remoteAudioTrack.muted === false;
-        const playbackOk =
-          remoteEntry?.mediaElementMuted === false ||
-          remoteEntry?.mediaElementMuted === null;
-
-        return {
-          expectation,
-          passed: packetsReceived >= minPackets && trackLive && playbackOk,
-          packetsReceived,
-          minPackets,
-          trackLive,
-          playbackMuted: remoteEntry?.mediaElementMuted ?? null,
-        };
-      }
-
-      const expectedRemoteId =
-        expectation.remoteIdFrom === 'A' ? stateA.socketId : stateB.socketId;
-      if (!expectedRemoteId) {
-        return {
-          expectation,
-          passed: false,
-          reason: `SocketId for ${expectation.remoteIdFrom} missing`,
-        };
-      }
-
-      const remoteEntry = pageState.participants.find((p) => p.id === expectedRemoteId) || null;
-      const hasVideo = hasLiveRemoteVideo(pageState, expectedRemoteId);
-      const desired = !!expectation.expectVideo;
-
-      const videoFlagMatches = remoteEntry ? remoteEntry.videoEnabled === hasVideo : !desired;
-      const presenceValue = remoteEntry?.presenceCam;
-      const presenceMatches = presenceValue == null ? true : presenceValue === desired;
-      const expectationMatches = desired ? hasVideo : !hasVideo;
-
-      const passed = expectationMatches && videoFlagMatches && presenceMatches;
-
-      return {
-        expectation,
-        passed,
-        hasVideo,
-        remoteId: expectedRemoteId,
-        videoFlag: remoteEntry?.videoEnabled ?? null,
-        presenceCam: remoteEntry?.presenceCam ?? null,
-        presenceMic: remoteEntry?.presenceMic ?? null,
-      };
-    });
-
-    result.details.expectations = expectationResults;
+    result.details.phases = phasesResults;
     result.details.logs = logs;
-
-    result.success = expectationResults.every((item) => item.passed);
+    result.success = allPassed;
 
     const artifactPath = await saveArtifact(def.name, result.details);
     artifacts.state = artifactPath;
@@ -548,4 +747,3 @@ main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
-
