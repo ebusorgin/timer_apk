@@ -185,34 +185,6 @@ const App = {
         }
     },
 
-    isLocalHost() {
-        const selfId = this.selfId || this.socket?.id || null;
-        if (!selfId) {
-            return false;
-        }
-
-        const ids = this.presence && this.presence.size > 0
-            ? Array.from(this.presence.keys())
-            : Array.from(this.participants.keys());
-
-        if (!ids.includes(selfId)) {
-            ids.push(selfId);
-        }
-
-        if (ids.length === 0) {
-            return true;
-        }
-
-        const hostId = ids.reduce((minId, current) => {
-            if (minId === null) {
-                return current;
-            }
-            return current < minId ? current : minId;
-        }, null);
-
-        return selfId === hostId;
-    },
-
     updateHangupAllButton() {
         const btn = this.elements?.btnHangupAll;
         if (!btn) {
@@ -225,7 +197,7 @@ const App = {
             return;
         }
 
-        if (this.hangupAllInProgress || !this.isLocalHost()) {
+        if (this.hangupAllInProgress) {
             btn.style.display = 'none';
             btn.disabled = true;
             return;
@@ -237,10 +209,6 @@ const App = {
 
     hangupAll() {
         if (!this.socket) {
-            return;
-        }
-        if (!this.isLocalHost()) {
-            this.showMessage('Только инициатор может завершить конференцию для всех', 'error');
             return;
         }
         if (this.hangupAllInProgress) {

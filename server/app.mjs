@@ -52,18 +52,6 @@ export function createServerApp(options = {}) {
     })),
   });
 
-  const getHostId = () => {
-    if (participants.size === 0) {
-      return null;
-    }
-    return Array.from(participants.keys()).reduce((minId, currentId) => {
-      if (minId === null) {
-        return currentId;
-      }
-      return currentId < minId ? currentId : minId;
-    }, null);
-  };
-
   io.on('connection', (socket) => {
     console.log('✅ Клиент подключен:', socket.id);
     const participantRecord = {
@@ -135,12 +123,6 @@ export function createServerApp(options = {}) {
     });
 
     socket.on('conference:hangup-all', () => {
-      const hostId = getHostId();
-      if (hostId && socket.id !== hostId) {
-        console.warn(`⚠️ [${socket.id}] Попытка завершить конференцию без прав. Текущий хост: ${hostId}`);
-        return;
-      }
-
       console.log(`🔴 [${socket.id}] Инициировано глобальное отключение участников.`);
       const targetIds = Array.from(io.sockets.sockets.keys());
 
