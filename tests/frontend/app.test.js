@@ -40,6 +40,7 @@ describe('conference App UI', () => {
             <div class="conference-controls">
               <button id="btnVideo" class="btn btn-control video">📹 Включить камеру</button>
               <button id="btnMute" class="btn btn-control">🎤 Включить микрофон</button>
+              <button id="btnHangupAll" class="btn btn-danger">🔴 Завершить для всех</button>
               <button id="btnDisconnect" class="btn btn-secondary">Отключиться</button>
             </div>
             <div id="statusMessage" class="status-message"></div>
@@ -287,5 +288,67 @@ describe('conference App UI', () => {
         type: 'offer',
       }),
     );
+  });
+
+  it('показывает кнопку завершения только инициатору', () => {
+    const button = App.elements.btnHangupAll;
+    expect(button.style.display).toBe('none');
+
+    App.socket = { id: 'aaa' };
+    App.selfId = 'aaa';
+    App.presence = new Map([
+      ['aaa', { id: 'aaa', media: { cam: false, mic: true }, connectedAt: Date.now() }],
+      ['bbb', { id: 'bbb', media: { cam: false, mic: true }, connectedAt: Date.now() }],
+    ]);
+    App.updateHangupAllButton();
+    expect(button.style.display).toBe('');
+    expect(button.disabled).toBe(false);
+
+    App.selfId = 'bbb';
+    App.socket.id = 'bbb';
+    App.updateHangupAllButton();
+    expect(button.style.display).toBe('none');
+  });
+
+  it('инициатор отправляет событие глобального отключения', () => {
+    const emit = vi.fn();
+    const showMessageSpy = vi.spyOn(App, 'showMessage').mockImplementation(() => {});
+
+    App.socket = { id: 'aaa', emit };
+    App.selfId = 'aaa';
+    App.presence = new Map([
+      ['aaa', { id: 'aaa', media: { cam: false, mic: true }, connectedAt: Date.now() }],
+    ]);
+    App.hangupAllInProgress = false;
+    App.updateHangupAllButton();
+
+    App.hangupAll();
+
+    expect(emit).toHaveBeenCalledWith('conference:hangup-all');
+    expect(App.hangupAllInProgress).toBe(true);
+    expect(showMessageSpy).toHaveBeenCalledWith(expect.any(String), 'info');
+  });
+
+  it('не инициатор не может завершить конференцию для всех', () => {
+    const emit = vi.fn();
+    const showMessageSpy = vi.spyOn(App, 'showMessage').mockImplementation(() => {});
+
+    App.socket = { id: 'bbb', emit };
+    App.selfId = 'bbb';
+    App.presence = new Map([
+      ['aaa', { id: 'aaa', media: { cam: false, mic: true }, connectedAt: Date.now() }],
+      ['bbb', { id: 'bbb', media: { cam: false, mic: true }, connectedAt: Date.now() }],
+    ]);
+    App.hangupAllInProgress = false;
+    App.updateHangupAllButton();
+
+    App.hangupAll();
+
+    expect(emit).not.toHaveBeenCalled();
+    expect(showMessageSpy).toHaveBeenCalledWith(
+      'Только инициатор может завершить конференцию для всех',
+      'error',
+    );
+    expect(App.hangupAllInProgress).toBe(false);
   });
 });

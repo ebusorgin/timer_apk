@@ -8,6 +8,7 @@ const App = {
     selfId: null,
     presence: new Map(), // socketId -> { id, media: { cam, mic }, connectedAt }
     lastSentMediaStatus: { cam: false, mic: false },
+    hangupAllInProgress: false,
     
     SERVER_URL: window.location.origin,
     
@@ -51,6 +52,7 @@ const App = {
         
         this.setupEventListeners();
         this.updateVideoButton();
+        this.updateHangupAllButton();
         console.log('✅ App инициализирован');
     },
     
@@ -61,6 +63,7 @@ const App = {
             btnConnect: document.getElementById('btnConnect'),
             btnDisconnect: document.getElementById('btnDisconnect'),
             btnMute: document.getElementById('btnMute'),
+            btnHangupAll: document.getElementById('btnHangupAll'),
             participantsList: document.getElementById('participantsList'),
             statusMessage: document.getElementById('statusMessage'),
             conferenceStatus: document.getElementById('conferenceStatus'),
@@ -81,13 +84,18 @@ const App = {
         if (this.elements.btnVideo) {
             this.elements.btnVideo.addEventListener('click', () => this.toggleVideo());
         }
+        if (this.elements.btnHangupAll) {
+            this.elements.btnHangupAll.addEventListener('click', () => this.hangupAll());
+        }
     },
 
     resetPresenceState() {
         this.presence = new Map();
         this.lastSentMediaStatus = { cam: false, mic: false };
         this.selfId = null;
+        this.hangupAllInProgress = false;
         this.removeSelfParticipantEntry();
+        this.updateHangupAllButton();
     },
 
     removeSelfParticipantEntry() {
@@ -177,6 +185,96 @@ const App = {
         }
     },
 
+    isLocalHost() {
+        const selfId = this.selfId || this.socket?.id || null;
+        if (!selfId) {
+            return false;
+        }
+
+        const ids = this.presence && this.presence.size > 0
+            ? Array.from(this.presence.keys())
+            : Array.from(this.participants.keys());
+
+        if (!ids.includes(selfId)) {
+            ids.push(selfId);
+        }
+
+        if (ids.length === 0) {
+            return true;
+        }
+
+        const hostId = ids.reduce((minId, current) => {
+            if (minId === null) {
+                return current;
+            }
+            return current < minId ? current : minId;
+        }, null);
+
+        return selfId === hostId;
+    },
+
+    updateHangupAllButton() {
+        const btn = this.elements?.btnHangupAll;
+        if (!btn) {
+            return;
+        }
+
+        if (!this.socket) {
+            btn.style.display = 'none';
+            btn.disabled = true;
+            return;
+        }
+
+        if (this.hangupAllInProgress || !this.isLocalHost()) {
+            btn.style.display = 'none';
+            btn.disabled = true;
+            return;
+        }
+
+        btn.style.display = '';
+        btn.disabled = false;
+    },
+
+    hangupAll() {
+        if (!this.socket) {
+            return;
+        }
+        if (!this.isLocalHost()) {
+            this.showMessage('Только инициатор может завершить конференцию для всех', 'error');
+            return;
+        }
+        if (this.hangupAllInProgress) {
+            return;
+        }
+
+        this.hangupAllInProgress = true;
+        this.updateHangupAllButton();
+        this.showMessage('Завершаем конференцию для всех участников...', 'info');
+
+        try {
+            this.socket.emit('conference:hangup-all');
+        } catch (error) {
+            console.error('❌ Ошибка отправки глобального завершения конференции:', error);
+            this.showMessage('Не удалось завершить конференцию для всех', 'error');
+            this.hangupAllInProgress = false;
+            this.updateHangupAllButton();
+        }
+    },
+
+    handleForceDisconnect(payload = {}) {
+        const { reason, initiatedBy } = payload;
+        console.log('⚠️ Получена команда завершить конференцию для всех:', {
+            reason,
+            initiatedBy
+        });
+
+        const message = reason || 'Конференция завершена организатором';
+        this.hangupAllInProgress = false;
+        this.disconnect();
+        this.showMessage(message, 'info');
+        this.updateHangupAllButton();
+    },
+
     async handlePresenceSync(data = {}) {
         const participants = Array.isArray(data.participants) ? data.participants : [];
         const selfIdFromServer = typeof data.selfId === 'string' ? data.selfId : null;
@@ -236,6 +334,8 @@ const App = {
                 console.error(`❌ Ошибка подключения к участнику ${otherId} после presence:sync`, err);
             }
         }
+
+        this.updateHangupAllButton();
     },
 
     async handlePresenceUpdate(data = {}) {
@@ -279,6 +379,8 @@ const App = {
             this.updateParticipantsList();
             this.showMessage('Участник покинул конференцию', 'info');
         }
+
+        this.updateHangupAllButton();
     },
 
     handleStatusUpdate(data = {}) {
@@ -307,6 +409,7 @@ const App = {
         }
 
         this.updateParticipantUI(id);
+        this.updateHangupAllButton();
     },
     
     showMessage(message, type = 'info') {
@@ -352,6 +455,7 @@ const App = {
                 this.showMessage('Подключено к серверу', 'success');
 
                 this.selfId = this.socket.id;
+                this.hangupAllInProgress = false;
 
                 this.ensurePresenceRecord(this.socket.id, {
                     media: this.getLocalMediaState(),
@@ -366,6 +470,7 @@ const App = {
                 this.updateParticipantsList();
                 this.updateMuteButton();
                 this.updateVideoButton();
+                this.updateHangupAllButton();
                 this.syncLocalMediaStatus({ force: true });
             });
             
@@ -378,6 +483,8 @@ const App = {
             this.socket.on('disconnect', (reason) => {
                 console.log('⚠️ Socket.IO отключен:', reason);
                 this.showMessage('Отключено от сервера', 'error');
+                this.hangupAllInProgress = false;
+                this.updateHangupAllButton();
             });
             
             this.setupSocketEvents();
@@ -421,6 +528,7 @@ const App = {
         this.socket.on('presence:sync', (data) => this.handlePresenceSync(data));
         this.socket.on('presence:update', (data) => this.handlePresenceUpdate(data));
         this.socket.on('status:update', (data) => this.handleStatusUpdate(data));
+        this.socket.on('conference:force-disconnect', (data) => this.handleForceDisconnect(data));
 
         this.socket.on('webrtc-signal', async (data) => {
             console.log('📡 [webrtc-signal] Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);
@@ -1487,6 +1595,8 @@ const App = {
         this.resetPresenceState();
         this.showScreen('connectScreen');
         this.elements.btnConnect.disabled = false;
+        this.hangupAllInProgress = false;
+        this.updateHangupAllButton();
     },
     
     showScreen(screenName) {
