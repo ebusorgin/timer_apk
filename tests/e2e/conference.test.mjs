@@ -152,6 +152,8 @@ async function extractState(page) {
           });
         }
 
+        const presenceRecord = globalThis.App.presence?.get(id) ?? null;
+
         const tracks = participant?.mediaElement?.srcObject
           ? participant.mediaElement.srcObject.getTracks().map((track) => ({
               kind: track.kind,
@@ -164,6 +166,8 @@ async function extractState(page) {
         return {
           id,
           videoEnabled: !!participant?.videoEnabled,
+          presenceCam: typeof presenceRecord?.media?.cam === 'boolean' ? presenceRecord.media.cam : null,
+          presenceMic: typeof presenceRecord?.media?.mic === 'boolean' ? presenceRecord.media.mic : null,
           hasMediaElement: !!participant?.mediaElement,
           signalingState: participant?.peerConnection?.signalingState,
           connectionState: participant?.peerConnection?.connectionState,
@@ -295,14 +299,25 @@ async function runScenario(def) {
         };
       }
 
+      const remoteEntry = pageState.participants.find((p) => p.id === expectedRemoteId) || null;
       const hasVideo = hasLiveRemoteVideo(pageState, expectedRemoteId);
-      const passed = expectation.expectVideo ? hasVideo : !hasVideo;
+      const desired = !!expectation.expectVideo;
+
+      const videoFlagMatches = remoteEntry ? remoteEntry.videoEnabled === hasVideo : !desired;
+      const presenceValue = remoteEntry?.presenceCam;
+      const presenceMatches = presenceValue == null ? true : presenceValue === desired;
+      const expectationMatches = desired ? hasVideo : !hasVideo;
+
+      const passed = expectationMatches && videoFlagMatches && presenceMatches;
 
       return {
         expectation,
         passed,
         hasVideo,
         remoteId: expectedRemoteId,
+        videoFlag: remoteEntry?.videoEnabled ?? null,
+        presenceCam: remoteEntry?.presenceCam ?? null,
+        presenceMic: remoteEntry?.presenceMic ?? null,
       };
     });
 
