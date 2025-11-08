@@ -47,6 +47,20 @@ const scenarios = [
     actions: [{ type: 'camera', participant: 'B', enable: true }],
     expectations: [{ page: 'A', remoteIdFrom: 'B', expectVideo: true }],
   },
+  {
+    name: 'initiator_hangup_all',
+    initiator: 'A',
+    actions: [
+      { type: 'camera', participant: 'A', enable: true },
+      { type: 'wait', ms: 2_000 },
+      { type: 'hangup-all', participant: 'host' },
+      { type: 'wait', ms: 2_000 },
+    ],
+    expectations: [
+      { page: 'A', expectDisconnected: true },
+      { page: 'B', expectDisconnected: true },
+    ],
+  },
 ];
 
 function createContext(browser) {
@@ -259,6 +273,29 @@ async function runScenario(def) {
         await setCameraState(page, action.enable);
         continue;
       }
+      if (action.type === 'hangup-all') {
+        let participantLabel = action.participant;
+        if (participantLabel === 'host') {
+          const [idA, idB] = await Promise.all([
+            pages.A?.evaluate(() => globalThis.App?.socket?.id || null),
+            pages.B?.evaluate(() => globalThis.App?.socket?.id || null),
+          ]);
+
+          if (idA && (!idB || idA <= idB)) {
+            participantLabel = 'A';
+          } else if (idB) {
+            participantLabel = 'B';
+          } else {
+            participantLabel = def.initiator ?? 'A';
+          }
+        }
+
+        const page = pages[participantLabel];
+        if (!page) throw new Error(`Page for participant ${action.participant} not found`);
+        await page.waitForSelector('#btnHangupAll', { visible: true, timeout: 15_000 });
+        await page.click('#btnHangupAll');
+        continue;
+      }
       if (action.type === 'rejoin') {
         const label = action.participant;
         const context = contexts[label];
@@ -288,6 +325,20 @@ async function runScenario(def) {
       if (!pageState) {
         return { expectation, passed: false, reason: 'Page state missing' };
       }
+
+       if (expectation.expectDisconnected) {
+         const isDisconnected =
+           !pageState.socketId &&
+           (!pageState.participants || pageState.participants.length === 0);
+
+         return {
+           expectation,
+           passed: isDisconnected,
+           isDisconnected,
+           socketId: pageState.socketId,
+           participantCount: pageState.participants?.length ?? 0,
+         };
+       }
 
       const expectedRemoteId =
         expectation.remoteIdFrom === 'A' ? stateA.socketId : stateB.socketId;
