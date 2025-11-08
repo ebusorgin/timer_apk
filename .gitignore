@@ -13,3 +13,4 @@ data/test-users.json
 dist/
 build/
 slave-config.json
+tests/e2e/artifacts/
