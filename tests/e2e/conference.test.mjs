@@ -149,7 +149,111 @@ const permutationScenarios = AUDIO_PERMUTATIONS.map((order) => {
   };
 });
 
-const scenarios = [...baseScenarios, audioMatrixScenario, ...permutationScenarios];
+const fullLifecycleScenario = {
+  name: 'audio_story_three_party',
+  participants: ['A', 'B', 'C'],
+  initialParticipants: ['A', 'B'],
+  initiator: 'A',
+  actions: [
+    { type: 'microphone', participant: 'A', enable: true },
+    { type: 'microphone', participant: 'B', enable: true },
+  ],
+  phases: [
+    {
+      label: 'phase1_a_speaks_b_listens',
+      actions: [
+        { type: 'microphone', participant: 'A', enable: true },
+        { type: 'microphone', participant: 'B', enable: false },
+      ],
+      waitAfter: 3_000,
+      expectations: [
+        { page: 'A', expectLocalAudio: true },
+        { page: 'B', expectAudioFrom: 'A', minPackets: 15 },
+      ],
+    },
+    {
+      label: 'phase2_b_speaks_a_listens',
+      actions: [
+        { type: 'microphone', participant: 'A', enable: false },
+        { type: 'microphone', participant: 'B', enable: true },
+      ],
+      waitAfter: 3_000,
+      expectations: [
+        { page: 'B', expectLocalAudio: true },
+        { page: 'A', expectAudioFrom: 'B', minPackets: 15 },
+      ],
+    },
+    {
+      label: 'phase3_c_joins_b_continues',
+      actions: [
+        { type: 'join', participant: 'C' },
+        { type: 'microphone', participant: 'C', enable: true },
+        { type: 'microphone', participant: 'B', enable: true },
+      ],
+      waitAfter: 4_000,
+      expectations: [
+        { page: 'B', expectLocalAudio: true },
+        { page: 'A', expectAudioFrom: 'B', minPackets: 20 },
+        { page: 'C', expectAudioFrom: 'B', minPackets: 12 },
+      ],
+    },
+    {
+      label: 'phase4_toggle_both',
+      actions: [
+        { type: 'microphone', participant: 'B', enable: false },
+        { type: 'wait', ms: 1_000 },
+        { type: 'microphone', participant: 'B', enable: true },
+        { type: 'microphone', participant: 'A', enable: true },
+      ],
+      waitAfter: 4_000,
+      expectations: [
+        { page: 'B', expectLocalAudio: true },
+        { page: 'A', expectAudioFrom: 'B', minPackets: 15 },
+        { page: 'C', expectAudioFrom: 'A', minPackets: 12 },
+      ],
+    },
+    {
+      label: 'phase5_c_reconnects_and_speaks',
+      actions: [
+        { type: 'microphone', participant: 'A', enable: false },
+        { type: 'microphone', participant: 'B', enable: false },
+        { type: 'rejoin', participant: 'C' },
+        { type: 'wait', ms: 2_000 },
+        { type: 'microphone', participant: 'C', enable: true },
+      ],
+      waitAfter: 4_000,
+      expectations: [
+        { page: 'C', expectLocalAudio: true },
+        { page: 'A', expectAudioFrom: 'C', minPackets: 12 },
+        { page: 'B', expectAudioFrom: 'C', minPackets: 12 },
+      ],
+    },
+    {
+      label: 'phase6_everyone_speaks',
+      actions: [
+        { type: 'microphone', participant: 'A', enable: true },
+        { type: 'microphone', participant: 'B', enable: true },
+        { type: 'microphone', participant: 'C', enable: true },
+      ],
+      waitAfter: 4_000,
+      expectations: [
+        { page: 'A', expectAudioFrom: 'B', minPackets: 15 },
+        { page: 'A', expectAudioFrom: 'C', minPackets: 15 },
+        { page: 'B', expectAudioFrom: 'A', minPackets: 15 },
+        { page: 'B', expectAudioFrom: 'C', minPackets: 15 },
+        { page: 'C', expectAudioFrom: 'A', minPackets: 15 },
+        { page: 'C', expectAudioFrom: 'B', minPackets: 15 },
+      ],
+    },
+  ],
+};
+
+const scenarios = [
+  ...baseScenarios,
+  audioMatrixScenario,
+  fullLifecycleScenario,
+  ...permutationScenarios,
+];
 
 function createContext(browser) {
   if (typeof browser.createBrowserContext === 'function') {
@@ -359,7 +463,7 @@ function hasLiveRemoteVideo(state, remoteId) {
   return remote.tracks.some((track) => track.kind === 'video' && track.readyState === 'live');
 }
 
-function evaluateExpectations(expectations = [], states, participantLabels) {
+function evaluateExpectations(expectations = [], states, participantLabels, packetTracker) {
   return expectations.map((expectation) => {
     const pageLabel = expectation.page;
     const pageState = pageLabel ? states[pageLabel] : null;
@@ -447,11 +551,20 @@ function evaluateExpectations(expectations = [], states, participantLabels) {
       const playbackOk =
         remoteEntry?.mediaElementMuted === false ||
         remoteEntry?.mediaElementMuted === null;
+      const trackerKey = `${pageLabel}->${remoteLabel}`;
+      const previousPackets = packetTracker?.get(trackerKey);
+      let deltaPackets =
+        previousPackets != null ? packetsReceived - previousPackets : packetsReceived;
+      if (deltaPackets < 0) {
+        deltaPackets = packetsReceived;
+      }
 
       return {
         expectation,
-        passed: packetsReceived >= minPackets && trackLive && playbackOk,
+        passed: deltaPackets >= minPackets && trackLive && playbackOk,
         packetsReceived,
+        deltaPackets,
+        previousPackets: previousPackets ?? null,
         minPackets,
         trackLive,
         playbackMuted: remoteEntry?.mediaElementMuted ?? null,
@@ -520,9 +633,20 @@ async function runScenario(def) {
   const initiatorLabel = participantLabels.includes(def.initiator)
     ? def.initiator
     : participantLabels[0];
+
+  const initialParticipants = Array.isArray(def.initialParticipants) && def.initialParticipants.length > 0
+    ? def.initialParticipants.filter(
+        (label, index, arr) => participantLabels.includes(label) && arr.indexOf(label) === index,
+      )
+    : [...participantLabels];
+
+  if (!initialParticipants.includes(initiatorLabel)) {
+    initialParticipants.unshift(initiatorLabel);
+  }
+
   const connectionOrder = [
     initiatorLabel,
-    ...participantLabels.filter((label) => label !== initiatorLabel),
+    ...initialParticipants.filter((label) => label !== initiatorLabel),
   ];
 
   try {
@@ -599,6 +723,19 @@ async function runScenario(def) {
         return;
       }
 
+      if (action.type === 'join') {
+        const label = action.participant;
+        if (!participantLabels.includes(label)) {
+          throw new Error(`Cannot join unknown participant ${label}`);
+        }
+        if (pages[label]) {
+          return;
+        }
+        await openParticipant(label);
+        await clickConnect(pages[label]);
+        return;
+      }
+
       if (action.type === 'hangup-all') {
         let participantLabel = action.participant;
         if (participantLabel === 'host') {
@@ -644,6 +781,50 @@ async function runScenario(def) {
 
     await performActions(def.actions);
 
+    const packetTracker = new Map();
+
+    async function captureStates() {
+      const snapshot = {};
+      for (const label of participantLabels) {
+        const page = pages[label];
+        snapshot[label] = page ? await extractState(page) : null;
+      }
+      return snapshot;
+    }
+
+    function updatePacketTracker(states) {
+      participantLabels.forEach((pageLabel) => {
+        const pageState = states[pageLabel];
+        if (!pageState) {
+          return;
+        }
+        participantLabels.forEach((remoteLabel) => {
+          if (remoteLabel === pageLabel) {
+            return;
+          }
+          const remoteState = states[remoteLabel];
+          const remoteSocketId = remoteState?.socketId ?? null;
+          if (!remoteSocketId) {
+            return;
+          }
+          const remoteEntry =
+            pageState.participants?.find((p) => p.id === remoteSocketId) || null;
+          const audioStats = remoteEntry?.stats?.filter(
+            (s) => s.type === 'inbound-rtp' && s.kind === 'audio'
+          ) || [];
+          const packetsReceived = audioStats.reduce(
+            (sum, stat) => sum + (stat.packetsReceived ?? 0),
+            0
+          );
+          const trackerKey = `${pageLabel}->${remoteLabel}`;
+          packetTracker.set(trackerKey, packetsReceived);
+        });
+      });
+    }
+
+    const initialStates = await captureStates();
+    updatePacketTracker(initialStates);
+
     const phases = Array.isArray(def.phases) && def.phases.length > 0
       ? def.phases
       : [
@@ -656,15 +837,6 @@ async function runScenario(def) {
 
     const phasesResults = [];
     let allPassed = true;
-
-    async function captureStates() {
-      const snapshot = {};
-      for (const label of participantLabels) {
-        const page = pages[label];
-        snapshot[label] = page ? await extractState(page) : null;
-      }
-      return snapshot;
-    }
 
     for (const phase of phases) {
       if (phase.actions) {
@@ -680,11 +852,14 @@ async function runScenario(def) {
       const expectationResults = evaluateExpectations(
         phase.expectations ?? [],
         states,
-        participantLabels
+        participantLabels,
+        packetTracker
       );
       if (!expectationResults.every((item) => item.passed)) {
         allPassed = false;
       }
+
+      updatePacketTracker(states);
 
       phasesResults.push({
         label: phase.label ?? null,

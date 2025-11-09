@@ -3,12 +3,31 @@ const App = {
     socket: null,
     localStream: null,
     participants: new Map(), // socketId -> { peerConnection, mediaElement, tileElement, pendingCandidates }
-    presence: new Map(), // socketId -> { id, media, connectedAt }
-    lastSentMediaStatus: { cam: false, mic: false },
-    selfId: null,
     presence: new Map(), // socketId -> { id, media: { cam, mic }, connectedAt }
     lastSentMediaStatus: { cam: false, mic: false },
+    selfId: null,
     hangupAllInProgress: false,
+    pendingPlaybackElements: new Map(),
+    playbackUnlockHandlerInstalled: false,
+    playbackUnlockHandler: null,
+    audioContext: null,
+    cookieKeys: {
+        userId: 'conference_user_id',
+        termsAccepted: 'conference_terms_accepted',
+        userName: 'conference_user_name'
+    },
+    subscriber: {
+        id: null,
+        name: '',
+        registered: false
+    },
+    subscribers: [],
+    cookieConsentAccepted: false,
+    subscriptionInProgress: false,
+    socketHandlers: {},
+    serviceWorkerRegistration: null,
+    serviceWorkerReadyPromise: null,
+    serviceWorkerMessageHandler: null,
     
     SERVER_URL: window.location.origin,
     
@@ -43,6 +62,7 @@ const App = {
     init() {
         console.log('Conference App initializing...');
         this.initElements();
+        this.initCookieState();
         this.resetPresenceState();
 
         if (!this.elements.btnConnect) {
@@ -51,6 +71,8 @@ const App = {
         }
         
         this.setupEventListeners();
+        this.fetchSubscribers();
+        this.registerServiceWorker();
         this.updateVideoButton();
         this.updateHangupAllButton();
         console.log('✅ App инициализирован');
@@ -66,6 +88,11 @@ const App = {
             btnHangupAll: document.getElementById('btnHangupAll'),
             participantsList: document.getElementById('participantsList'),
             statusMessage: document.getElementById('statusMessage'),
+            connectStatusMessage: document.getElementById('connectStatusMessage'),
+            subscriptionMessage: document.getElementById('subscriptionMessage'),
+            subscriberList: document.getElementById('subscriberList'),
+            inputSubscriberName: document.getElementById('inputSubscriberName'),
+            btnSubscribe: document.getElementById('btnSubscribe'),
             conferenceStatus: document.getElementById('conferenceStatus'),
             videoGrid: document.getElementById('videoGrid'),
             localVideo: document.getElementById('localVideo'),
@@ -74,9 +101,636 @@ const App = {
             btnVideo: document.getElementById('btnVideo') // Добавляем кнопку видео
         };
     },
+
+    initCookieState() {
+        this.cookieConsentAccepted = this.ensureCookieConsent();
+        this.subscriber.id = this.ensurePersistentUserId();
+        this.subscriber.name = this.loadStoredUserName();
+        this.subscriber.registered = Boolean(this.subscriber.name);
+        this.updateSubscriptionUI();
+    },
+
+    ensureCookieConsent() {
+        const accepted = this.getCookie(this.cookieKeys.termsAccepted);
+        if (accepted === '1') {
+            return true;
+        }
+        this.setCookie(this.cookieKeys.termsAccepted, '1', 365 * 10);
+        return true;
+    },
+
+    ensurePersistentUserId() {
+        let userId = this.getCookie(this.cookieKeys.userId);
+        if (userId && typeof userId === 'string' && userId.length > 0) {
+            return userId;
+        }
+        userId = this.generateUserId();
+        this.setCookie(this.cookieKeys.userId, userId, 365 * 10);
+        return userId;
+    },
+
+    generateUserId() {
+        if (window.crypto && window.crypto.randomUUID) {
+            return window.crypto.randomUUID();
+        }
+        const randomPart = Math.random().toString(36).slice(2, 10);
+        return `user_${Date.now()}_${randomPart}`;
+    },
+
+    setCookie(name, value, days = 365) {
+        if (!name) {
+            return;
+        }
+        const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+        document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+    },
+
+    getCookie(name) {
+        if (!name) {
+            return null;
+        }
+        const encodedName = `${encodeURIComponent(name)}=`;
+        const cookies = document.cookie ? document.cookie.split('; ') : [];
+        for (const cookie of cookies) {
+            if (cookie.startsWith(encodedName)) {
+                return decodeURIComponent(cookie.substring(encodedName.length));
+            }
+        }
+        return null;
+    },
+
+    loadStoredUserName() {
+        try {
+            const stored = localStorage.getItem(this.cookieKeys.userName);
+            if (stored) {
+                return stored;
+            }
+        } catch (err) {
+            console.warn('⚠️ Не удалось прочитать имя из localStorage', err);
+        }
+        return '';
+    },
+
+    storeUserName(name) {
+        if (typeof name !== 'string') {
+            return;
+        }
+        try {
+            localStorage.setItem(this.cookieKeys.userName, name);
+        } catch (err) {
+            console.warn('⚠️ Не удалось сохранить имя в localStorage', err);
+        }
+    },
+
+    buildApiUrl(pathname) {
+        if (!pathname) {
+            return this.SERVER_URL;
+        }
+        try {
+            const url = new URL(pathname, this.SERVER_URL);
+            return url.toString();
+        } catch (error) {
+            console.warn('⚠️ Не удалось сформировать URL API, возвращаем исходный путь', pathname, error);
+            return pathname;
+        }
+    },
+
+    sortSubscriberList(list = []) {
+        return [...list].sort((a, b) => {
+            const nameA = (a?.name || '').toLocaleLowerCase();
+            const nameB = (b?.name || '').toLocaleLowerCase();
+            if (nameA === nameB) {
+                return (a?.createdAt || 0) - (b?.createdAt || 0);
+            }
+            return nameA.localeCompare(nameB, 'ru');
+        });
+    },
+
+    setSubscribers(subscribers = [], options = {}) {
+        const { ensureSelf = true, silent = false } = options;
+        const normalized = Array.isArray(subscribers)
+            ? subscribers.filter((item) => item && typeof item.id === 'string' && item.id.length > 0)
+            : [];
+
+        let prepared = normalized;
+
+        if (ensureSelf && this.subscriber.registered) {
+            const hasSelf = normalized.some((item) => item.id === this.subscriber.id);
+            if (!hasSelf) {
+                prepared = [
+                    ...normalized,
+                    {
+                        id: this.subscriber.id,
+                        name: this.subscriber.name,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        localEcho: true,
+                    },
+                ];
+            }
+        } else {
+            prepared = [...normalized];
+        }
+
+        this.subscribers = this.sortSubscriberList(prepared);
+
+        if (!silent) {
+            this.renderSubscriberList();
+        }
+    },
+
+    findSubscriberById(subscriberId) {
+        if (!subscriberId) {
+            return null;
+        }
+        return (this.subscribers || []).find((item) => item.id === subscriberId) || null;
+    },
+
+    upsertSubscriberLocal(subscriber, options = {}) {
+        if (!subscriber || typeof subscriber.id !== 'string') {
+            return;
+        }
+        const list = Array.isArray(this.subscribers) ? [...this.subscribers] : [];
+        const index = list.findIndex((item) => item.id === subscriber.id);
+        if (index >= 0) {
+            list[index] = { ...list[index], ...subscriber };
+        } else {
+            list.push({ ...subscriber });
+        }
+        this.setSubscribers(list, options);
+    },
+
+    async fetchSubscribers() {
+        try {
+            const response = await fetch(this.buildApiUrl('/api/subscribers'), {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            if (data?.success && Array.isArray(data.subscribers)) {
+                this.setSubscribers(data.subscribers);
+            }
+        } catch (error) {
+            console.warn('⚠️ Не удалось загрузить список подписчиков', error);
+        }
+    },
+
+    handleSubscribersUpdate(payload) {
+        if (!payload) {
+            return;
+        }
+        const { subscribers } = payload;
+        if (Array.isArray(subscribers)) {
+            this.setSubscribers(subscribers);
+        }
+    },
+
+    registerServiceWorker() {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+            console.warn('⚠️ Service Worker не поддерживается в этом браузере');
+            return Promise.resolve(null);
+        }
+
+        if (this.serviceWorkerReadyPromise) {
+            return this.serviceWorkerReadyPromise;
+        }
+
+        if (!this.serviceWorkerMessageHandler) {
+            this.serviceWorkerMessageHandler = (event) => this.handleServiceWorkerMessage(event);
+            navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
+        }
+
+        this.serviceWorkerReadyPromise = navigator.serviceWorker
+            .register('/service-worker.js')
+            .then((registration) => {
+                this.serviceWorkerRegistration = registration;
+                console.log('✅ Service worker зарегистрирован:', registration.scope);
+                this.syncServiceWorkerProfile();
+                return registration;
+            })
+            .catch((error) => {
+                console.warn('⚠️ Не удалось зарегистрировать service worker', error);
+                return null;
+            });
+
+        return this.serviceWorkerReadyPromise;
+    },
+
+    async getServiceWorkerRegistration() {
+        if (this.serviceWorkerRegistration) {
+            return this.serviceWorkerRegistration;
+        }
+
+        if (this.serviceWorkerReadyPromise) {
+            try {
+                this.serviceWorkerRegistration = await this.serviceWorkerReadyPromise;
+                return this.serviceWorkerRegistration;
+            } catch (error) {
+                console.warn('⚠️ Ожидание service worker не удалось', error);
+                return null;
+            }
+        }
+
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+            return null;
+        }
+
+        try {
+            this.serviceWorkerRegistration = await navigator.serviceWorker.ready;
+        } catch (error) {
+            console.warn('⚠️ Service worker не готов', error);
+            this.serviceWorkerRegistration = null;
+        }
+        return this.serviceWorkerRegistration;
+    },
+
+    async syncServiceWorkerProfile() {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+            return;
+        }
+
+        const registration = await this.getServiceWorkerRegistration();
+        const activeWorker = registration?.active || registration?.waiting || registration?.installing;
+        if (!activeWorker) {
+            return;
+        }
+
+        activeWorker.postMessage({
+            type: 'subscriber-profile',
+            payload: {
+                id: this.subscriber.id,
+                name: this.subscriber.name,
+                registered: this.subscriber.registered,
+                consent: this.cookieConsentAccepted,
+            },
+        });
+    },
+
+    handleServiceWorkerMessage(event) {
+        const data = event?.data;
+        console.log('📬 Сообщение от service worker:', data);
+    },
+
+    handleCallInitiated(call) {
+        if (!call || !call.to) {
+            return;
+        }
+        if (call.to.id === this.subscriber.id) {
+            this.notifyIncomingCall(call);
+        }
+    },
+
+    async notifyIncomingCall(call) {
+        const callerName = call?.from?.name || 'Неизвестный абонент';
+        const message = `${callerName} приглашает вас в конференцию.`;
+        this.setConnectStatusMessage(message, 'info');
+
+        const notificationOptions = {
+            body: message,
+            tag: `incoming-call-${call?.id || Date.now()}`,
+            data: {
+                url: window.location.origin,
+                call,
+            },
+        };
+
+        await this.showLocalNotification('Входящий звонок', notificationOptions);
+
+        const registration = await this.getServiceWorkerRegistration();
+        const activeWorker = registration?.active;
+        if (activeWorker) {
+            activeWorker.postMessage({
+                type: 'incoming-call',
+                payload: call,
+            });
+        }
+    },
+
+    async ensureNotificationPermission() {
+        if (typeof Notification === 'undefined') {
+            return false;
+        }
+        if (Notification.permission === 'granted') {
+            return true;
+        }
+        if (Notification.permission === 'denied') {
+            return false;
+        }
+        try {
+            const result = await Notification.requestPermission();
+            return result === 'granted';
+        } catch (error) {
+            console.warn('⚠️ Не удалось запросить разрешение на уведомления', error);
+            return false;
+        }
+    },
+
+    async showLocalNotification(title, options = {}) {
+        const permissionGranted = await this.ensureNotificationPermission();
+        if (!permissionGranted) {
+            console.warn('⚠️ Уведомления отключены пользователем');
+            return;
+        }
+
+        const registration = await this.getServiceWorkerRegistration();
+        if (!registration || typeof registration.showNotification !== 'function') {
+            console.warn('⚠️ Service worker не готов к показу уведомлений');
+            return;
+        }
+
+        try {
+            await registration.showNotification(title, options);
+        } catch (error) {
+            console.warn('⚠️ Не удалось показать уведомление', error);
+        }
+    },
+
+    updateSubscriptionUI() {
+        const input = this.elements.inputSubscriberName;
+        const subscribeButton = this.elements.btnSubscribe;
+        if (input) {
+            input.value = this.subscriber.name || '';
+            input.disabled = this.subscriptionInProgress;
+        }
+        if (subscribeButton) {
+            subscribeButton.disabled = this.subscriptionInProgress;
+            subscribeButton.textContent = this.subscriber.registered ? 'Обновить имя' : 'Подписаться';
+        }
+        this.renderSubscriberList();
+    },
+
+    setSubscriptionMessage(message, level = 'info') {
+        const container = this.elements.subscriptionMessage;
+        if (!container) {
+            return;
+        }
+        container.textContent = message || '';
+        container.classList.remove('success', 'error', 'info', 'show');
+        if (message) {
+            container.classList.add('show');
+            if (level) {
+                container.classList.add(level);
+            }
+            container.dataset.level = level || '';
+        } else {
+            delete container.dataset.level;
+        }
+    },
+
+    clearSubscriptionMessage() {
+        this.setSubscriptionMessage('');
+    },
+
+    setConnectStatusMessage(message, level = 'info') {
+        const container = this.elements.connectStatusMessage;
+        if (!container) {
+            return;
+        }
+        container.textContent = message || '';
+        container.classList.remove('success', 'error', 'info', 'show');
+        if (message) {
+            container.classList.add('show');
+            if (level) {
+                container.classList.add(level);
+            }
+        }
+    },
+
+    clearConnectStatusMessage() {
+        this.setConnectStatusMessage('');
+    },
+
+    renderSubscriberList() {
+        const listEl = this.elements.subscriberList;
+        if (!listEl) {
+            return;
+        }
+        listEl.innerHTML = '';
+        if (!Array.isArray(this.subscribers) || this.subscribers.length === 0) {
+            const emptyState = document.createElement('li');
+            emptyState.className = 'subscriber-list__empty';
+            emptyState.textContent = 'Пока никто не подписался.';
+            listEl.appendChild(emptyState);
+            return;
+        }
+
+        this.subscribers.forEach((subscriber) => {
+            const listItem = document.createElement('li');
+            listItem.className = 'subscriber-list__item';
+            listItem.dataset.subscriberId = subscriber.id;
+
+            const nameContainer = document.createElement('span');
+            nameContainer.className = 'subscriber-list__name';
+            nameContainer.textContent = subscriber.name || 'Без имени';
+            if (subscriber.id === this.subscriber.id) {
+                nameContainer.classList.add('subscriber-list__name--self');
+            }
+
+            const actionsContainer = document.createElement('span');
+            actionsContainer.className = 'subscriber-list__actions';
+
+            const callButton = document.createElement('button');
+            callButton.className = 'btn btn-small btn-call';
+            callButton.type = 'button';
+            callButton.textContent = 'Позвонить';
+            callButton.setAttribute('data-action', 'call');
+            callButton.setAttribute('data-subscriber-id', subscriber.id);
+
+            const joinButton = document.createElement('button');
+            joinButton.className = 'btn btn-small btn-join';
+            joinButton.type = 'button';
+            joinButton.textContent = 'В конференцию';
+            joinButton.setAttribute('data-action', 'join');
+            joinButton.setAttribute('data-subscriber-id', subscriber.id);
+
+            actionsContainer.append(callButton, joinButton);
+            listItem.append(nameContainer, actionsContainer);
+            listEl.appendChild(listItem);
+        });
+    },
+
+    async handleSubscribeAction() {
+        if (this.subscriptionInProgress) {
+            return;
+        }
+        const input = this.elements.inputSubscriberName;
+        if (!input) {
+            return;
+        }
+        const name = input.value.trim();
+        if (!name) {
+            this.setSubscriptionMessage('Введите имя, чтобы подписаться.', 'error');
+            return;
+        }
+
+        this.subscriptionInProgress = true;
+        this.updateSubscriptionUI();
+        this.setSubscriptionMessage('Сохраняем данные…', 'info');
+
+        try {
+            const result = await this.registerSubscriber(name);
+            if (result && result.success) {
+                this.subscriber.name = name;
+                this.subscriber.registered = true;
+                this.storeUserName(name);
+                this.syncServiceWorkerProfile();
+                this.setSubscriptionMessage('Имя сохранено. Теперь вам могут звонить по ссылке.', 'success');
+            } else {
+                this.setSubscriptionMessage('Не удалось сохранить имя. Попробуйте позже.', 'error');
+            }
+        } catch (error) {
+            console.error('❌ Ошибка подписки:', error);
+            this.setSubscriptionMessage('Произошла ошибка при подписке.', 'error');
+        } finally {
+            this.subscriptionInProgress = false;
+            this.updateSubscriptionUI();
+        }
+    },
+
+    handleSubscriberAction(subscriberId, action) {
+        if (!subscriberId || !action) {
+            return;
+        }
+        if (action === 'join') {
+            this.handleJoinConference();
+            return;
+        }
+        if (action === 'call') {
+            if (!this.subscriber.registered) {
+                this.setSubscriptionMessage('Сначала зарегистрируйте своё имя, чтобы звонить другим.', 'info');
+                return;
+            }
+            if (subscriberId === this.subscriber.id) {
+                this.setSubscriptionMessage('Нельзя звонить самому себе.', 'error');
+                return;
+            }
+            this.initiateCallToSubscriber(subscriberId);
+        }
+    },
+
+    handleJoinConference() {
+        this.clearConnectStatusMessage();
+        this.ensureAudioContextUnlocked('subscriber-join');
+        this.connect();
+    },
+
+    async initiateCallToSubscriber(subscriberId) {
+        console.log('📞 Запрос звонка для подписчика', subscriberId);
+        try {
+            await this.triggerCallNotification(subscriberId);
+        } catch (error) {
+            console.warn('⚠️ Не удалось инициировать звонок', error);
+        }
+    },
+
+    async registerSubscriber(name) {
+        const payload = {
+            id: this.subscriber.id,
+            name,
+        };
+
+        const response = await fetch(this.buildApiUrl('/api/subscribers'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const data = await response.json();
+                if (data && data.error) {
+                    errorMessage = data.error;
+                }
+            } catch {
+                // ignore
+            }
+            throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        if (data?.success) {
+            if (data.subscriber) {
+                this.subscriber.name = data.subscriber.name;
+                this.subscriber.registered = true;
+            }
+            if (Array.isArray(data.subscribers)) {
+                this.setSubscribers(data.subscribers);
+            } else if (data.subscriber) {
+                this.upsertSubscriberLocal(data.subscriber);
+            }
+        }
+        return data;
+    },
+
+    async triggerCallNotification(subscriberId) {
+        const target = this.findSubscriberById(subscriberId);
+        const targetName = target?.name || 'участника';
+        this.setConnectStatusMessage(`Отправляем приглашение для ${targetName}...`, 'info');
+
+        try {
+            const response = await fetch(this.buildApiUrl('/api/calls'), {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    fromId: this.subscriber.id,
+                    fromName: this.subscriber.name,
+                    toId: subscriberId,
+                }),
+            });
+
+            if (!response.ok) {
+                let errorMessage = `HTTP ${response.status}`;
+                try {
+                    const errorPayload = await response.json();
+                    if (errorPayload?.error) {
+                        errorMessage = errorPayload.error;
+                    }
+                } catch {
+                    // ignore parse error
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await response.json();
+            if (data?.success) {
+                const resolvedTargetName =
+                    data.call?.to?.name || targetName || 'участника';
+                this.setConnectStatusMessage(
+                    `Отправили приглашение для ${resolvedTargetName}.`,
+                    'success'
+                );
+                return data;
+            }
+
+            this.setConnectStatusMessage('Не удалось инициировать звонок.', 'error');
+            return data;
+        } catch (error) {
+            console.error('❌ Ошибка инициирования звонка:', error);
+            this.setConnectStatusMessage('Ошибка отправки приглашения. Попробуйте позже.', 'error');
+            throw error;
+        }
+    },
     
     setupEventListeners() {
-        this.elements.btnConnect.addEventListener('click', () => this.connect());
+        this.elements.btnConnect.addEventListener('click', () => {
+            this.ensureAudioContextUnlocked('connect-button');
+            this.connect();
+        });
         this.elements.btnDisconnect.addEventListener('click', () => this.disconnect());
         if (this.elements.btnMute) {
             this.elements.btnMute.addEventListener('click', () => this.toggleMute());
@@ -87,6 +741,31 @@ const App = {
         if (this.elements.btnHangupAll) {
             this.elements.btnHangupAll.addEventListener('click', () => this.hangupAll());
         }
+        if (this.elements.btnSubscribe) {
+            this.elements.btnSubscribe.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.handleSubscribeAction();
+            });
+        }
+        if (this.elements.inputSubscriberName) {
+            this.elements.inputSubscriberName.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.handleSubscribeAction();
+                }
+            });
+        }
+        if (this.elements.subscriberList) {
+            this.elements.subscriberList.addEventListener('click', (event) => {
+                const actionButton = event.target.closest('[data-action]');
+                if (!actionButton) {
+                    return;
+                }
+                const subscriberId = actionButton.getAttribute('data-subscriber-id');
+                const action = actionButton.getAttribute('data-action');
+                this.handleSubscriberAction(subscriberId, action);
+            });
+        }
     },
 
     resetPresenceState() {
@@ -94,6 +773,9 @@ const App = {
         this.lastSentMediaStatus = { cam: false, mic: false };
         this.selfId = null;
         this.hangupAllInProgress = false;
+        if (this.pendingPlaybackElements) {
+            this.pendingPlaybackElements.clear();
+        }
         this.removeSelfParticipantEntry();
         this.updateHangupAllButton();
     },
@@ -152,6 +834,180 @@ const App = {
 
         this.presence.set(socketId, existing);
         return existing;
+    },
+
+    forcePlayMediaElement(mediaElement, debugLabel = 'unknown', options = {}) {
+        if (!mediaElement) {
+            return;
+        }
+
+        const { keepMuted = false } = options;
+        const previousMuted = mediaElement.muted;
+        // Временно выключаем звук, чтобы обойти ограничения автозапуска
+        mediaElement.muted = true;
+
+        const restorePlaybackState = () => {
+            if (keepMuted) {
+                mediaElement.muted = true;
+            } else {
+                mediaElement.muted = previousMuted;
+            }
+        };
+
+        const ensureUnmutedSoon = () => {
+            if (keepMuted) {
+                return;
+            }
+            setTimeout(() => {
+                if (mediaElement.muted) {
+                    mediaElement.muted = false;
+                }
+            }, 200);
+        };
+
+        try {
+            const playResult = mediaElement.play();
+            restorePlaybackState();
+            ensureUnmutedSoon();
+
+            if (playResult && typeof playResult.then === 'function') {
+                playResult
+                    .then(() => {
+                        this.pendingPlaybackElements.delete(mediaElement);
+                    })
+                    .catch((error) => {
+                        console.warn(`⚠️ Не удалось автоматически воспроизвести поток (${debugLabel}):`, error);
+                        this.queueMediaPlaybackRetry(mediaElement, options);
+                    });
+            } else {
+                this.pendingPlaybackElements.delete(mediaElement);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Ошибка при попытке воспроизведения медиа (${debugLabel}):`, error);
+            restorePlaybackState();
+            this.queueMediaPlaybackRetry(mediaElement, options);
+            ensureUnmutedSoon();
+        }
+    },
+
+    queueMediaPlaybackRetry(mediaElement, options = {}) {
+        if (!mediaElement) {
+            return;
+        }
+        this.pendingPlaybackElements.set(mediaElement, options);
+        this.ensurePlaybackUnlockHandlers();
+    },
+
+    ensurePlaybackUnlockHandlers() {
+        if (this.playbackUnlockHandlerInstalled) {
+            return;
+        }
+
+        const handler = () => {
+            this.ensureAudioContextUnlocked('interaction');
+            this.resumePendingMediaElements();
+        };
+
+        ['pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
+            document.addEventListener(eventName, handler, { passive: true });
+        });
+        window.addEventListener('focus', handler);
+
+        this.playbackUnlockHandlerInstalled = true;
+        this.playbackUnlockHandler = handler;
+    },
+
+    resumePendingMediaElements() {
+        if (!this.pendingPlaybackElements || this.pendingPlaybackElements.size === 0) {
+            return;
+        }
+
+        const pending = Array.from(this.pendingPlaybackElements.entries());
+        this.pendingPlaybackElements.clear();
+        pending.forEach(([element, options]) => {
+            this.forcePlayMediaElement(element, 'resume', options || {});
+        });
+    },
+
+    ensureAudioContextUnlocked(reason = 'manual') {
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume().catch((err) => {
+                    console.warn(`⚠️ Не удалось возобновить AudioContext (${reason})`, err);
+                });
+            }
+            return;
+        }
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+            console.warn('⚠️ AudioContext недоступен в этом браузере');
+            return;
+        }
+
+        try {
+            this.audioContext = new AudioContextClass();
+        } catch (err) {
+            console.warn(`⚠️ Не удалось создать AudioContext (${reason})`, err);
+            this.audioContext = null;
+            return;
+        }
+
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume().catch((err) => {
+                console.warn(`⚠️ Не удалось активировать AudioContext (${reason})`, err);
+            });
+        }
+    },
+
+    attachStreamToAudioContext(participantRecord, remoteStream, debugLabel = 'remote') {
+        if (!participantRecord || !remoteStream) {
+            return;
+        }
+
+        this.ensureAudioContextUnlocked(`attach-${debugLabel}`);
+        if (!this.audioContext) {
+            return;
+        }
+
+        const currentStreamId = remoteStream.id;
+        if (participantRecord.audioSourceNode && participantRecord.audioSourceStreamId === currentStreamId) {
+            return;
+        }
+
+        if (participantRecord.audioSourceNode) {
+            try {
+                participantRecord.audioSourceNode.disconnect();
+            } catch (err) {
+                console.warn(`⚠️ Не удалось отключить предыдущий audioSourceNode (${debugLabel})`, err);
+            }
+            participantRecord.audioSourceNode = null;
+            participantRecord.audioSourceStreamId = null;
+        }
+
+        try {
+            const sourceNode = this.audioContext.createMediaStreamSource(remoteStream);
+            sourceNode.connect(this.audioContext.destination);
+            participantRecord.audioSourceNode = sourceNode;
+            participantRecord.audioSourceStreamId = currentStreamId;
+        } catch (err) {
+            console.warn(`⚠️ Не удалось подключить поток к AudioContext (${debugLabel})`, err);
+        }
+    },
+
+    detachAudioSourceFromParticipant(participantRecord) {
+        if (!participantRecord || !participantRecord.audioSourceNode) {
+            return;
+        }
+
+        try {
+            participantRecord.audioSourceNode.disconnect();
+        } catch (err) {
+            console.warn('⚠️ Не удалось отключить audioSourceNode при очистке', err);
+        }
+
+        participantRecord.audioSourceNode = null;
+        participantRecord.audioSourceStreamId = null;
     },
 
     getLocalMediaState() {
@@ -390,6 +1246,22 @@ const App = {
             mic: typeof media?.mic === 'boolean' ? media.mic : undefined
         };
 
+        const selfId = this.selfId || this.socket?.id || null;
+        const hasRecord = this.presence.has(id);
+        const isSelf = selfId && id === selfId;
+
+        if (!hasRecord && !isSelf) {
+            const camValue = normalizedMedia.cam;
+            const micValue = normalizedMedia.mic;
+            const camInactive = camValue === false || camValue === undefined;
+            const micInactive = micValue === false || micValue === undefined;
+
+            if (camInactive && micInactive) {
+                // Игнорируем статусы для участников, которые уже покинули конференцию
+                return;
+            }
+        }
+
         const record = this.ensurePresenceRecord(id);
         record.media = {
             cam: normalizedMedia.cam !== undefined ? normalizedMedia.cam : record.media.cam,
@@ -493,6 +1365,12 @@ const App = {
                 // Обновляем текст кнопки микрофона (микрофон включен по умолчанию)
                 this.updateMuteButton();
                 this.syncLocalMediaStatus({ force: true });
+                this.attachLocalStreamToPreview();
+
+                const audioAttached = await this.attachAudioTracksToAllParticipants();
+                if (audioAttached) {
+                    await this.renegotiateAllPeers('initial-audio', { forceLocalInitiator: true });
+                }
             } catch (error) {
                 console.error('❌ Ошибка доступа к микрофону:', error);
                 this.showMessage('Не удалось получить доступ к микрофону. Разрешите доступ и попробуйте снова.', 'error');
@@ -522,6 +1400,8 @@ const App = {
         this.socket.on('presence:update', (data) => this.handlePresenceUpdate(data));
         this.socket.on('status:update', (data) => this.handleStatusUpdate(data));
         this.socket.on('conference:force-disconnect', (data) => this.handleForceDisconnect(data));
+        this.socket.on('subscribers:update', (data) => this.handleSubscribersUpdate(data));
+        this.socket.on('call:initiated', (data) => this.handleCallInitiated(data));
 
         this.socket.on('webrtc-signal', async (data) => {
             console.log('📡 [webrtc-signal] Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);
@@ -544,12 +1424,6 @@ const App = {
 
         try {
             const peerConnection = new RTCPeerConnection({ iceServers: this.ICE_SERVERS });
-
-            if (this.localStream) {
-                this.localStream.getAudioTracks().forEach(track => {
-                    peerConnection.addTrack(track, this.localStream);
-                });
-            }
 
             let videoTransceiver = null;
             let videoSender = null;
@@ -590,12 +1464,17 @@ const App = {
                 videoEnabled: false,
                 videoSender: videoSender,
                 videoTransceiver,
+                audioSender: null,
+                audioSourceNode: null,
+                audioSourceStreamId: null,
                 renegotiating: false,
                 pendingRenegotiation: false,
                 isInitiator
             };
 
             this.participants.set(targetSocketId, participantRecord);
+
+            await this.attachAudioTrackToParticipant(targetSocketId, participantRecord);
 
             peerConnection.ontrack = (event) => {
                 const trackKind = event.track ? event.track.kind : 'unknown';
@@ -633,12 +1512,14 @@ const App = {
                 participantRecord.mediaElement.muted = false;
                 participantRecord.mediaElement.controls = false;
 
-                participantRecord.mediaElement.play().catch(err => {
-                    console.error('❌ Ошибка воспроизведения медиа для', targetSocketId, err);
-                    document.addEventListener('click', () => {
-                        participantRecord.mediaElement.play().catch(e => console.error('Ошибка воспроизведения после клика:', e));
-                    }, { once: true });
-                });
+                this.forcePlayMediaElement(participantRecord.mediaElement, targetSocketId);
+
+                if (event.track && event.track.kind === 'audio') {
+                    this.attachStreamToAudioContext(participantRecord, remoteStream, targetSocketId);
+                    event.track.addEventListener('ended', () => {
+                        this.detachAudioSourceFromParticipant(participantRecord);
+                    });
+                }
 
                 if (event.track && event.track.kind === 'video') {
                     participantRecord.videoEnabled = remoteStream.getVideoTracks().some(track =>
@@ -669,6 +1550,13 @@ const App = {
                 }
 
                 remoteStream.onremovetrack = () => {
+                    const hasLiveAudio = remoteStream.getAudioTracks().some(track =>
+                        track.readyState === 'live' && !track.muted
+                    );
+                    if (!hasLiveAudio) {
+                        this.detachAudioSourceFromParticipant(participantRecord);
+                    }
+
                     const hasActiveVideo = remoteStream.getVideoTracks().some(track =>
                         track.readyState === 'live' && track.enabled && !track.muted
                     );
@@ -696,9 +1584,7 @@ const App = {
 
                 participantRecord.connected = state === 'connected';
                 if (participantRecord.mediaElement && participantRecord.mediaElement.srcObject) {
-                    participantRecord.mediaElement.play().catch(err => {
-                        console.error('Ошибка воспроизведения после подключения:', err);
-                    });
+                    this.forcePlayMediaElement(participantRecord.mediaElement, `${targetSocketId}-connectionstate`);
                 }
 
                 this.updateParticipantUI(targetSocketId);
@@ -711,9 +1597,7 @@ const App = {
                 if (iceState === 'connected' || iceState === 'completed') {
                     participantRecord.connected = true;
                     if (participantRecord.mediaElement && participantRecord.mediaElement.srcObject) {
-                        participantRecord.mediaElement.play().catch(err => {
-                            console.error('Ошибка воспроизведения после ICE подключения:', err);
-                        });
+                        this.forcePlayMediaElement(participantRecord.mediaElement, `${targetSocketId}-ice`);
                     }
                 } else if (iceState === 'failed' || iceState === 'disconnected') {
                     participantRecord.connected = false;
@@ -964,6 +1848,8 @@ const App = {
             participant.tileElement.remove();
         }
 
+        this.detachAudioSourceFromParticipant(participant);
+
         this.participants.delete(socketId);
         this.updateConferenceStatus();
         this.showMessage('Участник покинул конференцию', 'info');
@@ -1069,6 +1955,77 @@ const App = {
         this.syncLocalMediaStatus();
 
         await this.renegotiateAllPeers('disable-video', { forceLocalInitiator: true });
+    },
+
+    async attachAudioTrackToParticipant(socketId, participant) {
+        if (!participant || !participant.peerConnection || !this.localStream) {
+            return false;
+        }
+
+        const audioTracks = this.localStream.getAudioTracks();
+        if (!audioTracks || audioTracks.length === 0) {
+            return false;
+        }
+
+        const audioTrack = audioTracks[0];
+        const peerConnection = participant.peerConnection;
+
+        let sender = participant.audioSender || null;
+
+        if (!sender && typeof peerConnection.getSenders === 'function') {
+            sender = peerConnection
+                .getSenders()
+                .find((s) => s.track && s.track.kind === 'audio') || null;
+        }
+
+        if (sender) {
+            if (sender.track === audioTrack) {
+                participant.audioSender = sender;
+                return false;
+            }
+
+            try {
+                await sender.replaceTrack(audioTrack);
+                participant.audioSender = sender;
+                return true;
+            } catch (err) {
+                console.warn('⚠️ Не удалось заменить аудио-трек для участника', socketId, err);
+                return false;
+            }
+        }
+
+        try {
+            const newSender = peerConnection.addTrack(audioTrack, this.localStream);
+            participant.audioSender = newSender;
+            return true;
+        } catch (err) {
+            console.error('❌ Не удалось добавить аудио-трек для участника', socketId, err);
+        }
+
+        return false;
+    },
+
+    async attachAudioTracksToAllParticipants() {
+        if (!this.localStream) {
+            return false;
+        }
+
+        const audioTracks = this.localStream.getAudioTracks();
+        if (!audioTracks || audioTracks.length === 0) {
+            return false;
+        }
+
+        const attachTasks = [];
+        this.participants.forEach((participant, socketId) => {
+            attachTasks.push(this.attachAudioTrackToParticipant(socketId, participant));
+        });
+
+        if (attachTasks.length === 0) {
+            return false;
+        }
+
+        const results = await Promise.all(attachTasks);
+        return results.some(Boolean);
     },
 
     async attachVideoTrackToParticipant(socketId, participant, videoTrack) {
@@ -1743,13 +2700,7 @@ const App = {
             localVideo.autoplay = true;
             localVideo.style.visibility = 'visible';
             this.updateLocalVideoState(this.isVideoEnabled);
-            const attemptPlay = () => localVideo.play().catch(err => {
-                console.warn('⚠️ Не удалось автоматически воспроизвести локальное превью:', err);
-                document.addEventListener('click', () => {
-                    localVideo.play().catch(e => console.warn('Ошибка воспроизведения превью после клика:', e));
-                }, { once: true });
-            });
-            attemptPlay();
+            this.forcePlayMediaElement(localVideo, 'local-preview', { keepMuted: true });
         } else {
             localVideo.srcObject = null;
             localVideo.style.visibility = 'hidden';
