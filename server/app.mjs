@@ -3,7 +3,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
+import { promises as fs } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,7 @@ export function createServerApp(options = {}) {
 
   const app = express();
   const server = createServer(app);
+  app.use(express.json());
 
   const io = new Server(server, {
     path: '/socket.io/',
@@ -36,9 +38,194 @@ export function createServerApp(options = {}) {
     app.use(express.static(wwwPath));
   }
 
+  const dataDirectory = path.join(__dirname, 'data');
+  const subscribersFilePath = path.join(dataDirectory, 'subscribers.json');
+
+  const ensureSubscribersStore = async () => {
+    if (!existsSync(dataDirectory)) {
+      mkdirSync(dataDirectory, { recursive: true });
+    }
+    if (!existsSync(subscribersFilePath)) {
+      await fs.writeFile(
+        subscribersFilePath,
+        JSON.stringify({ subscribers: [] }, null, 2),
+        'utf-8'
+      );
+    }
+  };
+
+  const readSubscribers = async () => {
+    await ensureSubscribersStore();
+    try {
+      const fileContent = await fs.readFile(subscribersFilePath, 'utf-8');
+      if (!fileContent) {
+        return [];
+      }
+      const parsed = JSON.parse(fileContent);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      if (parsed && Array.isArray(parsed.subscribers)) {
+        return parsed.subscribers;
+      }
+      return [];
+    } catch (error) {
+      console.warn('⚠️ Не удалось прочитать список подписчиков, возвращаем пустой массив.', error);
+      return [];
+    }
+  };
+
+  const writeSubscribers = async (subscribers = []) => {
+    await ensureSubscribersStore();
+    const payload = JSON.stringify({ subscribers }, null, 2);
+    await fs.writeFile(subscribersFilePath, payload, 'utf-8');
+  };
+
+  const sanitizeDisplayName = (value) => {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    const trimmed = value.trim().replace(/\s+/g, ' ');
+    return trimmed.slice(0, 64);
+  };
+
+  const sortSubscribers = (items = []) =>
+    [...items].sort((a, b) => {
+      const nameA = (a.name || '').toLocaleLowerCase();
+      const nameB = (b.name || '').toLocaleLowerCase();
+      if (nameA === nameB) {
+        return (a.createdAt || 0) - (b.createdAt || 0);
+      }
+      return nameA.localeCompare(nameB, 'ru');
+    });
+
   app.get('/cordova.js', (req, res) => {
     res.type('application/javascript');
     res.send('// Cordova.js placeholder\n');
+  });
+
+  app.get('/api/subscribers', async (req, res) => {
+    try {
+      const subscribers = await readSubscribers();
+      res.json({
+        success: true,
+        subscribers: sortSubscribers(subscribers),
+      });
+    } catch (error) {
+      console.error('❌ Ошибка чтения подписчиков:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось получить список подписчиков',
+      });
+    }
+  });
+
+  app.post('/api/subscribers', async (req, res) => {
+    const { id, name } = req.body || {};
+    const subscriberId = typeof id === 'string' ? id.trim() : '';
+    const displayName = sanitizeDisplayName(name);
+
+    if (!subscriberId || !displayName) {
+      res.status(400).json({
+        success: false,
+        error: 'Необходимо указать идентификатор и имя подписчика',
+      });
+      return;
+    }
+
+    try {
+      const subscribers = await readSubscribers();
+      const timestamp = Date.now();
+      const existingIndex = subscribers.findIndex((item) => item.id === subscriberId);
+
+      if (existingIndex >= 0) {
+        subscribers[existingIndex] = {
+          ...subscribers[existingIndex],
+          name: displayName,
+          updatedAt: timestamp,
+        };
+      } else {
+        subscribers.push({
+          id: subscriberId,
+          name: displayName,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+      }
+
+      const ordered = sortSubscribers(subscribers);
+      await writeSubscribers(ordered);
+
+      const currentSubscriber =
+        ordered.find((item) => item.id === subscriberId) ||
+        subscribers.find((item) => item.id === subscriberId);
+
+      io.emit('subscribers:update', {
+        subscribers: ordered,
+      });
+
+      res.json({
+        success: true,
+        subscriber: currentSubscriber,
+        subscribers: ordered,
+      });
+    } catch (error) {
+      console.error('❌ Ошибка сохранения подписчика:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось сохранить подписчика',
+      });
+    }
+  });
+
+  app.post('/api/calls', async (req, res) => {
+    const { fromId, toId, fromName } = req.body || {};
+    const callerId = typeof fromId === 'string' ? fromId.trim() : '';
+    const targetId = typeof toId === 'string' ? toId.trim() : '';
+
+    if (!callerId || !targetId) {
+      res.status(400).json({
+        success: false,
+        error: 'Необходимо указать инициатора и получателя звонка',
+      });
+      return;
+    }
+
+    try {
+      const subscribers = await readSubscribers();
+      const callerFromStore = subscribers.find((item) => item.id === callerId) || null;
+      const targetFromStore = subscribers.find((item) => item.id === targetId) || null;
+
+      const callerName =
+        callerFromStore?.name || sanitizeDisplayName(fromName) || 'Неизвестный';
+      const targetName = targetFromStore?.name || 'Неизвестный';
+
+      const callRecord = {
+        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        from: {
+          id: callerId,
+          name: callerName,
+        },
+        to: {
+          id: targetId,
+          name: targetName,
+        },
+        createdAt: Date.now(),
+      };
+
+      io.emit('call:initiated', callRecord);
+
+      res.json({
+        success: true,
+        call: callRecord,
+      });
+    } catch (error) {
+      console.error('❌ Ошибка инициирования звонка:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось инициировать звонок',
+      });
+    }
   });
 
   const participants = new Map();
