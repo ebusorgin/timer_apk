@@ -28,6 +28,10 @@ const App = {
     serviceWorkerRegistration: null,
     serviceWorkerReadyPromise: null,
     serviceWorkerMessageHandler: null,
+    connectionInProgress: false,
+    callWatcherTimer: null,
+    callWatcherIntervalMs: 4000,
+    lastProcessedCallIds: new Set(),
     
     SERVER_URL: window.location.origin,
     
@@ -73,6 +77,7 @@ const App = {
         this.setupEventListeners();
         this.fetchSubscribers();
         this.registerServiceWorker();
+        this.ensureCallWatcherState();
         this.updateVideoButton();
         this.updateHangupAllButton();
         console.log('✅ App инициализирован');
@@ -108,6 +113,7 @@ const App = {
         this.subscriber.name = this.loadStoredUserName();
         this.subscriber.registered = Boolean(this.subscriber.name);
         this.updateSubscriptionUI();
+        this.ensureCallWatcherState();
     },
 
     ensureCookieConsent() {
@@ -288,6 +294,116 @@ const App = {
         const { subscribers } = payload;
         if (Array.isArray(subscribers)) {
             this.setSubscribers(subscribers);
+        }
+    },
+
+    ensureCallWatcherState() {
+        if (this.subscriber?.registered) {
+            this.startCallWatcher();
+        } else {
+            this.stopCallWatcher();
+        }
+    },
+
+    startCallWatcher() {
+        if (this.callWatcherTimer) {
+            return;
+        }
+        if (!(this.lastProcessedCallIds instanceof Set)) {
+            this.lastProcessedCallIds = new Set();
+        }
+        const interval = Math.max(2000, this.callWatcherIntervalMs || 4000);
+        this.checkPendingCalls();
+        this.callWatcherTimer = setInterval(() => {
+            this.checkPendingCalls();
+        }, interval);
+    },
+
+    stopCallWatcher() {
+        if (this.callWatcherTimer) {
+            clearInterval(this.callWatcherTimer);
+            this.callWatcherTimer = null;
+        }
+    },
+
+    async checkPendingCalls() {
+        if (!this.subscriber?.registered || !this.subscriber?.id) {
+            return;
+        }
+        try {
+            const response = await fetch(
+                this.buildApiUrl(`/api/calls/pending/${encodeURIComponent(this.subscriber.id)}`),
+                {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                }
+            );
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            if (data?.success && Array.isArray(data.calls)) {
+                for (const call of data.calls) {
+                    if (!call?.id) {
+                        continue;
+                    }
+                    if (this.lastProcessedCallIds.has(call.id)) {
+                        continue;
+                    }
+                    this.lastProcessedCallIds.add(call.id);
+                    if (this.lastProcessedCallIds.size > 200) {
+                        const recent = Array.from(this.lastProcessedCallIds).slice(-100);
+                        this.lastProcessedCallIds = new Set(recent);
+                    }
+                    await this.processIncomingCall(call);
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Не удалось проверить входящие звонки', error);
+        }
+    },
+
+    async processIncomingCall(call) {
+        if (!call) {
+            return;
+        }
+        this.notifyIncomingCall(call);
+        try {
+            await this.acknowledgeCall(call.id, 'accepted');
+        } catch (error) {
+            console.warn('⚠️ Не удалось подтвердить звонок', error);
+        }
+
+        if (this.socket && this.socket.connected) {
+            this.setConnectStatusMessage('Входящий звонок. Вы уже подключены к конференции.', 'info');
+            return;
+        }
+
+        this.setConnectStatusMessage('Вас пригласили в конференцию. Подготавливаем подключение…', 'info');
+        setTimeout(() => {
+            this.handleJoinConference();
+        }, 500);
+    },
+
+    async acknowledgeCall(callId, status = 'acknowledged') {
+        if (!callId) {
+            return;
+        }
+        try {
+            await fetch(this.buildApiUrl(`/api/calls/${encodeURIComponent(callId)}/ack`), {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ status }),
+            });
+        } catch (error) {
+            console.warn('⚠️ Ошибка при подтверждении звонка', error);
         }
     },
 
@@ -623,7 +739,12 @@ const App = {
     async initiateCallToSubscriber(subscriberId) {
         console.log('📞 Запрос звонка для подписчика', subscriberId);
         try {
-            await this.triggerCallNotification(subscriberId);
+            const result = await this.triggerCallNotification(subscriberId);
+            if (result?.success) {
+                setTimeout(() => {
+                    this.handleJoinConference();
+                }, 300);
+            }
         } catch (error) {
             console.warn('⚠️ Не удалось инициировать звонок', error);
         }
@@ -669,6 +790,7 @@ const App = {
             } else if (data.subscriber) {
                 this.upsertSubscriberLocal(data.subscriber);
             }
+            this.ensureCallWatcherState();
         }
         return data;
     },
@@ -1291,6 +1413,19 @@ const App = {
     },
     
     async connect() {
+        if (this.socket && this.socket.connected) {
+            console.log('ℹ️ Уже подключены к конференции');
+            if (this.elements.conferenceScreen && !this.elements.conferenceScreen.classList.contains('active')) {
+                this.showScreen('conferenceScreen');
+            }
+            return;
+        }
+        if (this.connectionInProgress) {
+            console.log('⏳ Подключение уже выполняется, ожидаем завершения');
+            return;
+        }
+
+        this.connectionInProgress = true;
         console.log('Подключение к конференции...');
         this.elements.btnConnect.disabled = true;
         this.showMessage('Подключение...', 'info');
@@ -1319,6 +1454,7 @@ const App = {
             
             // Обработчики подключения Socket.IO
             this.socket.on('connect', () => {
+                this.connectionInProgress = false;
                 console.log('✅ Socket.IO подключен:', this.socket.id);
                 this.showMessage('Подключено к серверу', 'success');
 
@@ -1343,12 +1479,14 @@ const App = {
             });
             
             this.socket.on('connect_error', (error) => {
+                this.connectionInProgress = false;
                 console.error('❌ Ошибка подключения Socket.IO:', error);
                 this.showMessage('Ошибка подключения к серверу', 'error');
                 this.elements.btnConnect.disabled = false;
             });
             
             this.socket.on('disconnect', (reason) => {
+                this.connectionInProgress = false;
                 this.handleSocketDisconnect(reason);
             });
             
@@ -1378,6 +1516,7 @@ const App = {
                 if (this.socket) {
                     this.socket.disconnect();
                 }
+                this.connectionInProgress = false;
                 return;
             }
             
@@ -1392,6 +1531,7 @@ const App = {
             if (this.socket) {
                 this.socket.disconnect();
             }
+            this.connectionInProgress = false;
         }
     },
     
@@ -2516,6 +2656,7 @@ const App = {
     },
     
     disconnect() {
+        this.connectionInProgress = false;
         // Закрываем все соединения с участниками
         this.participants.forEach((participant, socketId) => {
             this.disconnectFromPeer(socketId);

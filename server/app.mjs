@@ -40,15 +40,31 @@ export function createServerApp(options = {}) {
 
   const dataDirectory = path.join(__dirname, 'data');
   const subscribersFilePath = path.join(dataDirectory, 'subscribers.json');
+  const callsFilePath = path.join(dataDirectory, 'calls.json');
 
-  const ensureSubscribersStore = async () => {
+  const ensureDataDirectory = () => {
     if (!existsSync(dataDirectory)) {
       mkdirSync(dataDirectory, { recursive: true });
     }
+  };
+
+  const ensureSubscribersStore = async () => {
+    ensureDataDirectory();
     if (!existsSync(subscribersFilePath)) {
       await fs.writeFile(
         subscribersFilePath,
         JSON.stringify({ subscribers: [] }, null, 2),
+        'utf-8'
+      );
+    }
+  };
+
+  const ensureCallsStore = async () => {
+    ensureDataDirectory();
+    if (!existsSync(callsFilePath)) {
+      await fs.writeFile(
+        callsFilePath,
+        JSON.stringify({ calls: [] }, null, 2),
         'utf-8'
       );
     }
@@ -75,10 +91,37 @@ export function createServerApp(options = {}) {
     }
   };
 
+  const readCalls = async () => {
+    await ensureCallsStore();
+    try {
+      const fileContent = await fs.readFile(callsFilePath, 'utf-8');
+      if (!fileContent) {
+        return [];
+      }
+      const parsed = JSON.parse(fileContent);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      if (parsed && Array.isArray(parsed.calls)) {
+        return parsed.calls;
+      }
+      return [];
+    } catch (error) {
+      console.warn('⚠️ Не удалось прочитать список звонков, возвращаем пустой массив.', error);
+      return [];
+    }
+  };
+
   const writeSubscribers = async (subscribers = []) => {
     await ensureSubscribersStore();
     const payload = JSON.stringify({ subscribers }, null, 2);
     await fs.writeFile(subscribersFilePath, payload, 'utf-8');
+  };
+
+  const writeCalls = async (calls = []) => {
+    await ensureCallsStore();
+    const payload = JSON.stringify({ calls }, null, 2);
+    await fs.writeFile(callsFilePath, payload, 'utf-8');
   };
 
   const sanitizeDisplayName = (value) => {
@@ -178,6 +221,99 @@ export function createServerApp(options = {}) {
     }
   });
 
+  app.get('/api/calls/pending/:subscriberId', async (req, res) => {
+    const subscriberId = typeof req.params.subscriberId === 'string'
+      ? req.params.subscriberId.trim()
+      : '';
+
+    if (!subscriberId) {
+      res.status(400).json({
+        success: false,
+        error: 'Не указан идентификатор подписчика',
+      });
+      return;
+    }
+
+    try {
+      const calls = await readCalls();
+      const pending = calls
+        .filter((call) => call?.to?.id === subscriberId && call.status === 'pending')
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+      res.json({
+        success: true,
+        calls: pending,
+      });
+    } catch (error) {
+      console.error('❌ Ошибка получения ожидающих звонков:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось получить список звонков',
+      });
+    }
+  });
+
+  app.post('/api/calls/:callId/ack', async (req, res) => {
+    const callId = typeof req.params.callId === 'string' ? req.params.callId.trim() : '';
+    const { status = 'acknowledged' } = req.body || {};
+    const allowedStatuses = new Set(['pending', 'acknowledged', 'accepted', 'declined', 'ignored']);
+    const nextStatus = allowedStatuses.has(status) ? status : 'acknowledged';
+
+    if (!callId) {
+      res.status(400).json({
+        success: false,
+        error: 'Не указан идентификатор звонка',
+      });
+      return;
+    }
+
+    try {
+      const calls = await readCalls();
+      const index = calls.findIndex((call) => call.id === callId);
+      if (index === -1) {
+        res.status(404).json({
+          success: false,
+          error: 'Звонок не найден',
+        });
+        return;
+      }
+
+      const updated = {
+        ...calls[index],
+        status: nextStatus,
+        updatedAt: Date.now(),
+      };
+      calls[index] = updated;
+
+      const now = Date.now();
+      const cleaned = calls.filter((call) => {
+        if (call.status === 'pending') {
+          return true;
+        }
+        return now - (call.updatedAt || call.createdAt || 0) < 1000 * 60 * 60;
+      });
+
+      await writeCalls(cleaned);
+
+      io.emit('call:ack', {
+        callId,
+        status: nextStatus,
+        call: updated,
+      });
+
+      res.json({
+        success: true,
+        call: updated,
+      });
+    } catch (error) {
+      console.error('❌ Ошибка подтверждения звонка:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось обновить статус звонка',
+      });
+    }
+  });
+
   app.post('/api/calls', async (req, res) => {
     const { fromId, toId, fromName } = req.body || {};
     const callerId = typeof fromId === 'string' ? fromId.trim() : '';
@@ -211,7 +347,12 @@ export function createServerApp(options = {}) {
           name: targetName,
         },
         createdAt: Date.now(),
+        status: 'pending',
       };
+
+      const calls = await readCalls();
+      calls.push(callRecord);
+      await writeCalls(calls);
 
       io.emit('call:initiated', callRecord);
 
