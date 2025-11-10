@@ -1504,6 +1504,7 @@ const App = {
                 this.updateMuteButton();
                 this.syncLocalMediaStatus({ force: true });
                 this.attachLocalStreamToPreview();
+                this.updateVideoButton();
 
                 const audioAttached = await this.attachAudioTracksToAllParticipants();
                 if (audioAttached) {
@@ -1527,11 +1528,14 @@ const App = {
             if (this.localStream) {
                 this.localStream.getTracks().forEach(track => track.stop());
                 this.localStream = null;
+                this.attachLocalStreamToPreview();
+                this.updateVideoButton();
             }
             if (this.socket) {
                 this.socket.disconnect();
             }
             this.connectionInProgress = false;
+            this.updateVideoButton();
         }
     },
     
@@ -2051,6 +2055,9 @@ const App = {
         });
 
         this.videoTrack = videoTrack;
+        if (!this.localStream) {
+            this.localStream = new MediaStream();
+        }
         this.localStream.addTrack(videoTrack);
         this.isVideoEnabled = true;
         this.attachLocalStreamToPreview();
