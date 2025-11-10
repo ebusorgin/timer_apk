@@ -40,6 +40,7 @@ export function createServerApp(options = {}) {
 
   const dataDirectory = path.join(__dirname, 'data');
   const subscribersFilePath = path.join(dataDirectory, 'subscribers.json');
+  const usersFilePath = path.join(dataDirectory, 'users.json');
   const callsFilePath = path.join(dataDirectory, 'calls.json');
 
   const ensureDataDirectory = () => {
@@ -54,6 +55,17 @@ export function createServerApp(options = {}) {
       await fs.writeFile(
         subscribersFilePath,
         JSON.stringify({ subscribers: [] }, null, 2),
+        'utf-8'
+      );
+    }
+  };
+
+  const ensureUsersStore = async () => {
+    ensureDataDirectory();
+    if (!existsSync(usersFilePath)) {
+      await fs.writeFile(
+        usersFilePath,
+        JSON.stringify({ users: [] }, null, 2),
         'utf-8'
       );
     }
@@ -116,6 +128,12 @@ export function createServerApp(options = {}) {
     await ensureSubscribersStore();
     const payload = JSON.stringify({ subscribers }, null, 2);
     await fs.writeFile(subscribersFilePath, payload, 'utf-8');
+  };
+
+  const writeUsers = async (users = []) => {
+    await ensureUsersStore();
+    const payload = JSON.stringify({ users }, null, 2);
+    await fs.writeFile(usersFilePath, payload, 'utf-8');
   };
 
   const writeCalls = async (calls = []) => {
@@ -198,6 +216,7 @@ export function createServerApp(options = {}) {
 
       const ordered = sortSubscribers(subscribers);
       await writeSubscribers(ordered);
+      await writeUsers(ordered);
 
       const currentSubscriber =
         ordered.find((item) => item.id === subscriberId) ||
