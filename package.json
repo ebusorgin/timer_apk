@@ -21,12 +21,15 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.19.2",
+    "pg": "^8.16.3",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
     "jsdom": "^24.0.0",
     "patch-package": "^8.0.0",
+    "pg-mem": "^3.0.5",
     "puppeteer": "^24.29.1",
+    "socket.io-client": "^4.7.5",
     "supertest": "^6.3.4",
     "vitest": "^1.6.0"
   }

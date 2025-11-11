@@ -4,6 +4,9 @@ services:
   server:
     build: .
     container_name: severomorets-server
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "${PORT:-3000}:3000"
     environment:
@@ -11,8 +14,30 @@ services:
       - HOST=0.0.0.0
       - CORS_ORIGIN=*
       - NODE_ENV=production
+      - PERSISTENCE_DRIVER=postgres
+      - DATABASE_URL=postgresql://voice_room:voice_room@db:5432/voice_room
+      - PGSSLMODE=disable
     volumes:
       - ./server:/app/server:ro
       - ./data:/app/data
       - ./www:/app/www:ro
     restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: severomorets-db
+    environment:
+      - POSTGRES_DB=voice_room
+      - POSTGRES_USER=voice_room
+      - POSTGRES_PASSWORD=voice_room
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
