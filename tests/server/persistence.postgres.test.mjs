@@ -93,6 +93,58 @@ describe('PostgreSQL persistence adapter', () => {
 
     expect(stored).toEqual(calls);
   });
+
+  it('upserts subscribers preserving original createdAt', async () => {
+    const created = await persistence.upsertSubscriber({
+      id: 's-1',
+      name: 'Первый',
+    });
+
+    expect(created.id).toBe('s-1');
+    expect(created.name).toBe('Первый');
+    expect(typeof created.createdAt).toBe('number');
+
+    const initialCreatedAt = created.createdAt;
+
+    const updated = await persistence.upsertSubscriber({
+      id: 's-1',
+      name: 'Первый Обновлён',
+    });
+
+    expect(updated.name).toBe('Первый Обновлён');
+    expect(updated.createdAt).toBe(initialCreatedAt);
+
+    const subscribers = await persistence.listSubscribers();
+    expect(subscribers).toHaveLength(1);
+    expect(subscribers[0].name).toBe('Первый Обновлён');
+  });
+
+  it('handles call lifecycle helpers', async () => {
+    const call = await persistence.createCall({
+      id: 'call-life',
+      from: { id: 'caller-life', name: 'Caller Helper' },
+      to: { id: 'target-life', name: 'Target Helper' },
+      status: 'pending',
+      createdAt: 1_000,
+      updatedAt: 1_000,
+    });
+
+    expect(call.status).toBe('pending');
+
+    const pendingBefore = await persistence.listPendingCalls('target-life');
+    expect(pendingBefore).toHaveLength(1);
+
+    const updated = await persistence.updateCallStatus(call.id, 'accepted');
+    expect(updated).not.toBeNull();
+    expect(updated.status).toBe('accepted');
+
+    const pendingAfter = await persistence.listPendingCalls('target-life');
+    expect(pendingAfter).toHaveLength(0);
+
+    await persistence.cleanupCalls(Date.now() + 1);
+    const remainingCalls = await persistence.readCalls();
+    expect(remainingCalls).toEqual([]);
+  });
 });
 
 describe('createPostgresAdapter factory', () => {
@@ -143,6 +195,50 @@ describe('createPostgresAdapter factory', () => {
     const stored = await adapter.read('calls');
 
     expect(stored).toEqual([call]);
+  });
+
+  it('supports targeted upsert helpers', async () => {
+    const subscriber = await adapter.upsertSubscriber({
+      id: 'sub-1',
+      name: 'Собр',
+      createdAt: 10,
+      updatedAt: 10,
+    });
+    expect(subscriber).toMatchObject({
+      id: 'sub-1',
+      name: 'Собр',
+    });
+
+    const user = await adapter.upsertUser({
+      id: 'sub-1',
+      name: 'Собр',
+      createdAt: 10,
+      updatedAt: 10,
+    });
+    expect(user).toMatchObject({
+      id: 'sub-1',
+      name: 'Собр',
+    });
+
+    const insertedCall = await adapter.insertCall({
+      id: 'call-upsert',
+      from: { id: 'caller', name: 'Caller' },
+      to: { id: 'target', name: 'Target' },
+      status: 'pending',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    expect(insertedCall.status).toBe('pending');
+
+    const pendingCalls = await adapter.listPendingCalls('target');
+    expect(pendingCalls).toHaveLength(1);
+
+    const acknowledged = await adapter.updateCallStatus('call-upsert', 'acknowledged', 5);
+    expect(acknowledged.status).toBe('acknowledged');
+
+    await adapter.deleteOldNonPendingCalls(10);
+    const calls = await adapter.read('calls');
+    expect(calls).toHaveLength(0);
   });
 });
 

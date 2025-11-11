@@ -5,7 +5,7 @@ function assertPersistence(persistence) {
   if (!persistence) {
     throw new Error('registerSubscriberRoutes: persistence service is not provided');
   }
-  const required = ['readSubscribers', 'writeSubscribers', 'writeUsers'];
+  const required = ['listSubscribers', 'upsertSubscriber', 'getSubscriberById'];
   const missing = required.filter((method) => typeof persistence[method] !== 'function');
   if (missing.length) {
     throw new Error(
@@ -39,7 +39,7 @@ export function registerSubscriberRoutes({ app, persistence, io, logger }) {
 
   app.get('/api/subscribers', async (req, res) => {
     try {
-      const subscribers = await persistence.readSubscribers();
+      const subscribers = await persistence.listSubscribers();
       res.json({
         success: true,
         subscribers: sortSubscribers(subscribers),
@@ -58,48 +58,28 @@ export function registerSubscriberRoutes({ app, persistence, io, logger }) {
   app.post('/api/subscribers', validateSubscriberUpsert, async (req, res) => {
     try {
       const { id: subscriberId, name: displayName } = req.validated.body;
-      const subscribers = await persistence.readSubscribers();
-      const timestamp = Date.now();
-      const existingIndex = subscribers.findIndex((item) => item.id === subscriberId);
-
-      if (existingIndex >= 0) {
-        subscribers[existingIndex] = {
-          ...subscribers[existingIndex],
-          name: displayName,
-          updatedAt: timestamp,
-        };
-      } else {
-        subscribers.push({
-          id: subscriberId,
-          name: displayName,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-      }
-
-      const ordered = sortSubscribers(subscribers);
-      await persistence.writeSubscribers(ordered);
-      await persistence.writeUsers(ordered);
-
-      const currentSubscriber =
-        ordered.find((item) => item.id === subscriberId) ||
-        subscribers.find((item) => item.id === subscriberId);
+      const existing = await persistence.getSubscriberById(subscriberId);
+      const subscriber = await persistence.upsertSubscriber({
+        id: subscriberId,
+        name: displayName,
+      });
+      const subscribers = await persistence.listSubscribers();
 
       if (io) {
         io.emit('subscribers:update', {
-          subscribers: ordered,
+          subscribers,
         });
       }
 
       scopedLogger.info('Подписчик сохранён', {
         subscriberId,
-        operation: existingIndex >= 0 ? 'update' : 'create',
+        operation: existing ? 'update' : 'create',
       });
 
       res.json({
         success: true,
-        subscriber: currentSubscriber,
-        subscribers: ordered,
+        subscriber,
+        subscribers,
       });
     } catch (error) {
       scopedLogger.error('Ошибка сохранения подписчика', {

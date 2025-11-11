@@ -6,7 +6,12 @@ function assertPersistence(persistence) {
   if (!persistence) {
     throw new Error('registerCallRoutes: persistence service is not provided');
   }
-  const required = ['readCalls', 'writeCalls', 'readSubscribers'];
+  const required = [
+    'listPendingCalls',
+    'createCall',
+    'updateCallStatus',
+    'getSubscriberById',
+  ];
   const missing = required.filter((method) => typeof persistence[method] !== 'function');
   if (missing.length) {
     throw new Error(`registerCallRoutes: persistence is missing methods: ${missing.join(', ')}`);
@@ -79,11 +84,7 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
   app.get('/api/calls/pending/:subscriberId', validatePendingCalls, async (req, res) => {
     try {
       const { subscriberId } = req.validated.params;
-      const calls = await persistence.readCalls();
-      const pending = calls
-        .filter((call) => call?.to?.id === subscriberId && call.status === 'pending')
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-
+      const pending = await persistence.listPendingCalls(subscriberId);
       res.json({
         success: true,
         calls: pending,
@@ -104,9 +105,8 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
       const { callId } = req.validated.params;
       const { status = 'acknowledged' } = req.validated.body || {};
       const nextStatus = CALL_STATUS_SET.has(status) ? status : 'acknowledged';
-      const calls = await persistence.readCalls();
-      const index = calls.findIndex((call) => call.id === callId);
-      if (index === -1) {
+      const updated = await persistence.updateCallStatus(callId, nextStatus);
+      if (!updated) {
         res.status(404).json({
           success: false,
           error: 'Звонок не найден',
@@ -114,22 +114,8 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
         return;
       }
 
-      const updated = {
-        ...calls[index],
-        status: nextStatus,
-        updatedAt: Date.now(),
-      };
-      calls[index] = updated;
-
-      const now = Date.now();
-      const cleaned = calls.filter((call) => {
-        if (call.status === 'pending') {
-          return true;
-        }
-        return now - (call.updatedAt || call.createdAt || 0) < 1000 * 60 * 60;
-      });
-
-      await persistence.writeCalls(cleaned);
+      const cleanupThreshold = Date.now() - 1000 * 60 * 60;
+      await persistence.cleanupCalls(cleanupThreshold);
 
       if (io) {
         io.emit('call:ack', {
@@ -166,9 +152,10 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
         toId: targetId,
         fromName: providedCallerName,
       } = req.validated.body;
-      const subscribers = await persistence.readSubscribers();
-      const callerFromStore = subscribers.find((item) => item.id === callerId) || null;
-      const targetFromStore = subscribers.find((item) => item.id === targetId) || null;
+      const [callerFromStore, targetFromStore] = await Promise.all([
+        persistence.getSubscriberById(callerId),
+        persistence.getSubscriberById(targetId),
+      ]);
 
       const callerName =
         callerFromStore?.name || providedCallerName || 'Неизвестный';
@@ -188,23 +175,21 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
         status: 'pending',
       };
 
-      const calls = await persistence.readCalls();
-      calls.push(callRecord);
-      await persistence.writeCalls(calls);
+      const storedCall = await persistence.createCall(callRecord);
 
       if (io) {
-        io.emit('call:initiated', callRecord);
+        io.emit('call:initiated', storedCall);
       }
 
       scopedLogger.info('Звонок инициирован', {
-        callId: callRecord.id,
+        callId: storedCall.id,
         fromId: callerId,
         toId: targetId,
       });
 
       res.json({
         success: true,
-        call: callRecord,
+        call: storedCall,
       });
     } catch (error) {
       scopedLogger.error('Ошибка инициирования звонка', {
