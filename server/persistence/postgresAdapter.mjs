@@ -164,6 +164,12 @@ export function createPostgresAdapter(options = {}) {
 
   const ensure = ensureSchema(resolvedPool, logger);
 
+  const toSqlTimestamps = ({ createdAt, updatedAt }) => {
+    const created = typeof createdAt === 'number' ? createdAt : Date.now();
+    const updated = typeof updatedAt === 'number' ? updatedAt : created;
+    return { created, updated };
+  };
+
   const read = async (key) => {
     const entry = COLLECTIONS[key];
     if (!entry) {
@@ -204,9 +210,187 @@ export function createPostgresAdapter(options = {}) {
     });
   };
 
+  const listSubscribers = async () => {
+    await ensure();
+    const { rows } = await resolvedPool.query(
+      `SELECT *
+         FROM subscribers
+        ORDER BY LOWER(name) ASC, created_at ASC`,
+    );
+    return rows.map(COLLECTIONS.subscribers.fromRow);
+  };
+
+  const getSubscriberById = async (id) => {
+    await ensure();
+    const { rows } = await resolvedPool.query(
+      `SELECT * FROM subscribers WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (!rows.length) {
+      return null;
+    }
+    return COLLECTIONS.subscribers.fromRow(rows[0]);
+  };
+
+  const upsertSubscriber = async (record) => {
+    await ensure();
+    const timestamps = toSqlTimestamps(record);
+    const { rows } = await resolvedPool.query(
+      `
+        INSERT INTO subscribers (id, name, created_at, updated_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+      `,
+      [record.id, record.name, timestamps.created, timestamps.updated],
+    );
+    return COLLECTIONS.subscribers.fromRow(rows[0]);
+  };
+
+  const upsertUser = async (record) => {
+    await ensure();
+    const timestamps = toSqlTimestamps(record);
+    const { rows } = await resolvedPool.query(
+      `
+        INSERT INTO users (id, name, created_at, updated_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+      `,
+      [record.id, record.name, timestamps.created, timestamps.updated],
+    );
+    return COLLECTIONS.users.fromRow(rows[0]);
+  };
+
+  const replaceUsers = async (records = []) => {
+    await ensure();
+    await runWithClient(resolvedPool, statementTimeout, async (client) => {
+      await client.query('BEGIN');
+      try {
+        await client.query(`DELETE FROM users`);
+        if (records.length > 0) {
+          const insertStatement = buildInsertStatement('users', 4);
+          for (const record of records) {
+            const timestamps = toSqlTimestamps(record);
+            await client.query(insertStatement, [
+              record.id,
+              record.name,
+              timestamps.created,
+              timestamps.updated,
+            ]);
+          }
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    });
+  };
+
+  const insertCall = async (record) => {
+    await ensure();
+    const timestamps = toSqlTimestamps(record);
+    const { rows } = await resolvedPool.query(
+      `
+        INSERT INTO calls (
+          id,
+          from_id,
+          from_name,
+          to_id,
+          to_name,
+          created_at,
+          updated_at,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id)
+        DO UPDATE SET
+          from_id = EXCLUDED.from_id,
+          from_name = EXCLUDED.from_name,
+          to_id = EXCLUDED.to_id,
+          to_name = EXCLUDED.to_name,
+          status = EXCLUDED.status,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+      `,
+      [
+        record.id,
+        record.from.id,
+        record.from.name,
+        record.to.id,
+        record.to.name,
+        timestamps.created,
+        timestamps.updated,
+        record.status,
+      ],
+    );
+    return COLLECTIONS.calls.fromRow(rows[0]);
+  };
+
+  const listPendingCalls = async (subscriberId) => {
+    await ensure();
+    const { rows } = await resolvedPool.query(
+      `
+        SELECT *
+          FROM calls
+         WHERE to_id = $1
+           AND status = 'pending'
+         ORDER BY created_at ASC
+      `,
+      [subscriberId],
+    );
+    return rows.map(COLLECTIONS.calls.fromRow);
+  };
+
+  const updateCallStatus = async (callId, status, updatedAt = Date.now()) => {
+    await ensure();
+    const { rows } = await resolvedPool.query(
+      `
+        UPDATE calls
+           SET status = $2,
+               updated_at = $3
+         WHERE id = $1
+         RETURNING *
+      `,
+      [callId, status, updatedAt],
+    );
+    if (!rows.length) {
+      return null;
+    }
+    return COLLECTIONS.calls.fromRow(rows[0]);
+  };
+
+  const deleteOldNonPendingCalls = async (thresholdTimestamp) => {
+    await ensure();
+    await resolvedPool.query(
+      `
+        DELETE FROM calls
+         WHERE status <> 'pending'
+           AND COALESCE(updated_at, created_at) < $1
+      `,
+      [thresholdTimestamp],
+    );
+  };
+
   return {
     read,
     write,
+    listSubscribers,
+    getSubscriberById,
+    upsertSubscriber,
+    upsertUser,
+    replaceUsers,
+    insertCall,
+    listPendingCalls,
+    updateCallStatus,
+    deleteOldNonPendingCalls,
     close: () => {
       if (resolvedPool && typeof resolvedPool.end === 'function') {
         return resolvedPool.end();

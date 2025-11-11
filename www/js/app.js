@@ -32,6 +32,9 @@ const App = {
     callWatcherTimer: null,
     callWatcherIntervalMs: 4000,
     lastProcessedCallIds: new Set(),
+    callRegistry: new Map(), // callId -> { call, status, direction, updatedAt }
+    latestCallBySubscriber: new Map(), // subscriberId -> callId
+    callStatusTtlMs: 2 * 60 * 1000,
     
     SERVER_URL: window.location.origin,
     
@@ -370,9 +373,13 @@ const App = {
         if (!call) {
             return;
         }
+        this.registerCallState(call, 'incoming');
         this.notifyIncomingCall(call);
         try {
-            await this.acknowledgeCall(call.id, 'accepted');
+            const acknowledgement = await this.acknowledgeCall(call.id, 'accepted');
+            if (acknowledgement?.success && acknowledgement.call) {
+                this.registerCallState(acknowledgement.call, 'incoming');
+            }
         } catch (error) {
             console.warn('⚠️ Не удалось подтвердить звонок', error);
         }
@@ -388,12 +395,101 @@ const App = {
         }, 500);
     },
 
+    cleanupCallRegistry() {
+        if (!(this.callRegistry instanceof Map)) {
+            this.callRegistry = new Map();
+        }
+        if (!(this.latestCallBySubscriber instanceof Map)) {
+            this.latestCallBySubscriber = new Map();
+        }
+        const now = Date.now();
+        for (const [callId, info] of this.callRegistry.entries()) {
+            if (!info || now - (info.updatedAt || 0) > this.callStatusTtlMs) {
+                this.callRegistry.delete(callId);
+            }
+        }
+        for (const [subscriberId, callId] of this.latestCallBySubscriber.entries()) {
+            if (!this.callRegistry.has(callId)) {
+                this.latestCallBySubscriber.delete(subscriberId);
+            }
+        }
+    },
+
+    registerCallState(call, direction = 'outgoing', statusOverride) {
+        if (!call || !call.id) {
+            return;
+        }
+        if (!(this.callRegistry instanceof Map)) {
+            this.callRegistry = new Map();
+        }
+        if (!(this.latestCallBySubscriber instanceof Map)) {
+            this.latestCallBySubscriber = new Map();
+        }
+        const status = statusOverride || call.status || 'pending';
+        const record = {
+            call,
+            status,
+            direction,
+            updatedAt: Date.now(),
+        };
+        this.callRegistry.set(call.id, record);
+
+        const targetId =
+            direction === 'outgoing'
+                ? call?.to?.id
+                : direction === 'incoming'
+                ? call?.from?.id
+                : null;
+
+        if (targetId) {
+            this.latestCallBySubscriber.set(targetId, call.id);
+        }
+
+        this.cleanupCallRegistry();
+        this.renderSubscriberList();
+    },
+
+    getCallStatusForSubscriber(subscriberId) {
+        if (!subscriberId) {
+            return null;
+        }
+        this.cleanupCallRegistry();
+        const callId = this.latestCallBySubscriber.get(subscriberId);
+        if (!callId) {
+            return null;
+        }
+        const record = this.callRegistry.get(callId);
+        if (!record) {
+            this.latestCallBySubscriber.delete(subscriberId);
+            return null;
+        }
+        return record;
+    },
+
+    translateCallStatus(status) {
+        const normalized = (status || '').toLowerCase();
+        switch (normalized) {
+            case 'pending':
+                return 'Ожидает ответа';
+            case 'acknowledged':
+                return 'Уведомление доставлено';
+            case 'accepted':
+                return 'Принято';
+            case 'declined':
+                return 'Отклонено';
+            case 'ignored':
+                return 'Нет ответа';
+            default:
+                return status || 'Неизвестно';
+        }
+    },
+
     async acknowledgeCall(callId, status = 'acknowledged') {
         if (!callId) {
             return;
         }
         try {
-            await fetch(this.buildApiUrl(`/api/calls/${encodeURIComponent(callId)}/ack`), {
+            const response = await fetch(this.buildApiUrl(`/api/calls/${encodeURIComponent(callId)}/ack`), {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
@@ -402,8 +498,23 @@ const App = {
                 },
                 body: JSON.stringify({ status }),
             });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            if (data?.success && data.call) {
+                const direction =
+                    data.call?.from?.id === this.subscriber.id
+                        ? 'outgoing'
+                        : data.call?.to?.id === this.subscriber.id
+                        ? 'incoming'
+                        : 'outgoing';
+                this.registerCallState(data.call, direction);
+            }
+            return data;
         } catch (error) {
             console.warn('⚠️ Ошибка при подтверждении звонка', error);
+            return null;
         }
     },
 
@@ -494,11 +605,67 @@ const App = {
     },
 
     handleCallInitiated(call) {
-        if (!call || !call.to) {
+        if (!call || !call.id) {
             return;
         }
-        if (call.to.id === this.subscriber.id) {
+        if (call.from?.id === this.subscriber.id) {
+            this.registerCallState(call, 'outgoing');
+        }
+        if (call.to?.id === this.subscriber.id) {
+            this.registerCallState(call, 'incoming');
             this.notifyIncomingCall(call);
+        }
+    },
+
+    handleCallAcknowledged(payload) {
+        if (!payload) {
+            return;
+        }
+        const call = payload.call || null;
+        const callId = payload.callId || call?.id;
+        const status = payload.status || call?.status;
+        if (!callId) {
+            return;
+        }
+
+        let direction = 'outgoing';
+        let resolvedCall = call;
+
+        if (!resolvedCall && this.callRegistry instanceof Map && this.callRegistry.has(callId)) {
+            const entry = this.callRegistry.get(callId);
+            resolvedCall = entry?.call || null;
+            direction = entry?.direction || direction;
+        }
+
+        if (resolvedCall) {
+            if (resolvedCall.from?.id === this.subscriber.id) {
+                direction = 'outgoing';
+            } else if (resolvedCall.to?.id === this.subscriber.id) {
+                direction = 'incoming';
+            }
+            const mergedCall = {
+                ...resolvedCall,
+                status: status || resolvedCall.status,
+                updatedAt: Date.now(),
+            };
+            this.registerCallState(mergedCall, direction, status);
+            if (direction === 'outgoing') {
+                const statusLabel = this.translateCallStatus(mergedCall.status);
+                this.setConnectStatusMessage(`Статус приглашения: ${statusLabel}`, mergedCall.status === 'accepted' ? 'success' : mergedCall.status === 'declined' ? 'error' : 'info');
+            }
+            if (direction === 'incoming' && mergedCall.status === 'accepted') {
+                this.setConnectStatusMessage('Ваш звонок принят. Подключаемся…', 'success');
+            }
+            return;
+        }
+
+        if (this.callRegistry instanceof Map && this.callRegistry.has(callId)) {
+            const entry = this.callRegistry.get(callId);
+            entry.status = status || entry.status;
+            entry.updatedAt = Date.now();
+            this.callRegistry.set(callId, entry);
+            this.cleanupCallRegistry();
+            this.renderSubscriberList();
         }
     },
 
@@ -666,6 +833,17 @@ const App = {
             joinButton.setAttribute('data-subscriber-id', subscriber.id);
 
             actionsContainer.append(callButton, joinButton);
+
+            const callStatusInfo = this.getCallStatusForSubscriber(subscriber.id);
+            if (callStatusInfo) {
+                const statusBadge = document.createElement('span');
+                statusBadge.className = `subscriber-list__status subscriber-list__status--${callStatusInfo.status}`;
+                const directionLabel = callStatusInfo.direction === 'incoming' ? 'Входящий' : 'Исходящий';
+                statusBadge.textContent = `${directionLabel}: ${this.translateCallStatus(callStatusInfo.status)}`;
+                statusBadge.dataset.direction = callStatusInfo.direction || 'outgoing';
+                actionsContainer.appendChild(statusBadge);
+            }
+
             listItem.append(nameContainer, actionsContainer);
             listEl.appendChild(listItem);
         });
@@ -832,6 +1010,9 @@ const App = {
             if (data?.success) {
                 const resolvedTargetName =
                     data.call?.to?.name || targetName || 'участника';
+                if (data.call) {
+                    this.registerCallState(data.call, 'outgoing');
+                }
                 this.setConnectStatusMessage(
                     `Отправили приглашение для ${resolvedTargetName}.`,
                     'success'
@@ -1546,6 +1727,7 @@ const App = {
         this.socket.on('conference:force-disconnect', (data) => this.handleForceDisconnect(data));
         this.socket.on('subscribers:update', (data) => this.handleSubscribersUpdate(data));
         this.socket.on('call:initiated', (data) => this.handleCallInitiated(data));
+        this.socket.on('call:ack', (data) => this.handleCallAcknowledged(data));
 
         this.socket.on('webrtc-signal', async (data) => {
             console.log('📡 [webrtc-signal] Получен WebRTC сигнал:', data.type, 'от', data.fromSocketId);

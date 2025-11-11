@@ -324,7 +324,46 @@ input[type="text"]:focus {
 
 .subscriber-list__actions {
     display: flex;
+    align-items: center;
     gap: 8px;
+}
+
+.subscriber-list__status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #eef2ff;
+    color: #4338ca;
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    white-space: nowrap;
+}
+
+.subscriber-list__status[data-direction="incoming"] {
+    background: #fff7ed;
+    color: #c05621;
+    border-color: rgba(221, 107, 32, 0.25);
+}
+
+.subscriber-list__status--accepted {
+    background: #dcfce7;
+    color: #15803d;
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.subscriber-list__status--declined,
+.subscriber-list__status--ignored {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+.subscriber-list__status--acknowledged {
+    background: #fef9c3;
+    color: #92400e;
+    border-color: rgba(202, 138, 4, 0.25);
 }
 
 .subscriber-list__empty {
