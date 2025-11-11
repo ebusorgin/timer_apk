@@ -5,6 +5,8 @@ plugins/
 *.log
 data/users.json
 data/test-users.json
+.env
+.env.*
 .DS_Store
 *.swp
 *.swo

@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - main
+      - production
   workflow_dispatch:
 
 jobs:
@@ -15,6 +16,9 @@ jobs:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
       SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PERSISTENCE_DRIVER: postgres
+      PGSSLMODE: disable
 
     steps:
       - name: Checkout code
@@ -23,8 +27,8 @@ jobs:
       - name: Check required secrets
         shell: bash
         run: |
-          if [ -z "$SSH_PASSWORD" ]; then
-            echo "⚠️  SSH_PASSWORD secret not set. Deployment steps will be skipped."
+          if [ -z "$SSH_PASSWORD" ] || [ -z "$DATABASE_URL" ]; then
+            echo "⚠️  Required secrets are not set. Deployment steps will be skipped."
             echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
@@ -39,6 +43,7 @@ jobs:
           username: ${{ env.SSH_USER }}
           password: ${{ env.SSH_PASSWORD }}
           port: 22
+          envs: DATABASE_URL,PERSISTENCE_DRIVER,PGSSLMODE
           script: |
             set -e
             BRANCH="${{ github.ref_name }}"
@@ -59,6 +64,12 @@ jobs:
             fi
 
             npm ci --production
+
+            cat > .env <<EOF
+DATABASE_URL=${DATABASE_URL}
+PERSISTENCE_DRIVER=${PERSISTENCE_DRIVER}
+PGSSLMODE=${PGSSLMODE}
+EOF
             EOS
 
             systemctl restart voice-room || systemctl start voice-room

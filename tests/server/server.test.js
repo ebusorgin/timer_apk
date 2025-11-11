@@ -35,4 +35,15 @@ describe('server HTTP endpoints', () => {
   it('configures socket.io with the expected path', () => {
     expect(io.opts.path).toBe('/socket.io/');
   });
+
+  it('reports server health status via /api/health', async () => {
+    const response = await request.get('/api/health');
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      status: 'ok',
+    });
+    expect(typeof response.body.uptimeSeconds).toBe('number');
+    expect(typeof response.body.connections).toBe('number');
+  });
 });

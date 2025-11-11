@@ -1,515 +1,252 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync } from 'fs';
-import { promises as fs } from 'fs';
+import { existsSync } from 'fs';
+import createConfig from './config.mjs';
+import createPersistence from './persistence/index.mjs';
+import registerRoutes from './routes/index.mjs';
+import registerSockets from './sockets/index.mjs';
+import {
+  createRateLimiter,
+  createAuthMiddleware,
+  createApiNotFoundHandler,
+  createErrorResponder,
+} from './middleware/index.mjs';
+import createLogger from './utils/logger.mjs';
+import {
+  createMetrics,
+  createHttpMetricsMiddleware,
+  createMetricsHandler,
+} from './services/metrics.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const toArray = (value) => {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === 'string' && item.trim().length > 0);
+  }
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+};
+
+const toPositiveInteger = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+};
 
 export function createServerApp(options = {}) {
   const {
-    corsOrigin = process.env.CORS_ORIGIN || '*',
-    pingTimeout = 60000,
-    pingInterval = 25000,
+    configFactory = createConfig,
+    persistenceFactory = createPersistence,
+    routesRegistrar = registerRoutes,
+    socketsRegistrar = registerSockets,
+    persistenceOptions = {},
+    expressAppFactory = () => express(),
+    httpServerFactory = createServer,
+    socketServerFactory = (httpServer, socketOptions) => new Server(httpServer, socketOptions),
+    guardrails = {},
+    logger: customLogger,
+    logLevel,
+    metrics: metricsOptions = {},
+    bodyLimit,
+    healthEndpoint = '/api/health',
+    ...configOverrides
   } = options;
 
-  const app = express();
-  const server = createServer(app);
-  app.use(express.json());
+  const config = configFactory(configOverrides);
+  const logger =
+    customLogger ||
+    createLogger({
+      level: logLevel,
+      service: 'server',
+    });
 
-  const io = new Server(server, {
-    path: '/socket.io/',
+  const app = expressAppFactory();
+  const resolvedBodyLimit = bodyLimit || guardrails.bodyLimit || '1mb';
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: resolvedBodyLimit }));
+  app.use(express.urlencoded({ extended: true, limit: resolvedBodyLimit }));
+  if (config.http && config.http.trustProxy !== undefined) {
+    app.set('trust proxy', config.http.trustProxy);
+  }
+
+  const server = httpServerFactory(app);
+
+  const io = socketServerFactory(server, {
+    path: config.socket.path,
+    transports: config.socket.transports,
+    allowEIO3: config.socket.allowEIO3,
+    pingTimeout: config.socket.pingTimeout,
+    pingInterval: config.socket.pingInterval,
     cors: {
-      origin: corsOrigin,
+      origin: config.corsOrigin,
       methods: ['GET', 'POST'],
       credentials: true,
     },
-    transports: ['websocket', 'polling'],
-    allowEIO3: true,
-    pingTimeout,
-    pingInterval,
   });
 
-  const wwwPath = path.join(__dirname, '..', 'www');
-  if (existsSync(wwwPath)) {
-    app.use(express.static(wwwPath));
+  if (existsSync(config.paths.www)) {
+    app.use(express.static(config.paths.www));
   }
 
-  const dataDirectory = path.join(__dirname, 'data');
-  const subscribersFilePath = path.join(dataDirectory, 'subscribers.json');
-  const usersFilePath = path.join(dataDirectory, 'users.json');
-  const callsFilePath = path.join(dataDirectory, 'calls.json');
-
-  const ensureDataDirectory = () => {
-    if (!existsSync(dataDirectory)) {
-      mkdirSync(dataDirectory, { recursive: true });
-    }
-  };
-
-  const ensureSubscribersStore = async () => {
-    ensureDataDirectory();
-    if (!existsSync(subscribersFilePath)) {
-      await fs.writeFile(
-        subscribersFilePath,
-        JSON.stringify({ subscribers: [] }, null, 2),
-        'utf-8'
-      );
-    }
-  };
-
-  const ensureUsersStore = async () => {
-    ensureDataDirectory();
-    if (!existsSync(usersFilePath)) {
-      await fs.writeFile(
-        usersFilePath,
-        JSON.stringify({ users: [] }, null, 2),
-        'utf-8'
-      );
-    }
-  };
-
-  const ensureCallsStore = async () => {
-    ensureDataDirectory();
-    if (!existsSync(callsFilePath)) {
-      await fs.writeFile(
-        callsFilePath,
-        JSON.stringify({ calls: [] }, null, 2),
-        'utf-8'
-      );
-    }
-  };
-
-  const readSubscribers = async () => {
-    await ensureSubscribersStore();
-    try {
-      const fileContent = await fs.readFile(subscribersFilePath, 'utf-8');
-      if (!fileContent) {
-        return [];
-      }
-      const parsed = JSON.parse(fileContent);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-      if (parsed && Array.isArray(parsed.subscribers)) {
-        return parsed.subscribers;
-      }
-      return [];
-    } catch (error) {
-      console.warn('⚠️ Не удалось прочитать список подписчиков, возвращаем пустой массив.', error);
-      return [];
-    }
-  };
-
-  const readCalls = async () => {
-    await ensureCallsStore();
-    try {
-      const fileContent = await fs.readFile(callsFilePath, 'utf-8');
-      if (!fileContent) {
-        return [];
-      }
-      const parsed = JSON.parse(fileContent);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-      if (parsed && Array.isArray(parsed.calls)) {
-        return parsed.calls;
-      }
-      return [];
-    } catch (error) {
-      console.warn('⚠️ Не удалось прочитать список звонков, возвращаем пустой массив.', error);
-      return [];
-    }
-  };
-
-  const writeSubscribers = async (subscribers = []) => {
-    await ensureSubscribersStore();
-    const payload = JSON.stringify({ subscribers }, null, 2);
-    await fs.writeFile(subscribersFilePath, payload, 'utf-8');
-  };
-
-  const writeUsers = async (users = []) => {
-    await ensureUsersStore();
-    const payload = JSON.stringify({ users }, null, 2);
-    await fs.writeFile(usersFilePath, payload, 'utf-8');
-  };
-
-  const writeCalls = async (calls = []) => {
-    await ensureCallsStore();
-    const payload = JSON.stringify({ calls }, null, 2);
-    await fs.writeFile(callsFilePath, payload, 'utf-8');
-  };
-
-  const sanitizeDisplayName = (value) => {
-    if (typeof value !== 'string') {
-      return '';
-    }
-    const trimmed = value.trim().replace(/\s+/g, ' ');
-    return trimmed.slice(0, 64);
-  };
-
-  const sortSubscribers = (items = []) =>
-    [...items].sort((a, b) => {
-      const nameA = (a.name || '').toLocaleLowerCase();
-      const nameB = (b.name || '').toLocaleLowerCase();
-      if (nameA === nameB) {
-        return (a.createdAt || 0) - (b.createdAt || 0);
-      }
-      return nameA.localeCompare(nameB, 'ru');
-    });
-
-  app.get('/cordova.js', (req, res) => {
-    res.type('application/javascript');
-    res.send('// Cordova.js placeholder\n');
+  const metrics = createMetrics({
+    name: 'server',
+    ...metricsOptions,
   });
 
-  app.get('/api/subscribers', async (req, res) => {
-    try {
-      const subscribers = await readSubscribers();
-      res.json({
-        success: true,
-        subscribers: sortSubscribers(subscribers),
-      });
-    } catch (error) {
-      console.error('❌ Ошибка чтения подписчиков:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Не удалось получить список подписчиков',
-      });
-    }
+  if (metrics.enabled) {
+    app.use(createHttpMetricsMiddleware(metrics, { logger }));
+  }
+
+  const persistenceDriver = (
+    persistenceOptions.driver ||
+    config.persistence?.driver ||
+    'file'
+  ).toLowerCase();
+
+  const persistenceConfig = {
+    backupDir: config.paths.backupDir,
+    driver: persistenceDriver,
+    connectionString:
+      persistenceOptions.connectionString ??
+      config.persistence?.connectionString ??
+      '',
+    pool: {
+      ...(config.persistence?.pool || {}),
+      ...(persistenceOptions.pool || {}),
+    },
+    statementTimeout:
+      persistenceOptions.statementTimeout ??
+      config.persistence?.statementTimeout,
+    ssl: persistenceOptions.ssl ?? config.persistence?.ssl,
+    enableBackups:
+      persistenceOptions.enableBackups ??
+      config.persistence?.enableBackups ??
+      (persistenceDriver !== 'postgres'),
+    poolInstance: persistenceOptions.poolInstance,
+    logger,
+    ...persistenceOptions,
+  };
+
+  const persistence = persistenceFactory(config.paths, persistenceConfig);
+  logger.info('Persistence layer configured', {
+    driver: persistenceDriver,
+    hasConnectionString: Boolean(persistenceConfig.connectionString),
   });
 
-  app.post('/api/subscribers', async (req, res) => {
-    const { id, name } = req.body || {};
-    const subscriberId = typeof id === 'string' ? id.trim() : '';
-    const displayName = sanitizeDisplayName(name);
+  const {
+    rateLimit: rateLimitOptions,
+    auth: authOptions,
+    apiNotFound: apiNotFoundOptions,
+    errorHandler: errorHandlerOptions,
+  } = guardrails;
 
-    if (!subscriberId || !displayName) {
-      res.status(400).json({
-        success: false,
-        error: 'Необходимо указать идентификатор и имя подписчика',
-      });
-      return;
-    }
-
-    try {
-      const subscribers = await readSubscribers();
-      const timestamp = Date.now();
-      const existingIndex = subscribers.findIndex((item) => item.id === subscriberId);
-
-      if (existingIndex >= 0) {
-        subscribers[existingIndex] = {
-          ...subscribers[existingIndex],
-          name: displayName,
-          updatedAt: timestamp,
-        };
-      } else {
-        subscribers.push({
-          id: subscriberId,
-          name: displayName,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-      }
-
-      const ordered = sortSubscribers(subscribers);
-      await writeSubscribers(ordered);
-      await writeUsers(ordered);
-
-      const currentSubscriber =
-        ordered.find((item) => item.id === subscriberId) ||
-        subscribers.find((item) => item.id === subscriberId);
-
-      io.emit('subscribers:update', {
-        subscribers: ordered,
-      });
-
-      res.json({
-        success: true,
-        subscriber: currentSubscriber,
-        subscribers: ordered,
-      });
-    } catch (error) {
-      console.error('❌ Ошибка сохранения подписчика:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Не удалось сохранить подписчика',
-      });
-    }
-  });
-
-  app.get('/api/calls/pending/:subscriberId', async (req, res) => {
-    const subscriberId = typeof req.params.subscriberId === 'string'
-      ? req.params.subscriberId.trim()
-      : '';
-
-    if (!subscriberId) {
-      res.status(400).json({
-        success: false,
-        error: 'Не указан идентификатор подписчика',
-      });
-      return;
-    }
-
-    try {
-      const calls = await readCalls();
-      const pending = calls
-        .filter((call) => call?.to?.id === subscriberId && call.status === 'pending')
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-
-      res.json({
-        success: true,
-        calls: pending,
-      });
-    } catch (error) {
-      console.error('❌ Ошибка получения ожидающих звонков:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Не удалось получить список звонков',
-      });
-    }
-  });
-
-  app.post('/api/calls/:callId/ack', async (req, res) => {
-    const callId = typeof req.params.callId === 'string' ? req.params.callId.trim() : '';
-    const { status = 'acknowledged' } = req.body || {};
-    const allowedStatuses = new Set(['pending', 'acknowledged', 'accepted', 'declined', 'ignored']);
-    const nextStatus = allowedStatuses.has(status) ? status : 'acknowledged';
-
-    if (!callId) {
-      res.status(400).json({
-        success: false,
-        error: 'Не указан идентификатор звонка',
-      });
-      return;
-    }
-
-    try {
-      const calls = await readCalls();
-      const index = calls.findIndex((call) => call.id === callId);
-      if (index === -1) {
-        res.status(404).json({
-          success: false,
-          error: 'Звонок не найден',
-        });
-        return;
-      }
-
-      const updated = {
-        ...calls[index],
-        status: nextStatus,
-        updatedAt: Date.now(),
-      };
-      calls[index] = updated;
-
-      const now = Date.now();
-      const cleaned = calls.filter((call) => {
-        if (call.status === 'pending') {
-          return true;
-        }
-        return now - (call.updatedAt || call.createdAt || 0) < 1000 * 60 * 60;
-      });
-
-      await writeCalls(cleaned);
-
-      io.emit('call:ack', {
-        callId,
-        status: nextStatus,
-        call: updated,
-      });
-
-      res.json({
-        success: true,
-        call: updated,
-      });
-    } catch (error) {
-      console.error('❌ Ошибка подтверждения звонка:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Не удалось обновить статус звонка',
-      });
-    }
-  });
-
-  app.post('/api/calls', async (req, res) => {
-    const { fromId, toId, fromName } = req.body || {};
-    const callerId = typeof fromId === 'string' ? fromId.trim() : '';
-    const targetId = typeof toId === 'string' ? toId.trim() : '';
-
-    if (!callerId || !targetId) {
-      res.status(400).json({
-        success: false,
-        error: 'Необходимо указать инициатора и получателя звонка',
-      });
-      return;
-    }
-
-    try {
-      const subscribers = await readSubscribers();
-      const callerFromStore = subscribers.find((item) => item.id === callerId) || null;
-      const targetFromStore = subscribers.find((item) => item.id === targetId) || null;
-
-      const callerName =
-        callerFromStore?.name || sanitizeDisplayName(fromName) || 'Неизвестный';
-      const targetName = targetFromStore?.name || 'Неизвестный';
-
-      const callRecord = {
-        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        from: {
-          id: callerId,
-          name: callerName,
-        },
-        to: {
-          id: targetId,
-          name: targetName,
-        },
-        createdAt: Date.now(),
-        status: 'pending',
-      };
-
-      const calls = await readCalls();
-      calls.push(callRecord);
-      await writeCalls(calls);
-
-      io.emit('call:initiated', callRecord);
-
-      res.json({
-        success: true,
-        call: callRecord,
-      });
-    } catch (error) {
-      console.error('❌ Ошибка инициирования звонка:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Не удалось инициировать звонок',
-      });
-    }
-  });
-
-  const participants = new Map();
-
-  const buildSnapshot = (selfId) => ({
-    selfId,
-    participants: Array.from(participants.values()).map((participant) => ({
-      id: participant.id,
-      media: { ...participant.media },
-      connectedAt: participant.connectedAt,
-    })),
-  });
-
-  io.on('connection', (socket) => {
-    console.log('✅ Клиент подключен:', socket.id);
-    const participantRecord = {
-      id: socket.id,
-      media: {
-        cam: false,
-        mic: true,
-      },
-      connectedAt: Date.now(),
+  if (rateLimitOptions !== false) {
+    const limiterConfig = {
+      ...(rateLimitOptions || {}),
     };
-    participants.set(socket.id, participantRecord);
-    console.log('📊 Всего подключений:', participants.size);
-
-    if (socket.connected) {
-      socket.emit('presence:sync', buildSnapshot(socket.id));
-      socket.broadcast.emit('presence:update', {
-        action: 'join',
-        participant: participantRecord,
-      });
-      console.log(`✅ [${socket.id}] Снимок присутствия отправлен, уведомление о новом участнике разослано`);
+    if (limiterConfig.max === undefined) {
+      const envMax = toPositiveInteger(process.env.API_RATE_LIMIT_MAX);
+      if (envMax) {
+        limiterConfig.max = envMax;
+      }
     }
-
-    socket.on('webrtc-signal', ({ targetSocketId, signal, type }) => {
-      console.log(`📡 [${socket.id}] WebRTC сигнал -> ${targetSocketId}, тип: ${type}`);
-      if (targetSocketId === socket.id) {
-        console.warn(`⚠️ [${socket.id}] Попытка отправить сигнал самому себе (${type}) — отклонено`);
-        return;
+    if (limiterConfig.windowMs === undefined) {
+      const envWindow = toPositiveInteger(process.env.API_RATE_LIMIT_WINDOW_MS);
+      if (envWindow) {
+        limiterConfig.windowMs = envWindow;
       }
-      if (participants.has(targetSocketId)) {
-        io.to(targetSocketId).emit('webrtc-signal', {
-          fromSocketId: socket.id,
-          signal,
-          type,
-        });
-        console.log(`✅ [${socket.id}] Сигнал доставлен ${targetSocketId}`);
+    }
+    app.use('/api', createRateLimiter(limiterConfig));
+  }
+
+  const envApiKeys = toArray(process.env.API_KEYS || process.env.API_KEY);
+  const configuredAuthKeys =
+    authOptions && authOptions !== false ? toArray(authOptions.apiKeys) : [];
+  const resolvedApiKeys = Array.from(new Set([...configuredAuthKeys, ...envApiKeys]));
+
+  let authConfig = null;
+  if (authOptions !== false) {
+    authConfig = {
+      ...(authOptions || {}),
+      apiKeys: resolvedApiKeys,
+    };
+    app.use('/api', createAuthMiddleware(authConfig));
+  }
+
+  routesRegistrar({ app, persistence, io, config, logger, metrics });
+  socketsRegistrar({ io, persistence, config, logger, metrics });
+
+  if (metrics.enabled) {
+    const { exposeEndpoint } = metricsOptions;
+    if (exposeEndpoint) {
+      const metricsPath =
+        typeof exposeEndpoint === 'string'
+          ? exposeEndpoint
+          : typeof metricsOptions.endpoint === 'string'
+          ? metricsOptions.endpoint
+          : '/api/metrics';
+
+      const metricsAuthOptions = metricsOptions.auth;
+      let metricsAuthConfig = null;
+      if (metricsAuthOptions !== false) {
+        const metricsKeys = Array.from(
+          new Set([
+            ...resolvedApiKeys,
+            ...toArray(metricsAuthOptions?.apiKeys),
+          ]),
+        );
+        metricsAuthConfig = {
+          ...(metricsAuthOptions || {}),
+          apiKeys: metricsKeys,
+          required:
+            metricsAuthOptions?.required ??
+            metricsOptions.requireAuth ??
+            (metricsKeys.length > 0),
+        };
+      }
+
+      const metricsHandler = createMetricsHandler(metrics);
+      if (metricsAuthConfig) {
+        app.get(metricsPath, createAuthMiddleware(metricsAuthConfig), metricsHandler);
       } else {
-        console.warn(`⚠️ [${socket.id}] Целевой сокет ${targetSocketId} не найден в участниках`);
-        console.warn(`⚠️ [${socket.id}] Доступные участники:`, Array.from(participants.keys()));
+        app.get(metricsPath, metricsHandler);
       }
-    });
+    }
+  }
 
-    socket.on('status:change', (payload = {}) => {
-      const participant = participants.get(socket.id);
-      if (!participant) {
-        console.warn(`⚠️ [${socket.id}] Статус не обновлён: участник не найден`);
-        return;
-      }
-
-      const { media = {} } = payload;
-      let dirty = false;
-
-      if (typeof media.cam === 'boolean' && participant.media.cam !== media.cam) {
-        participant.media.cam = media.cam;
-        dirty = true;
-      }
-      if (typeof media.mic === 'boolean' && participant.media.mic !== media.mic) {
-        participant.media.mic = media.mic;
-        dirty = true;
-      }
-
-      if (dirty) {
-        participants.set(socket.id, participant);
-        io.emit('status:update', {
-          id: socket.id,
-          media: { ...participant.media },
-        });
-        console.log(`✅ [${socket.id}] Статус обновлён и разослан:`, participant.media);
-      }
-    });
-
-    socket.on('conference:hangup-all', () => {
-      console.log(`🔴 [${socket.id}] Инициировано глобальное отключение участников.`);
-      const targetIds = Array.from(io.sockets.sockets.keys());
-
-      targetIds.forEach((id) => {
-        io.to(id).emit('conference:force-disconnect', {
-          initiatedBy: socket.id,
-          reason: 'Организатор завершил конференцию',
-        });
-      });
-
-      targetIds.forEach((id) => {
-        const targetSocket = io.sockets.sockets.get(id);
-        if (targetSocket) {
-          targetSocket.disconnect(true);
-        }
+  if (healthEndpoint) {
+    app.get(healthEndpoint, (req, res) => {
+      res.json({
+        success: true,
+        status: 'ok',
+        uptimeSeconds: Math.round(process.uptime()),
+        connections: io.engine?.clientsCount ?? 0,
       });
     });
+  }
 
-    socket.on('disconnect', (reason) => {
-      const participant = participants.get(socket.id);
-      const wasConnected = Boolean(participant);
-      participants.delete(socket.id);
-      console.log(`👋 [${socket.id}] Клиент отключен, причина: ${reason}`);
-      console.log(`📊 [${socket.id}] Всего подключений после отключения: ${participants.size}`);
+  if (apiNotFoundOptions !== false) {
+    app.use('/api', createApiNotFoundHandler(apiNotFoundOptions || {}));
+  }
 
-      if (wasConnected) {
-        socket.broadcast.emit('presence:update', {
-          action: 'leave',
-          participantId: socket.id,
-        });
-        io.emit('status:update', {
-          id: socket.id,
-          media: { cam: false, mic: false },
-        });
-        console.log(`✅ [${socket.id}] Отправлены события ухода, presence update и сброс статуса`);
-      }
-    });
-  });
+  if (errorHandlerOptions !== false) {
+    app.use(createErrorResponder(errorHandlerOptions || {}));
+  }
 
-  return { app, server, io };
+  return {
+    app,
+    server,
+    io,
+    config,
+    persistence,
+    logger,
+    metrics,
+  };
 }
 
 export default createServerApp;
+

@@ -21,7 +21,10 @@ npm run server
 ```
 severomorets/
 ├── server/
-│   └── server.mjs         # Сервер с Socket.IO
+│   ├── app.mjs            # Инициализация Express/Socket.IO
+│   ├── persistence/       # Хранилище (файлы, PostgreSQL)
+│   ├── routes/            # HTTP API
+│   └── sockets/           # WebSocket-обработчики
 ├── www/
 │   ├── index.html         # Веб-интерфейс конференции
 │   ├── css/
@@ -41,32 +44,38 @@ severomorets/
 2. Введите имя и подключитесь
 3. Нажмите "Позвонить"
 
-## База данных
+## Хранилище данных
 
-База данных хранится в `data/users.json` в формате:
+Сервис поддерживает два варианта хранения:
 
-```json
-{
-  "users": [
-    {
-      "id": 1,
-      "role": "master",
-      "deviceId": "device-123",
-      "name": "Мастер",
-      "online": true,
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "lastSeen": "2024-01-01T00:00:00.000Z"
-    }
-  ],
-  "lastId": 1
-}
+- **Файлы (по умолчанию)** — JSON-файлы в каталоге `server/data/` (используются в dev-сценариях).
+- **PostgreSQL** — полноценное постоянное хранилище для production.
+
+Переключение выполняется переменной `PERSISTENCE_DRIVER` (`file` или `postgres`). Для PostgreSQL установите переменную `DATABASE_URL`, например:
+
 ```
+DATABASE_URL=postgresql://voice_room:voice_room@localhost:5432/voice_room
+PERSISTENCE_DRIVER=postgres
+PGSSLMODE=disable
+```
+
+Docker-compose включает сервис PostgreSQL с автоматическим созданием базы `voice_room`:
+
+```bash
+docker compose up -d
+```
+
+Сервер будет ждать, пока база данных не будет готова (`depends_on` с healthcheck).
 
 ## Переменные окружения
 
-- `PORT` - порт сервера (по умолчанию: 3000)
-- `HOST` - хост сервера (по умолчанию: 0.0.0.0)
-- `CORS_ORIGIN` - разрешенные источники CORS (по умолчанию: *)
+- `PORT` — порт сервера (по умолчанию: 3000)
+- `HOST` — хост сервера (по умолчанию: 0.0.0.0)
+- `CORS_ORIGIN` — разрешенные источники CORS (по умолчанию: `*`)
+- `PERSISTENCE_DRIVER` — `file` или `postgres`
+- `DATABASE_URL` — строка подключения к PostgreSQL
+- `PGSSLMODE` — задаёт SSL-режим для PostgreSQL (`require`, `disable`, и т.п.)
+- `PG_POOL_MAX`, `PG_POOL_IDLE_TIMEOUT_MS`, `PG_STATEMENT_TIMEOUT_MS` — опции пула соединений
 
 ## Тестирование
 
