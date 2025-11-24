@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Конференция</title>
+    <title>Severomorets Conference</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -11,8 +14,18 @@
         <!-- Экран подключения -->
         <div id="connectScreen" class="screen active">
             <div class="container">
+                <h1>Severomorets</h1>
+                <p class="subtitle">Secure Voice & Video Conference</p>
+                
                 <div class="connect-actions">
-                    <button id="btnConnect" class="btn btn-primary">Войти в общую конференцию</button>
+                    <button id="btnConnect" class="btn btn-primary">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                            <polyline points="10 17 15 12 10 7"/>
+                            <line x1="15" y1="12" x2="3" y2="12"/>
+                        </svg>
+                        Войти в конференцию
+                    </button>
                 </div>
                 <div id="connectStatusMessage" class="status-message"></div>
             </div>
@@ -20,22 +33,58 @@
 
         <!-- Экран конференции -->
         <div id="conferenceScreen" class="screen">
-            <div class="container conference-container">
-                <h2>Конференция</h2>
-                <div id="conferenceStatus" class="conference-status"></div>
+            <div class="conference-container">
+                <div id="conferenceStatus" class="conference-status" style="display:none;"></div>
+                
                 <div id="videoGrid" class="video-grid">
                     <div class="video-tile self video-off">
                         <video id="localVideo" class="video-element" autoplay muted playsinline></video>
-                        <div class="video-label">Вы</div>
+                        <div class="video-label">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            Вы
+                        </div>
                     </div>
                 </div>
+
                 <div id="participantsList" class="participants-list"></div>
+
                 <div class="conference-controls">
-                    <button id="btnVideo" class="btn btn-control video">📹 Включить камеру</button>
-                    <button id="btnMute" class="btn btn-control">🎤 Включить микрофон</button>
-                    <button id="btnHangupAll" class="btn btn-danger">🔴 Завершить для всех</button>
-                    <button id="btnDisconnect" class="btn btn-secondary">Отключиться</button>
+                    <button id="btnVideo" class="btn-control video" title="Камера">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M23 7l-7 5 7 5V7z"/>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                    </button>
+                    
+                    <button id="btnMute" class="btn-control" title="Микрофон">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                            <line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                    </button>
+
+                    <button id="btnHangupAll" class="btn btn-danger" title="Завершить для всех">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                            <line x1="12" y1="2" x2="12" y2="12"/>
+                        </svg>
+                        Stop All
+                    </button>
+
+                    <button id="btnDisconnect" class="btn btn-danger" title="Отключиться">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/>
+                            <line x1="23" y1="1" x2="1" y2="23"/>
+                        </svg>
+                        Выйти
+                    </button>
                 </div>
+                
                 <div id="statusMessage" class="status-message"></div>
             </div>
         </div>

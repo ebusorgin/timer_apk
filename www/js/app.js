@@ -12,18 +12,18 @@ const App = {
     playbackUnlockHandler: null,
     audioContext: null,
     connectionInProgress: false,
-    
+
     SERVER_URL: window.location.origin,
-    
+
     ICE_SERVERS: [
         // Собственный STUN/TURN сервер (приоритет)
         { urls: 'stun:aiternitas.ru:3478' },
-        { 
+        {
             urls: 'turn:aiternitas.ru:3478?transport=udp',
             username: 'turnuser',
             credential: 'turnpass'
         },
-        { 
+        {
             urls: 'turn:aiternitas.ru:3478?transport=tcp',
             username: 'turnuser',
             credential: 'turnpass'
@@ -36,13 +36,13 @@ const App = {
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:stun.stunprotocol.org:3478' }
     ],
-    
+
     // Определение, кто является инициатором соединения
     // Участник с меньшим socketId становится инициатором
     isInitiator(mySocketId, targetSocketId) {
         return mySocketId < targetSocketId;
     },
-    
+
     init() {
         console.log('Conference App initializing...');
         this.initElements();
@@ -52,13 +52,13 @@ const App = {
             console.error('❌ Кнопка подключения не найдена!');
             return;
         }
-        
+
         this.setupEventListeners();
         this.updateVideoButton();
         this.updateHangupAllButton();
         console.log('✅ App инициализирован');
     },
-    
+
     initElements() {
         this.elements = {
             connectScreen: document.getElementById('connectScreen'),
@@ -627,7 +627,7 @@ const App = {
         this.updateParticipantUI(id);
         this.updateHangupAllButton();
     },
-    
+
     showMessage(message, type = 'info') {
         const statusEl = this.elements.statusMessage;
         if (!statusEl) return;
@@ -637,7 +637,7 @@ const App = {
             statusEl.classList.remove('show');
         }, 3000);
     },
-    
+
     async connect() {
         if (this.socket && this.socket.connected) {
             console.log('ℹ️ Уже подключены к конференции');
@@ -656,16 +656,16 @@ const App = {
         console.log('Подключение к конференции...');
         this.elements.btnConnect.disabled = true;
         this.showMessage('Подключение...', 'info');
-        
+
         try {
             // Подключение к Socket.IO
             if (typeof io === 'undefined') {
                 throw new Error('Socket.IO не загружен');
             }
-            
+
             console.log('Создание Socket.IO соединения...');
             console.log('🌐 SERVER_URL:', this.SERVER_URL);
-            
+
             // Устанавливаем обработчики ДО создания соединения
             this.socket = io(this.SERVER_URL, {
                 path: '/socket.io/',
@@ -678,7 +678,7 @@ const App = {
                 upgrade: true,
                 rememberUpgrade: false
             });
-            
+
             // Обработчики подключения Socket.IO
             this.socket.on('connect', () => {
                 this.connectionInProgress = false;
@@ -706,7 +706,7 @@ const App = {
                 this.updateHangupAllButton();
                 this.syncLocalMediaStatus({ force: true });
             });
-            
+
             this.socket.on('connect_error', (error) => {
                 this.connectionInProgress = false;
                 console.error('❌ Ошибка подключения Socket.IO:', error);
@@ -714,14 +714,14 @@ const App = {
                 this.elements.btnConnect.disabled = false;
                 this.setConnectStatusMessage('Ошибка подключения к серверу', 'error');
             });
-            
+
             this.socket.on('disconnect', (reason) => {
                 this.connectionInProgress = false;
                 this.handleSocketDisconnect(reason);
             });
-            
+
             this.setupSocketEvents();
-            
+
             // Получаем медиа поток
             console.log('Запрос доступа к микрофону...');
             try {
@@ -751,7 +751,7 @@ const App = {
                 this.connectionInProgress = false;
                 return;
             }
-            
+
         } catch (error) {
             console.error('❌ Ошибка подключения:', error);
             this.showMessage('Ошибка подключения: ' + error.message, 'error');
@@ -770,7 +770,7 @@ const App = {
             this.updateVideoButton();
         }
     },
-    
+
     setupSocketEvents() {
         this.socket.on('presence:sync', (data) => this.handlePresenceSync(data));
         this.socket.on('presence:update', (data) => this.handlePresenceUpdate(data));
@@ -783,7 +783,7 @@ const App = {
             await this.handleWebRTCSignal(data);
         });
     },
-    
+
     async connectToPeer(targetSocketId, isInitiator) {
         const selfId = this.selfId || this.socket?.id;
         if (!targetSocketId || targetSocketId === selfId) {
@@ -1024,23 +1024,23 @@ const App = {
             this.participants.delete(targetSocketId);
         }
     },
-    
+
     async handleWebRTCSignal(data) {
         let participant = this.participants.get(data.fromSocketId);
-        
+
         // Если соединения еще нет, создаем его (когда получаем offer)
         if (!participant && data.type === 'offer') {
             await this.connectToPeer(data.fromSocketId, false);
             participant = this.participants.get(data.fromSocketId);
         }
-        
+
         if (!participant || !participant.peerConnection) {
             console.log('Соединение еще не создано для', data.fromSocketId);
             return;
         }
-        
+
         const pc = participant.peerConnection;
-        
+
         try {
             if (data.type === 'offer') {
                 await this.handleOffer(pc, data);
@@ -1072,7 +1072,7 @@ const App = {
                         console.error('❌ Ошибка установки answer:', err);
                     }
                 } else {
-                    console.warn('⚠️ Неподходящее состояние для установки answer:', pc.signalingState, 
+                    console.warn('⚠️ Неподходящее состояние для установки answer:', pc.signalingState,
                         '(ожидается have-local-offer, но получено', pc.signalingState + ')');
                 }
             } else if (data.type === 'ice-candidate') {
@@ -1105,7 +1105,7 @@ const App = {
             console.error('Ошибка обработки WebRTC сигнала:', error);
         }
     },
-    
+
     async handleOffer(pc, data) {
         try {
             // Если у нас уже есть локальное описание (мы тоже создали offer), 
@@ -1116,10 +1116,10 @@ const App = {
                 pc.localDescription.type === 'offer'
             ) {
                 console.log('⚠️ Оба участника инициировали соединение одновременно');
-                
+
                 // Определяем, кто должен быть инициатором
                 const shouldBeInitiator = this.isInitiator(this.socket.id, data.fromSocketId);
-                
+
                 if (!shouldBeInitiator) {
                     // Мы не инициатор (больший socketId), отменяем свой offer и принимаем роль ответчика
                     console.log('🔄 Отменяю локальный offer, принимаю роль ответчика');
@@ -1127,22 +1127,22 @@ const App = {
                         // Отменяем локальный offer
                         await pc.setLocalDescription(null);
                         console.log('✅ Локальный offer отменен');
-                        
+
                         // Устанавливаем удаленное описание (offer от инициатора)
                         await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
                         console.log('✅ Remote description установлен (offer от инициатора)');
-                        
+
                         // Создаем answer
                         const answer = await pc.createAnswer();
                         await pc.setLocalDescription(answer);
                         console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
-                        
+
                         this.socket.emit('webrtc-signal', {
                             targetSocketId: data.fromSocketId,
                             signal: answer,
                             type: 'answer'
                         });
-                        
+
                         // Добавляем отложенные ICE кандидаты если есть
                         const participant = Array.from(this.participants.values()).find(p => p.peerConnection === pc);
                         if (participant && participant.pendingCandidates) {
@@ -1165,10 +1165,10 @@ const App = {
                 }
                 return;
             }
-            
+
             console.log('📥 Установка удаленного описания (offer)');
             await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
-            
+
             // Добавляем отложенные ICE кандидаты если есть
             const participant = Array.from(this.participants.values()).find(p => p.peerConnection === pc);
             if (participant && participant.pendingCandidates) {
@@ -1181,13 +1181,13 @@ const App = {
                 }
                 participant.pendingCandidates = [];
             }
-            
+
             // Создаем answer
             console.log(`📥 Создание answer для ${data.fromSocketId}`);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             console.log(`✅ Answer создан и отправлен для ${data.fromSocketId}`);
-            
+
             this.socket.emit('webrtc-signal', {
                 targetSocketId: data.fromSocketId,
                 signal: answer,
@@ -1197,7 +1197,7 @@ const App = {
             console.error('Ошибка обработки offer:', error);
         }
     },
-    
+
     disconnectFromPeer(socketId) {
         const participant = this.participants.get(socketId);
         if (!participant) {
@@ -1230,7 +1230,7 @@ const App = {
         this.updateParticipantsList();
         this.updateParticipantVideoState(socketId);
     },
-    
+
     async toggleVideo() {
         if (!this.localStream || this.videoToggleInProgress) {
             return;
@@ -1706,29 +1706,29 @@ const App = {
             }
         }
     },
-    
+
     toggleMute() {
         if (!this.localStream) return;
-        
+
         const audioTracks = this.localStream.getAudioTracks();
         if (audioTracks.length > 0) {
             // Определяем текущее состояние (включен/выключен)
             const currentlyEnabled = audioTracks[0].enabled;
-            
+
             // Изменяем состояние на противоположное
             audioTracks[0].enabled = !currentlyEnabled;
-            
+
             // Обновляем текст кнопки - показываем действие, которое произойдет при следующем нажатии
             // Если микрофон теперь включен -> показываем "Выключить" (следующее действие)
             // Если микрофон теперь выключен -> показываем "Включить" (следующее действие)
             if (this.elements.btnMute) {
                 if (!currentlyEnabled) {
-                    // Микрофон был выключен, теперь включили -> показываем "Выключить" (следующее действие)
-                    this.elements.btnMute.textContent = '🔇 Выключить микрофон';
+                    // Микрофон был выключен, теперь включили
+                    this.elements.btnMute.classList.add('active');
                     this.elements.btnMute.classList.remove('muted');
                 } else {
-                    // Микрофон был включен, теперь выключили -> показываем "Включить" (следующее действие)
-                    this.elements.btnMute.textContent = '🎤 Включить микрофон';
+                    // Микрофон был включен, теперь выключили
+                    this.elements.btnMute.classList.remove('active');
                     this.elements.btnMute.classList.add('muted');
                 }
             }
@@ -1736,32 +1736,30 @@ const App = {
             this.syncLocalMediaStatus();
         }
     },
-    
+
     updateMuteButton() {
         // Обновляем текст кнопки в соответствии с текущим состоянием микрофона
         if (!this.localStream || !this.elements.btnMute) return;
-        
+
         const audioTracks = this.localStream.getAudioTracks();
         if (audioTracks.length > 0) {
             const isEnabled = audioTracks[0].enabled;
-            // Если микрофон включен -> показываем "Выключить" (действие при нажатии)
-            // Если микрофон выключен -> показываем "Включить" (действие при нажатии)
             if (isEnabled) {
-                this.elements.btnMute.textContent = '🔇 Выключить микрофон';
+                this.elements.btnMute.classList.add('active');
                 this.elements.btnMute.classList.remove('muted');
             } else {
-                this.elements.btnMute.textContent = '🎤 Включить микрофон';
+                this.elements.btnMute.classList.remove('active');
                 this.elements.btnMute.classList.add('muted');
             }
         }
     },
-    
+
     updateParticipantsList() {
         const list = this.elements.participantsList;
         if (!list) return;
-        
+
         list.innerHTML = '';
-        
+
         const selfMedia = this.getLocalMediaState();
         const selfItem = document.createElement('div');
         selfItem.className = 'participant-item self';
@@ -1774,7 +1772,7 @@ const App = {
             </div>
         `;
         list.appendChild(selfItem);
-        
+
         const remoteIds = new Set();
 
         const selfId = this.selfId || this.socket?.id;
@@ -1856,18 +1854,18 @@ const App = {
             list.appendChild(item);
         });
     },
-    
+
     updateParticipantUI(socketId) {
         this.updateParticipantsList();
         if (socketId) {
             this.updateParticipantVideoState(socketId);
         }
     },
-    
+
     updateConferenceStatus() {
         const statusEl = this.elements.conferenceStatus;
         if (!statusEl) return;
-        
+
         const selfId = this.selfId || this.socket?.id || null;
         let remotePresenceCount = 0;
         if (this.presence && this.presence.size > 0) {
@@ -1891,7 +1889,7 @@ const App = {
         });
         statusEl.textContent = `Участников в конференции: ${totalCount}`;
     },
-    
+
     disconnect() {
         this.connectionInProgress = false;
         // Закрываем все соединения с участниками
@@ -1903,7 +1901,7 @@ const App = {
         this.presence = new Map();
         this.lastSentMediaStatus = { cam: false, mic: false };
         this.selfId = null;
-        
+
         // Останавливаем локальный поток
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => track.stop());
@@ -1919,21 +1917,21 @@ const App = {
             this.socket.disconnect();
             this.socket = null;
         }
-        
+
         this.resetPresenceState();
         this.showScreen('connectScreen');
         this.elements.btnConnect.disabled = false;
         this.hangupAllInProgress = false;
         this.updateHangupAllButton();
     },
-    
+
     showScreen(screenName) {
         Object.values(this.elements).forEach(el => {
             if (el && el.classList && el.classList.contains('screen')) {
                 el.classList.remove('active');
             }
         });
-        
+
         if (this.elements[screenName]) {
             this.elements[screenName].classList.add('active');
         }
@@ -2034,22 +2032,23 @@ const App = {
             this.updateLocalVideoState(!!this.localStream && this.isVideoEnabled);
             return;
         }
- 
+
         if (!this.localStream) {
             btn.disabled = true;
-            btn.textContent = '📹 Включить камеру';
             btn.classList.add('muted');
+            btn.classList.remove('active');
             this.updateLocalVideoState(false);
             return;
         }
- 
+
+        btn.disabled = !!this.videoToggleInProgress;
         btn.disabled = !!this.videoToggleInProgress;
         if (this.isVideoEnabled) {
-            btn.textContent = '📷 Выключить камеру';
+            btn.classList.add('active');
             btn.classList.remove('muted');
             this.updateLocalVideoState(true);
         } else {
-            btn.textContent = '📹 Включить камеру';
+            btn.classList.remove('active');
             btn.classList.add('muted');
             this.updateLocalVideoState(false);
         }
