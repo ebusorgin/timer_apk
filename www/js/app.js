@@ -332,11 +332,28 @@ const App = {
             participantRecord.audioSourceStreamId = null;
         }
 
+        // Проверяем, что в потоке есть активные аудио треки
+        const audioTracks = remoteStream.getAudioTracks();
+        if (!audioTracks || audioTracks.length === 0) {
+            console.log(`⚠️ Нет аудио треков в потоке для ${debugLabel}`);
+            return;
+        }
+
+        // Проверяем, что есть хотя бы один активный трек
+        const activeAudioTracks = audioTracks.filter(track => 
+            track.readyState === 'live' && !track.muted && track.enabled
+        );
+        if (activeAudioTracks.length === 0) {
+            console.log(`⚠️ Нет активных аудио треков в потоке для ${debugLabel}`);
+            return;
+        }
+
         try {
             const sourceNode = this.audioContext.createMediaStreamSource(remoteStream);
             sourceNode.connect(this.audioContext.destination);
             participantRecord.audioSourceNode = sourceNode;
             participantRecord.audioSourceStreamId = currentStreamId;
+            console.log(`✅ AudioContext источник создан для потока ${currentStreamId} (${debugLabel})`);
         } catch (err) {
             console.warn(`⚠️ Не удалось подключить поток к AudioContext (${debugLabel})`, err);
         }
