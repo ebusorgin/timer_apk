@@ -1,0 +1,81 @@
+===========================================
+ИНСТРУКЦИЯ: Добавление SSH ключа в GitHub
+===========================================
+
+ШАГ 1: Откройте страницу Secrets
+https://github.com/ebusorgin/timer_apk/settings/secrets/actions
+
+ШАГ 2: Нажмите "New repository secret"
+
+ШАГ 3: Заполните форму:
+  Name: SSH_PRIVATE_KEY
+  Secret: (скопируйте ключ ниже, начиная с -----BEGIN)
+
+ШАГ 4: Нажмите "Add secret"
+
+===========================================
+ВАШ SSH КЛЮЧ (скопируйте весь блок):
+===========================================
+
+-----BEGIN OPENSSH PRIVATE KEY-----
+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
+-----END OPENSSH PRIVATE KEY-----
+
+===========================================
+ПОСЛЕ ДОБАВЛЕНИЯ КЛЮЧА:
+===========================================
+
+При каждом git push origin production будет автоматически:
+1. Запускаться тесты
+2. Обновляться код на сервере
+3. Перезапускаться сервис
+
+Проверить можно здесь:
+https://github.com/ebusorgin/timer_apk/actions
+
