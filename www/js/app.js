@@ -800,8 +800,17 @@ const App = {
         }
 
         if (this.participants.has(targetSocketId)) {
-            console.log('Уже подключен к', targetSocketId);
-            return;
+            const existingParticipant = this.participants.get(targetSocketId);
+            // Если соединение активно, не переподключаемся
+            if (existingParticipant && existingParticipant.peerConnection && 
+                existingParticipant.peerConnection.connectionState !== 'closed' &&
+                existingParticipant.peerConnection.connectionState !== 'failed') {
+                console.log('Уже подключен к', targetSocketId);
+                return;
+            }
+            // Если соединение закрыто, очищаем старое перед созданием нового
+            console.log('Очистка старого соединения для', targetSocketId);
+            this.disconnectFromPeer(targetSocketId);
         }
 
         try {
@@ -863,7 +872,7 @@ const App = {
                 const trackKind = event.track ? event.track.kind : 'unknown';
                 console.log('🎥 Получен трек от', targetSocketId, trackKind, event);
 
-                if (!participantRecord.mediaElement) {
+                if (!participantRecord.mediaElement || !event.track) {
                     return;
                 }
 
@@ -877,12 +886,29 @@ const App = {
                         remoteStream = new MediaStream();
                         participantRecord.mediaElement.srcObject = remoteStream;
                     }
+                } else if (!participantRecord.mediaElement.srcObject || participantRecord.mediaElement.srcObject.id !== remoteStream.id) {
+                    // Новый поток - заменяем полностью
+                    participantRecord.mediaElement.srcObject = remoteStream;
+                } else {
+                    // Используем существующий поток
+                    remoteStream = participantRecord.mediaElement.srcObject;
+                }
 
-                    if (event.track && !remoteStream.getTracks().includes(event.track)) {
+                // Удаляем старые треки того же типа перед добавлением нового
+                if (event.track && remoteStream instanceof MediaStream) {
+                    const existingTracks = remoteStream.getTracks().filter(t => t.kind === event.track.kind);
+                    existingTracks.forEach(oldTrack => {
+                        if (oldTrack.id !== event.track.id) {
+                            console.log(`🗑️ Удаляем старый ${event.track.kind} трек`, oldTrack.id);
+                            remoteStream.removeTrack(oldTrack);
+                            oldTrack.stop();
+                        }
+                    });
+                    
+                    // Добавляем новый трек только если его еще нет
+                    if (!remoteStream.getTracks().includes(event.track)) {
                         remoteStream.addTrack(event.track);
                     }
-                } else if (!participantRecord.mediaElement.srcObject || participantRecord.mediaElement.srcObject.id !== remoteStream.id) {
-                    participantRecord.mediaElement.srcObject = remoteStream;
                 }
 
                 if (!remoteStream) {
@@ -898,7 +924,11 @@ const App = {
                 this.forcePlayMediaElement(participantRecord.mediaElement, targetSocketId);
 
                 if (event.track && event.track.kind === 'audio') {
-                    this.attachStreamToAudioContext(participantRecord, remoteStream, targetSocketId);
+                    // Проверяем, что источник еще не создан для этого потока
+                    const currentStreamId = remoteStream.id;
+                    if (!participantRecord.audioSourceNode || participantRecord.audioSourceStreamId !== currentStreamId) {
+                        this.attachStreamToAudioContext(participantRecord, remoteStream, targetSocketId);
+                    }
                     event.track.addEventListener('ended', () => {
                         this.detachAudioSourceFromParticipant(participantRecord);
                     });
@@ -1216,7 +1246,24 @@ const App = {
 
         console.log(`🔌 Отключение от ${socketId}`);
 
+        // Останавливаем все треки перед закрытием соединения
+        if (participant.mediaElement && participant.mediaElement.srcObject instanceof MediaStream) {
+            const stream = participant.mediaElement.srcObject;
+            stream.getTracks().forEach(track => {
+                track.stop();
+                console.log(`🛑 Остановлен трек ${track.kind} для ${socketId}`);
+            });
+        }
+
         if (participant.peerConnection) {
+            // Останавливаем все senders перед закрытием
+            if (typeof participant.peerConnection.getSenders === 'function') {
+                participant.peerConnection.getSenders().forEach(sender => {
+                    if (sender.track) {
+                        sender.track.stop();
+                    }
+                });
+            }
             participant.peerConnection.close();
         }
 
