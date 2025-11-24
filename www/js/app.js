@@ -685,8 +685,12 @@ const App = {
             this.socket.on('connect', () => {
                 this.connectionInProgress = false;
                 console.log('✅ Socket.IO подключен:', this.socket.id);
-                this.showMessage('Подключено к серверу', 'success');
-                this.setConnectStatusMessage('Соединение установлено', 'success');
+                // Убираем навязчивое сообщение - статус уже виден на видео тайлах через индикаторы
+                // this.showMessage('Подключено к серверу', 'success');
+                // Очищаем сообщение о подключении после перехода на экран конференции
+                setTimeout(() => {
+                    this.clearConnectStatusMessage();
+                }, 1000);
 
                 this.selfId = this.socket.id;
                 this.hangupAllInProgress = false;
@@ -1767,6 +1771,12 @@ const App = {
     updateParticipantsList() {
         const list = this.elements.participantsList;
         if (!list) return;
+
+        // Список скрыт через CSS, не выполняем лишнюю работу
+        // Статусы теперь показываются на видео тайлах
+        if (list.style.display === 'none' || window.getComputedStyle(list).display === 'none') {
+            return;
+        }
 
         // Clear the list but keep it visible if it will have content
         const hasParticipants = this.presence.size > 0 || this.participants.size > 0;

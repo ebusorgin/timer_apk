@@ -233,18 +233,26 @@ h1 {
     top: 32px;
     left: 50%;
     transform: translateX(-50%) translateY(-20px);
-    padding: 16px 32px;
+    padding: 12px 24px;
     border-radius: var(--radius-md);
-    background: rgba(17, 24, 39, 0.9);
+    background: rgba(17, 24, 39, 0.95);
     backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
     color: var(--text-main);
     font-weight: 500;
+    font-size: 0.875rem;
     opacity: 0;
     transition: var(--transition-smooth);
     z-index: 1000;
     pointer-events: none;
     box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+    max-width: 90%;
+    text-align: center;
+}
+
+/* Скрываем сообщение о подключении на экране конференции */
+#conferenceScreen #connectStatusMessage {
+    display: none !important;
 }
 
 .status-message.show {
