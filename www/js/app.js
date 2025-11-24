@@ -463,6 +463,7 @@ const App = {
                     tile.remove();
                 }
             });
+            this.updateVideoGridLayout();
         }
 
         this.presence = new Map();
@@ -701,6 +702,7 @@ const App = {
 
                 this.updateConferenceStatus();
                 this.updateParticipantsList();
+                this.updateVideoGridLayout();
                 this.updateMuteButton();
                 this.updateVideoButton();
                 this.updateHangupAllButton();
@@ -1225,6 +1227,7 @@ const App = {
         this.detachAudioSourceFromParticipant(participant);
 
         this.participants.delete(socketId);
+        this.updateVideoGridLayout();
         this.updateConferenceStatus();
         this.showMessage('Участник покинул конференцию', 'info');
         this.updateParticipantsList();
@@ -1747,11 +1750,9 @@ const App = {
             if (isEnabled) {
                 this.elements.btnMute.classList.add('active');
                 this.elements.btnMute.classList.remove('muted');
-                this.elements.btnMute.innerHTML = '🎤 Выключить микрофон';
             } else {
                 this.elements.btnMute.classList.remove('active');
                 this.elements.btnMute.classList.add('muted');
-                this.elements.btnMute.innerHTML = '🎤 Включить микрофон';
             }
         }
     },
@@ -1865,6 +1866,24 @@ const App = {
         if (socketId) {
             this.updateParticipantVideoState(socketId);
         }
+        this.updateVideoGridLayout();
+    },
+
+    updateVideoGridLayout() {
+        const grid = this.elements.videoGrid;
+        if (!grid) return;
+
+        // Count all video tiles (including self)
+        const tileCount = grid.querySelectorAll('.video-tile').length;
+        
+        // Remove all grid classes
+        grid.classList.remove('grid-1', 'grid-2', 'grid-3', 'grid-4', 'grid-5', 
+                              'grid-6', 'grid-7', 'grid-8', 'grid-9', 'grid-10');
+        
+        // Apply appropriate grid class based on count
+        if (tileCount > 0 && tileCount <= 10) {
+            grid.classList.add(`grid-${tileCount}`);
+        }
     },
 
     updateConferenceStatus() {
@@ -1905,6 +1924,7 @@ const App = {
         this.participants = new Map();
         this.presence = new Map();
         this.lastSentMediaStatus = { cam: false, mic: false };
+        this.updateVideoGridLayout();
         this.selfId = null;
 
         // Останавливаем локальный поток
@@ -1984,6 +2004,9 @@ const App = {
         tileElement.appendChild(videoElement);
         tileElement.appendChild(labelElement);
         grid.appendChild(tileElement);
+        
+        // Update grid layout after adding tile
+        this.updateVideoGridLayout();
 
         return {
             tileElement,
@@ -2047,16 +2070,13 @@ const App = {
         }
 
         btn.disabled = !!this.videoToggleInProgress;
-        btn.disabled = !!this.videoToggleInProgress;
         if (this.isVideoEnabled) {
             btn.classList.add('active');
             btn.classList.remove('muted');
-            btn.innerHTML = '📹 Выключить камеру';
             this.updateLocalVideoState(true);
         } else {
             btn.classList.remove('active');
             btn.classList.add('muted');
-            btn.innerHTML = '📹 Включить камеру';
             this.updateLocalVideoState(false);
         }
     },

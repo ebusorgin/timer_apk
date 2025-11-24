@@ -78,7 +78,8 @@ describe('conference App UI', () => {
   it('shows camera disabled state by default', () => {
     const cameraButton = App.elements.btnVideo;
     expect(cameraButton.disabled).toBe(true);
-    expect(cameraButton.textContent).toContain('Включить камеру');
+    expect(cameraButton.classList.contains('muted')).toBe(true);
+    expect(cameraButton.classList.contains('active')).toBe(false);
     expect(App.elements.localVideoTile.classList.contains('video-off')).toBe(true);
     expect(App.elements.participantsList.textContent).toContain('Камера выключена');
   });
@@ -125,7 +126,8 @@ describe('conference App UI', () => {
     expect(App.localStream.addTrack).toHaveBeenCalledWith(videoTrack);
     expect(App.elements.localVideoTile.classList.contains('video-off')).toBe(false);
     expect(App.elements.btnVideo.disabled).toBe(false);
-    expect(App.elements.btnVideo.textContent).toContain('Выключить камеру');
+    expect(App.elements.btnVideo.classList.contains('active')).toBe(true);
+    expect(App.elements.btnVideo.classList.contains('muted')).toBe(false);
     expect(App.elements.participantsList.textContent).toContain('Камера включена');
   });
 
@@ -155,7 +157,8 @@ describe('conference App UI', () => {
     expect(App.isVideoEnabled).toBe(false);
     expect(App.videoTrack).toBeNull();
     expect(App.elements.localVideoTile.classList.contains('video-off')).toBe(true);
-    expect(App.elements.btnVideo.textContent).toContain('Включить камеру');
+    expect(App.elements.btnVideo.classList.contains('active')).toBe(false);
+    expect(App.elements.btnVideo.classList.contains('muted')).toBe(true);
     expect(App.elements.participantsList.textContent).toContain('Камера выключена');
   });
 
