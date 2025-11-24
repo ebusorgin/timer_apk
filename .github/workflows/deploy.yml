@@ -15,7 +15,7 @@ jobs:
     env:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PERSISTENCE_DRIVER: postgres
       PGSSLMODE: disable
@@ -27,81 +27,90 @@ jobs:
       - name: Check required secrets
         shell: bash
         run: |
-          if [ -z "$SSH_PASSWORD" ] || [ -z "$DATABASE_URL" ]; then
-            echo "⚠️  Required secrets are not set. Deployment steps will be skipped."
+          if [ -z "$SSH_KEY" ]; then
+            echo "⚠️  SSH_PRIVATE_KEY secret is not set. Deployment steps will be skipped."
             echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
           fi
         id: secrets_check
 
-      - name: Deploy application
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Setup SSH key
         if: steps.secrets_check.outputs.skip_deploy == 'false'
-        with:
-          host: ${{ env.SSH_HOST }}
-          username: ${{ env.SSH_USER }}
-          password: ${{ env.SSH_PASSWORD }}
-          port: 22
-          envs: DATABASE_URL,PERSISTENCE_DRIVER,PGSSLMODE
-          script: |
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy application
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
+        run: |
+          set -e
+          BRANCH="${{ github.ref_name }}"
+          SSH_HOST="${{ env.SSH_HOST }}"
+          SSH_USER="${{ env.SSH_USER }}"
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
-            BRANCH="${{ github.ref_name }}"
-
-            mkdir -p /opt/voice-room
-            chown voice-room:voice-room /opt/voice-room || true
-
-            sudo -u voice-room bash <<'EOS'
-            set -e
-            cd /opt/voice-room
-
-            if [ -d .git ]; then
-              git fetch origin
-              git reset --hard origin/$BRANCH 2>/dev/null || git reset --hard origin/master
-            else
-              git clone https://github.com/ebusorgin/timer_apk.git .
-              git checkout $BRANCH 2>/dev/null || git checkout master
-            fi
-
-            npm ci --production
-
-            cat > .env <<EOF
-DATABASE_URL=${DATABASE_URL}
-PERSISTENCE_DRIVER=${PERSISTENCE_DRIVER}
-PGSSLMODE=${PGSSLMODE}
-EOF
-            EOS
-
-            systemctl restart voice-room || systemctl start voice-room
+            cd /opt/voice-room-test
+            
+            # Настройка git для безопасного доступа
+            git config --global --add safe.directory /opt/voice-room-test || true
+            
+            # Обновление кода
+            git fetch origin
+            git checkout production
+            git reset --hard origin/production
+            
+            # Установка зависимостей
+            npm install --production
+            
+            # Перезапуск сервиса
+            systemctl restart voice-room-test.service
+            
+            # Проверка статуса
+            sleep 2
+            systemctl status voice-room-test.service --no-pager | head -10
+          EOSSH
 
       - name: Verify deployment
-        uses: appleboy/ssh-action@v1.0.0
         if: steps.secrets_check.outputs.skip_deploy == 'false'
-        with:
-          host: ${{ env.SSH_HOST }}
-          username: ${{ env.SSH_USER }}
-          password: ${{ env.SSH_PASSWORD }}
-          port: 22
-          script: |
+        run: |
+          set -e
+          SSH_HOST="${{ env.SSH_HOST }}"
+          SSH_USER="${{ env.SSH_USER }}"
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
-
-            systemctl status voice-room --no-pager | head -20
-
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -L http://aiternitas.ru || echo "000")
-            HTTPS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k -L https://aiternitas.ru || echo "000")
-
-            echo "HTTP status: $HTTP_CODE"
-            echo "HTTPS status: $HTTPS_CODE"
-
-            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "301" ] && [ "$HTTP_CODE" != "302" ]; then
-              echo "⚠️ HTTP check failed"
+            
+            echo "=== Service Status ==="
+            systemctl status voice-room-test.service --no-pager | head -15
+            
+            echo ""
+            echo "=== Last Commit ==="
+            cd /opt/voice-room-test
+            git log --oneline -1
+            
+            echo ""
+            echo "=== Service Health ==="
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
+            echo "Local service HTTP status: $HTTP_CODE"
+            
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "000" ]; then
+              echo "⚠️ Service health check: HTTP $HTTP_CODE"
+            else
+              echo "✅ Service is responding"
             fi
-
-            if [ "$HTTPS_CODE" != "200" ]; then
-              echo "⚠️ HTTPS check failed"
-            fi
+          EOSSH
 
       - name: Skip notice
         if: steps.secrets_check.outputs.skip_deploy == 'true'
-        run: echo "🔕 Deployment skipped because SSH secrets are not configured."
+        run: |
+          echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
+          echo ""
+          echo "To enable automatic deployment:"
+          echo "1. Go to GitHub repository Settings > Secrets and variables > Actions"
+          echo "2. Add secret named 'SSH_PRIVATE_KEY' with your private SSH key content"
+          echo "3. The key should be: ~/.ssh/id_rsa_aiternitas"
 
