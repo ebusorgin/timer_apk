@@ -623,6 +623,7 @@ const App = {
                 cam: record.media.cam,
                 mic: record.media.mic
             };
+            this.updateLocalVideoStatusIcons();
         }
 
         this.updateParticipantUI(id);
@@ -707,6 +708,7 @@ const App = {
                 this.updateVideoButton();
                 this.updateHangupAllButton();
                 this.syncLocalMediaStatus({ force: true });
+                this.updateLocalVideoStatusIcons();
             });
 
             this.socket.on('connect_error', (error) => {
@@ -835,6 +837,7 @@ const App = {
                 mediaElement: media.mediaElement,
                 tileElement: media.tileElement,
                 labelElement: media.labelElement,
+                statusIconsElement: media.statusIconsElement,
                 pendingCandidates: [],
                 connected: false,
                 videoEnabled: false,
@@ -1058,6 +1061,7 @@ const App = {
                         console.log('✅ Remote description установлен (answer)');
                         participant.connected = true;
                         this.updateParticipantUI(data.fromSocketId);
+                this.updateParticipantStatusIcons(data.fromSocketId);
 
                         // Добавляем отложенные ICE кандидаты если есть
                         if (participant.pendingCandidates) {
@@ -1295,6 +1299,7 @@ const App = {
         this.isVideoEnabled = true;
         this.attachLocalStreamToPreview();
         this.syncLocalMediaStatus();
+        this.updateLocalVideoStatusIcons();
 
         const updateTasks = [];
         for (const [socketId, participant] of this.participants.entries()) {
@@ -1333,6 +1338,7 @@ const App = {
         this.isVideoEnabled = false;
         this.attachLocalStreamToPreview();
         this.syncLocalMediaStatus();
+        this.updateLocalVideoStatusIcons();
 
         await this.renegotiateAllPeers('disable-video', { forceLocalInitiator: true });
     },
@@ -1737,6 +1743,7 @@ const App = {
             }
 
             this.syncLocalMediaStatus();
+            this.updateLocalVideoStatusIcons();
         }
     },
 
@@ -1865,8 +1872,130 @@ const App = {
         this.updateParticipantsList();
         if (socketId) {
             this.updateParticipantVideoState(socketId);
+            this.updateParticipantStatusIcons(socketId);
         }
         this.updateVideoGridLayout();
+    },
+
+    getStatusIconSizeClass(count) {
+        if (count <= 2) return 'size-large';
+        if (count <= 4) return 'size-medium';
+        if (count <= 6) return 'size-compact';
+        return 'size-minimal';
+    },
+
+    createStatusIcon(type, status, tooltip) {
+        const icon = document.createElement('div');
+        icon.className = `video-status-icon ${type}-${status}`;
+        if (tooltip) {
+            icon.setAttribute('title', tooltip);
+        }
+
+        let svgContent = '';
+        if (type === 'connection') {
+            if (status === 'connected') {
+                svgContent = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path>
+                    </svg>
+                `;
+            } else {
+                svgContent = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path>
+                        <line x1="23" y1="1" x2="1" y2="23"></line>
+                    </svg>
+                `;
+            }
+        } else if (type === 'mic') {
+            if (status === 'on') {
+                svgContent = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                `;
+            } else {
+                svgContent = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                `;
+            }
+        } else if (type === 'cam') {
+            if (status === 'on') {
+                svgContent = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                `;
+            } else {
+                svgContent = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                `;
+            }
+        }
+
+        icon.innerHTML = svgContent;
+        return icon;
+    },
+
+    updateParticipantStatusIcons(socketId) {
+        const participant = this.participants.get(socketId);
+        if (!participant || !participant.statusIconsElement) {
+            return;
+        }
+
+        const presenceRecord = this.presence.get(socketId);
+        const media = presenceRecord?.media || { cam: false, mic: false };
+
+        const connState = participant.peerConnection ? participant.peerConnection.connectionState : 'new';
+        const iceState = participant.peerConnection ? participant.peerConnection.iceConnectionState : 'new';
+        const isConnected = connState === 'connected' || iceState === 'connected' || iceState === 'completed';
+        const hasProblems = connState === 'disconnected' || connState === 'failed' || iceState === 'failed' || iceState === 'disconnected' || connState === 'connecting';
+
+        // Получаем количество участников для определения размера индикаторов
+        const grid = this.elements.videoGrid;
+        const tileCount = grid ? grid.querySelectorAll('.video-tile').length : 1;
+
+        const icons = participant.statusIconsElement.querySelectorAll('.video-status-icon');
+        if (icons.length >= 3) {
+            // Connection icon (first) - показываем только при проблемах
+            const connectionIcon = icons[0];
+            if (hasProblems) {
+                connectionIcon.className = 'video-status-icon disconnected';
+                connectionIcon.innerHTML = this.createStatusIcon('connection', 'disconnected', 'Отключено').innerHTML;
+                connectionIcon.setAttribute('title', 'Отключено');
+                connectionIcon.classList.remove('hide-when-connected');
+            } else {
+                connectionIcon.classList.add('hide-when-connected');
+            }
+
+            // Microphone icon (second)
+            const micIcon = icons[1];
+            const micStatus = media.mic ? 'on' : 'off';
+            micIcon.className = `video-status-icon mic-${micStatus}`;
+            micIcon.innerHTML = this.createStatusIcon('mic', micStatus).innerHTML;
+            micIcon.setAttribute('title', media.mic ? 'Микрофон включен' : 'Микрофон выключен');
+
+            // Camera icon (third)
+            const camIcon = icons[2];
+            const camStatus = media.cam ? 'on' : 'off';
+            camIcon.className = `video-status-icon cam-${camStatus}`;
+            camIcon.innerHTML = this.createStatusIcon('cam', camStatus).innerHTML;
+            camIcon.setAttribute('title', media.cam ? 'Камера включена' : 'Камера выключена');
+        }
     },
 
     updateVideoGridLayout() {
@@ -1977,7 +2106,8 @@ const App = {
             return {
                 tileElement: null,
                 mediaElement: audioElement,
-                labelElement: null
+                labelElement: null,
+                statusIconsElement: null
             };
         }
 
@@ -2001,8 +2131,26 @@ const App = {
         labelElement.className = 'video-label';
         labelElement.textContent = `Участник ${socketId.substring(0, 8)}`;
 
+        // Status icons container
+        const statusIconsElement = document.createElement('div');
+        statusIconsElement.className = 'video-status-icons';
+
+        // Connection status icon (скрыт по умолчанию, показывается только при проблемах)
+        const connectionIcon = this.createStatusIcon('connection', 'disconnected', 'Отключено');
+        connectionIcon.classList.add('hide-when-connected');
+        statusIconsElement.appendChild(connectionIcon);
+
+        // Microphone status icon
+        const micIcon = this.createStatusIcon('mic', 'off', 'Микрофон выключен');
+        statusIconsElement.appendChild(micIcon);
+
+        // Camera status icon
+        const camIcon = this.createStatusIcon('cam', 'off', 'Камера выключена');
+        statusIconsElement.appendChild(camIcon);
+
         tileElement.appendChild(videoElement);
         tileElement.appendChild(labelElement);
+        tileElement.appendChild(statusIconsElement);
         grid.appendChild(tileElement);
         
         // Update grid layout after adding tile
@@ -2011,7 +2159,8 @@ const App = {
         return {
             tileElement,
             mediaElement: videoElement,
-            labelElement
+            labelElement,
+            statusIconsElement
         };
     },
 
@@ -2040,14 +2189,11 @@ const App = {
             const baseLabel = `Участник ${socketId.substring(0, 8)}`;
             let labelText = baseLabel;
 
-            if (expectedCam && participant.videoEnabled) {
-                labelText = baseLabel;
-            } else if (expectedCam && !participant.videoEnabled) {
+            // Убираем избыточный текст - информация о камере уже в иконках
+            if (expectedCam && !participant.videoEnabled) {
                 labelText = `${baseLabel} (ожидание видео)`;
-            } else if (!expectedCam && participant.videoEnabled) {
-                labelText = `${baseLabel} (статус: выкл.)`;
             } else {
-                labelText = `${baseLabel} (камера выкл.)`;
+                labelText = baseLabel;
             }
 
             participant.labelElement.textContent = labelText;
@@ -2090,7 +2236,72 @@ const App = {
         }
 
         if (label) {
-            label.textContent = isEnabled ? 'Вы' : 'Вы (камера выкл.)';
+            // Убираем избыточный текст - информация о камере уже в иконках
+            label.textContent = 'Вы';
+        }
+
+        // Update local video status icons
+        this.updateLocalVideoStatusIcons();
+    },
+
+    updateLocalVideoStatusIcons() {
+        const tile = this.elements.localVideoTile;
+        if (!tile) {
+            return;
+        }
+
+        // Get or create status icons container for local video
+        let statusIconsElement = tile.querySelector('.video-status-icons');
+        if (!statusIconsElement) {
+            statusIconsElement = document.createElement('div');
+            statusIconsElement.className = 'video-status-icons';
+
+            // Connection status icon (скрыт по умолчанию)
+            const connectionIcon = this.createStatusIcon('connection', 'connected', 'Подключено');
+            connectionIcon.classList.add('hide-when-connected');
+            statusIconsElement.appendChild(connectionIcon);
+
+            // Microphone status icon
+            const micIcon = this.createStatusIcon('mic', 'off', 'Микрофон выключен');
+            statusIconsElement.appendChild(micIcon);
+
+            // Camera status icon
+            const camIcon = this.createStatusIcon('cam', 'off', 'Камера выключена');
+            statusIconsElement.appendChild(camIcon);
+
+            tile.appendChild(statusIconsElement);
+        }
+
+        const selfMedia = this.getLocalMediaState();
+        const isConnected = this.socket && this.socket.connected;
+        const hasProblems = !isConnected;
+
+        const icons = statusIconsElement.querySelectorAll('.video-status-icon');
+        if (icons.length >= 3) {
+            // Connection icon - показываем только при проблемах
+            const connectionIcon = icons[0];
+            if (hasProblems) {
+                connectionIcon.className = 'video-status-icon disconnected';
+                connectionIcon.innerHTML = this.createStatusIcon('connection', 'disconnected', 'Отключено').innerHTML;
+                connectionIcon.setAttribute('title', 'Отключено');
+                connectionIcon.classList.remove('hide-when-connected');
+            } else {
+                connectionIcon.classList.add('hide-when-connected');
+            }
+
+            // Microphone icon
+            const micIcon = icons[1];
+            const micStatus = selfMedia.mic ? 'on' : 'off';
+            micIcon.className = `video-status-icon mic-${micStatus}`;
+            micIcon.innerHTML = this.createStatusIcon('mic', micStatus).innerHTML;
+            micIcon.setAttribute('title', selfMedia.mic ? 'Микрофон включен' : 'Микрофон выключен');
+
+            // Camera icon
+            const camIcon = icons[2];
+            const camStatus = selfMedia.cam ? 'on' : 'off';
+            camIcon.className = `video-status-icon cam-${camStatus}`;
+            camIcon.innerHTML = this.createStatusIcon('cam', camStatus).innerHTML;
+            camIcon.setAttribute('title', selfMedia.cam ? 'Камера включена' : 'Камера выключена');
         }
     },
 
@@ -2105,10 +2316,12 @@ const App = {
             localVideo.style.visibility = 'visible';
             this.updateLocalVideoState(this.isVideoEnabled);
             this.forcePlayMediaElement(localVideo, 'local-preview', { keepMuted: true });
+            this.updateLocalVideoStatusIcons();
         } else {
             localVideo.srcObject = null;
             localVideo.style.visibility = 'hidden';
             this.updateLocalVideoState(false);
+            this.updateLocalVideoStatusIcons();
         }
     }
 };
