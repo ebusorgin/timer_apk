@@ -1760,6 +1760,9 @@ const App = {
         const list = this.elements.participantsList;
         if (!list) return;
 
+        // Clear the list but keep it visible if it will have content
+        const hasParticipants = this.presence.size > 0 || this.participants.size > 0;
+        
         list.innerHTML = '';
 
         const selfMedia = this.getLocalMediaState();
