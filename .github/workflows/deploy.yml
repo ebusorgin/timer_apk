@@ -53,25 +53,38 @@ jobs:
           
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
-            cd /opt/voice-room-test
             
-            # Настройка git для безопасного доступа
-            git config --global --add safe.directory /opt/voice-room-test || true
+            # Функция для обновления сервиса
+            update_service() {
+              local SERVICE_DIR=$1
+              local SERVICE_NAME=$2
+              
+              echo "=== Updating $SERVICE_NAME ==="
+              cd "$SERVICE_DIR"
+              
+              # Настройка git для безопасного доступа
+              git config --global --add safe.directory "$SERVICE_DIR" || true
+              
+              # Обновление кода
+              git fetch origin
+              git checkout production
+              git reset --hard origin/production
+              
+              # Установка зависимостей
+              npm install --production
+              
+              # Перезапуск сервиса
+              systemctl restart "$SERVICE_NAME"
+              
+              # Проверка статуса
+              sleep 2
+              systemctl status "$SERVICE_NAME" --no-pager | head -10
+              echo ""
+            }
             
-            # Обновление кода
-            git fetch origin
-            git checkout production
-            git reset --hard origin/production
-            
-            # Установка зависимостей
-            npm install --production
-            
-            # Перезапуск сервиса
-            systemctl restart voice-room-test.service
-            
-            # Проверка статуса
-            sleep 2
-            systemctl status voice-room-test.service --no-pager | head -10
+            # Обновляем оба сервиса
+            update_service /opt/voice-room-test voice-room-test.service
+            update_service /opt/voice-room voice-room.service
           EOSSH
 
       - name: Verify deployment
@@ -85,22 +98,30 @@ jobs:
             set -e
             
             echo "=== Service Status ==="
-            systemctl status voice-room-test.service --no-pager | head -15
+            echo "--- voice-room-test.service (port 3001) ---"
+            systemctl status voice-room-test.service --no-pager | head -10
+            echo ""
+            echo "--- voice-room.service (port 3000) ---"
+            systemctl status voice-room.service --no-pager | head -10
             
             echo ""
-            echo "=== Last Commit ==="
-            cd /opt/voice-room-test
-            git log --oneline -1
+            echo "=== Last Commits ==="
+            echo "--- voice-room-test ---"
+            cd /opt/voice-room-test && git log --oneline -1
+            echo "--- voice-room ---"
+            cd /opt/voice-room && git log --oneline -1
             
             echo ""
             echo "=== Service Health ==="
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
-            echo "Local service HTTP status: $HTTP_CODE"
+            HTTP_CODE_3001=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
+            HTTP_CODE_3000=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
+            echo "voice-room-test (3001) HTTP status: $HTTP_CODE_3001"
+            echo "voice-room (3000) HTTP status: $HTTP_CODE_3000"
             
-            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "000" ]; then
-              echo "⚠️ Service health check: HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE_3001" = "200" ] && [ "$HTTP_CODE_3000" = "200" ]; then
+              echo "✅ Both services are responding"
             else
-              echo "✅ Service is responding"
+              echo "⚠️ Some services may not be responding correctly"
             fi
           EOSSH
 
