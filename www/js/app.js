@@ -1747,9 +1747,11 @@ const App = {
             if (isEnabled) {
                 this.elements.btnMute.classList.add('active');
                 this.elements.btnMute.classList.remove('muted');
+                this.elements.btnMute.innerHTML = '🎤 Выключить микрофон';
             } else {
                 this.elements.btnMute.classList.remove('active');
                 this.elements.btnMute.classList.add('muted');
+                this.elements.btnMute.innerHTML = '🎤 Включить микрофон';
             }
         }
     },
@@ -2046,10 +2048,12 @@ const App = {
         if (this.isVideoEnabled) {
             btn.classList.add('active');
             btn.classList.remove('muted');
+            btn.innerHTML = '📹 Выключить камеру';
             this.updateLocalVideoState(true);
         } else {
             btn.classList.remove('active');
             btn.classList.add('muted');
+            btn.innerHTML = '📹 Включить камеру';
             this.updateLocalVideoState(false);
         }
     },
