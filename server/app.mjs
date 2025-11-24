@@ -89,7 +89,16 @@ export function createServerApp(options = {}) {
   });
 
   if (existsSync(config.paths.www)) {
-    app.use(express.static(config.paths.www));
+    app.use(express.static(config.paths.www, {
+      setHeaders: (res, path) => {
+        // Не кешировать CSS и JS файлы для разработки
+        if (path.endsWith('.css') || path.endsWith('.js')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      }
+    }));
   }
 
   const metrics = createMetrics({
