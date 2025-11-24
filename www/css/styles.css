@@ -2,14 +2,16 @@
     /* Core Palette - Deep Space & Neon */
     --bg-dark: #0f172a;
     --bg-darker: #020617;
-    --primary: #6366f1; /* Indigo 500 */
+    --primary: #6366f1;
+    /* Indigo 500 */
     --primary-glow: rgba(99, 102, 241, 0.5);
-    --accent: #ec4899; /* Pink 500 */
+    --accent: #ec4899;
+    /* Pink 500 */
     --accent-glow: rgba(236, 72, 153, 0.5);
     --success: #10b981;
     --danger: #ef4444;
     --warning: #f59e0b;
-    
+
     /* Glassmorphism */
     --glass-bg: rgba(30, 41, 59, 0.7);
     --glass-border: rgba(255, 255, 255, 0.1);
@@ -19,7 +21,7 @@
     /* Text */
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
-    
+
     /* Spacing & Radius */
     --radius-lg: 24px;
     --radius-md: 16px;
@@ -35,7 +37,7 @@
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: var(--bg-darker);
-    background-image: 
+    background-image:
         radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
         radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 40%);
     color: var(--text-main);
@@ -82,8 +84,15 @@ body::before {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Glass Container */
@@ -109,7 +118,7 @@ body::before {
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
 }
 
 .conference-container {
@@ -121,12 +130,14 @@ body::before {
 }
 
 /* Typography */
-h1, h2 {
+h1,
+h2 {
     font-weight: 700;
     letter-spacing: -0.02em;
     margin-bottom: 16px;
     background: linear-gradient(to right, #fff, #cbd5e1);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -240,9 +251,11 @@ h2 {
 .video-grid::-webkit-scrollbar {
     width: 6px;
 }
+
 .video-grid::-webkit-scrollbar-track {
     background: transparent;
 }
+
 .video-grid::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
@@ -377,7 +390,8 @@ h2 {
     border-radius: var(--radius-md);
     border: 1px solid var(--glass-border);
     padding: 16px;
-    display: none; /* Hidden by default, could be toggled */
+    display: none;
+    /* Hidden by default, could be toggled */
 }
 
 @media (max-width: 768px) {
@@ -385,11 +399,11 @@ h2 {
         padding: 12px;
         height: 100vh;
     }
-    
+
     .video-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .conference-controls {
         padding: 12px;
         gap: 12px;
