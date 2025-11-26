@@ -10,7 +10,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy Conference to aiternitas.ru
+    name: Deploy Conference to apk.aiternitas.ru
     runs-on: ubuntu-latest
     env:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
@@ -43,34 +43,41 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy Conference application
+      - name: Deploy Conference
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
           set -e
-          BRANCH="${{ github.ref_name }}"
           SSH_HOST="${{ env.SSH_HOST }}"
           SSH_USER="${{ env.SSH_USER }}"
           
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            # Обновляем репозиторий Conference
-            REPO_DIR="/opt/voice-room-test"
+            REPO_DIR="/opt/conference"
+            
+            # Создаем директорию если не существует
+            if [ ! -d "$REPO_DIR" ]; then
+              mkdir -p "$REPO_DIR"
+              cd "$REPO_DIR"
+              git init
+              git remote add origin git@github.com:ebusorgin/conference.git || true
+            fi
+            
             cd "$REPO_DIR"
             git config --global --add safe.directory "$REPO_DIR" || true
             git fetch origin
-            git checkout production
+            git checkout production || git checkout -b production
             git reset --hard origin/production
             
-            # Обновляем Conference сервис
-            echo "=== Updating Conference (voice-room-test.service) ==="
-            cd "$REPO_DIR/Conference"
+            # Установка зависимостей
             if [ -f "package.json" ]; then
               npm install --production
             fi
-            systemctl restart voice-room-test.service
+            
+            # Перезапуск сервиса
+            systemctl restart conference.service || echo "Service conference.service not found, will be created"
             sleep 2
-            systemctl status voice-room-test.service --no-pager | head -10
+            systemctl status conference.service --no-pager | head -10 || true
             echo ""
           EOSSH
 
@@ -84,20 +91,19 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            echo "=== Service Status ==="
-            echo "--- voice-room-test.service (Conference, port 3000) ---"
-            systemctl status voice-room-test.service --no-pager | head -10
+            echo "=== Conference Service Status ==="
+            systemctl status conference.service --no-pager | head -10 || echo "Service not found"
             
             echo ""
             echo "=== Last Commit ==="
-            cd /opt/voice-room-test && git log --oneline -1
+            cd /opt/conference && git log --oneline -1 || echo "No commits yet"
             
             echo ""
             echo "=== Service Health ==="
-            HTTP_CODE_3000=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
-            echo "Conference (3000) HTTP status: $HTTP_CODE_3000"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
+            echo "Conference (3000) HTTP status: $HTTP_CODE"
             
-            if [ "$HTTP_CODE_3000" = "200" ]; then
+            if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Conference service is responding"
             else
               echo "⚠️ Conference service may not be responding correctly"
@@ -108,8 +114,4 @@ jobs:
         if: steps.secrets_check.outputs.skip_deploy == 'true'
         run: |
           echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
-          echo ""
-          echo "To enable automatic deployment:"
-          echo "1. Go to GitHub repository Settings > Secrets and variables > Actions"
-          echo "2. Add secret named 'SSH_PRIVATE_KEY' with your private SSH key content"
-          echo "3. The key should be: ~/.ssh/id_rsa_aiternitas"
+

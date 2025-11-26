@@ -1,0 +1,19 @@
+node_modules/
+.env
+*.log
+.DS_Store
+coverage/
+dist/
+build/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+tests/e2e/artifacts/*.json
+
+# IDE
+.idea/
+.vscode/
+*.iml
+

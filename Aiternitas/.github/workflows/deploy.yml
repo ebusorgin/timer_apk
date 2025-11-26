@@ -1,4 +1,4 @@
-name: Deploy Conference to Production
+name: Deploy Aiternitas to Production
 
 on:
   push:
@@ -10,15 +10,12 @@ on:
 
 jobs:
   deploy:
-    name: Deploy Conference to aiternitas.ru
+    name: Deploy Aiternitas to aiternitas.ru
     runs-on: ubuntu-latest
     env:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PERSISTENCE_DRIVER: postgres
-      PGSSLMODE: disable
 
     steps:
       - name: Checkout code
@@ -43,34 +40,41 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy Conference application
+      - name: Deploy Aiternitas
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
           set -e
-          BRANCH="${{ github.ref_name }}"
           SSH_HOST="${{ env.SSH_HOST }}"
           SSH_USER="${{ env.SSH_USER }}"
           
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            # Обновляем репозиторий Conference
-            REPO_DIR="/opt/voice-room-test"
+            REPO_DIR="/opt/aiternitas"
+            
+            # Создаем директорию если не существует
+            if [ ! -d "$REPO_DIR" ]; then
+              mkdir -p "$REPO_DIR"
+              cd "$REPO_DIR"
+              git init
+              git remote add origin git@github.com:ebusorgin/aiternitas.git || true
+            fi
+            
             cd "$REPO_DIR"
             git config --global --add safe.directory "$REPO_DIR" || true
             git fetch origin
-            git checkout production
+            git checkout production || git checkout -b production
             git reset --hard origin/production
             
-            # Обновляем Conference сервис
-            echo "=== Updating Conference (voice-room-test.service) ==="
-            cd "$REPO_DIR/Conference"
+            # Установка зависимостей
             if [ -f "package.json" ]; then
               npm install --production
             fi
-            systemctl restart voice-room-test.service
+            
+            # Перезапуск сервиса
+            systemctl restart aiternitas-main.service
             sleep 2
-            systemctl status voice-room-test.service --no-pager | head -10
+            systemctl status aiternitas-main.service --no-pager | head -10
             echo ""
           EOSSH
 
@@ -84,23 +88,22 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            echo "=== Service Status ==="
-            echo "--- voice-room-test.service (Conference, port 3000) ---"
-            systemctl status voice-room-test.service --no-pager | head -10
+            echo "=== Aiternitas Service Status ==="
+            systemctl status aiternitas-main.service --no-pager | head -10
             
             echo ""
             echo "=== Last Commit ==="
-            cd /opt/voice-room-test && git log --oneline -1
+            cd /opt/aiternitas && git log --oneline -1 || echo "No commits yet"
             
             echo ""
             echo "=== Service Health ==="
-            HTTP_CODE_3000=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
-            echo "Conference (3000) HTTP status: $HTTP_CODE_3000"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
+            echo "Aiternitas (3001) HTTP status: $HTTP_CODE"
             
-            if [ "$HTTP_CODE_3000" = "200" ]; then
-              echo "✅ Conference service is responding"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Aiternitas service is responding"
             else
-              echo "⚠️ Conference service may not be responding correctly"
+              echo "⚠️ Aiternitas service may not be responding correctly"
             fi
           EOSSH
 
@@ -108,8 +111,3 @@ jobs:
         if: steps.secrets_check.outputs.skip_deploy == 'true'
         run: |
           echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
-          echo ""
-          echo "To enable automatic deployment:"
-          echo "1. Go to GitHub repository Settings > Secrets and variables > Actions"
-          echo "2. Add secret named 'SSH_PRIVATE_KEY' with your private SSH key content"
-          echo "3. The key should be: ~/.ssh/id_rsa_aiternitas"
