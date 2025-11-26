@@ -64,7 +64,7 @@ jobs:
             
             # Обновляем Conference сервис
             echo "=== Updating Conference (voice-room-test.service) ==="
-            cd "$REPO_DIR/Conference"
+            cd "$REPO_DIR/conference.aiternitas.ru"
             if [ -f "package.json" ]; then
               npm install --production
             fi

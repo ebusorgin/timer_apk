@@ -3,8 +3,8 @@
 ## Цель
 
 Разделить текущий репозиторий `timer_apk` на два независимых репозитория:
-1. **conference** - проект видеоконференций (папка `Conference/`)
-2. **aiternitas** - главная страница (папка `Aiternitas/`)
+1. **conference** - проект видеоконференций (папка `conference.aiternitas.ru/`)
+2. **aiternitas** - главная страница (папка `aiternitas.ru/`)
 
 ## Шаг 1: Создание репозиториев на GitHub
 
@@ -25,8 +25,8 @@
 ## Шаг 2: Подготовка Conference репозитория
 
 ```bash
-# Перейти в папку Conference
-cd Conference
+# Перейти в папку conference.aiternitas.ru
+cd conference.aiternitas.ru
 
 # Инициализировать git (если еще не инициализирован)
 git init
@@ -51,8 +51,8 @@ git push -u origin main  # если нужна ветка main
 ## Шаг 3: Подготовка Aiternitas репозитория
 
 ```bash
-# Перейти в папку Aiternitas
-cd Aiternitas
+# Перейти в папку aiternitas.ru
+cd aiternitas.ru
 
 # Инициализировать git (если еще не инициализирован)
 git init
