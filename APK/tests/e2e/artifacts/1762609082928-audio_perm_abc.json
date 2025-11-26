@@ -1,0 +1,1249 @@
+{
+  "phases": [
+    {
+      "label": "phase_1_A",
+      "expectations": [
+        {
+          "expectation": {
+            "page": "A",
+            "expectLocalAudio": true
+          },
+          "passed": true,
+          "localAudioTrack": {
+            "kind": "audio",
+            "enabled": true,
+            "muted": false,
+            "readyState": "live"
+          }
+        },
+        {
+          "expectation": {
+            "page": "B",
+            "expectAudioFrom": "A",
+            "minPackets": 10
+          },
+          "passed": false,
+          "packetsReceived": 302,
+          "deltaPackets": 128,
+          "previousPackets": 174,
+          "minPackets": 10,
+          "trackLive": true,
+          "playbackMuted": true
+        },
+        {
+          "expectation": {
+            "page": "C",
+            "expectAudioFrom": "A",
+            "minPackets": 10
+          },
+          "passed": true,
+          "packetsReceived": 226,
+          "deltaPackets": 128,
+          "previousPackets": 98,
+          "minPackets": 10,
+          "trackLive": true,
+          "playbackMuted": false
+        }
+      ],
+      "states": {
+        "A": {
+          "socketId": "Nk3vBD8KHKgWZel_AAAB",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "ilt98e6nB6wmrOGlAAAD",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A1268323676",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 7104,
+                  "packetsReceived": 301
+                },
+                {
+                  "id": "OT01A430799991",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 8772,
+                  "packetsSent": 302,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V4082431363",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "9SbaNLw0Anrni4YdAAAF",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A2103249239",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 4248,
+                  "packetsReceived": 226
+                },
+                {
+                  "id": "OT01A1016033871",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 7070,
+                  "packetsSent": 226,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": true,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        },
+        "B": {
+          "socketId": "ilt98e6nB6wmrOGlAAAD",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "Nk3vBD8KHKgWZel_AAAB",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": true,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A430799991",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 8772,
+                  "packetsReceived": 302
+                },
+                {
+                  "id": "OT01A1268323676",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 7107,
+                  "packetsSent": 302,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "9SbaNLw0Anrni4YdAAAF",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A2225245415",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 4213,
+                  "packetsReceived": 225
+                },
+                {
+                  "id": "OT01A4257987862",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 2643,
+                  "packetsSent": 225,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": false,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        },
+        "C": {
+          "socketId": "9SbaNLw0Anrni4YdAAAF",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "Nk3vBD8KHKgWZel_AAAB",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": true,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A1016033871",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 7070,
+                  "packetsReceived": 226
+                },
+                {
+                  "id": "OT01A2103249239",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 4248,
+                  "packetsSent": 226,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V2211339322",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "ilt98e6nB6wmrOGlAAAD",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A4257987862",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 2643,
+                  "packetsReceived": 225
+                },
+                {
+                  "id": "OT01A2225245415",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 4213,
+                  "packetsSent": 225,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V2892216650",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": false,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "phase_2_B",
+      "expectations": [
+        {
+          "expectation": {
+            "page": "B",
+            "expectLocalAudio": true
+          },
+          "passed": true,
+          "localAudioTrack": {
+            "kind": "audio",
+            "enabled": true,
+            "muted": false,
+            "readyState": "live"
+          }
+        },
+        {
+          "expectation": {
+            "page": "A",
+            "expectAudioFrom": "B",
+            "minPackets": 10
+          },
+          "passed": true,
+          "packetsReceived": 429,
+          "deltaPackets": 128,
+          "previousPackets": 301,
+          "minPackets": 10,
+          "trackLive": true,
+          "playbackMuted": false
+        },
+        {
+          "expectation": {
+            "page": "C",
+            "expectAudioFrom": "B",
+            "minPackets": 10
+          },
+          "passed": true,
+          "packetsReceived": 352,
+          "deltaPackets": 127,
+          "previousPackets": 225,
+          "minPackets": 10,
+          "trackLive": true,
+          "playbackMuted": false
+        }
+      ],
+      "states": {
+        "A": {
+          "socketId": "Nk3vBD8KHKgWZel_AAAB",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "ilt98e6nB6wmrOGlAAAD",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": true,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A1268323676",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 9838,
+                  "packetsReceived": 429
+                },
+                {
+                  "id": "OT01A430799991",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 9153,
+                  "packetsSent": 429,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V4082431363",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "9SbaNLw0Anrni4YdAAAF",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A2103249239",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 4629,
+                  "packetsReceived": 353
+                },
+                {
+                  "id": "OT01A1016033871",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 7451,
+                  "packetsSent": 353,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": false,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        },
+        "B": {
+          "socketId": "ilt98e6nB6wmrOGlAAAD",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "Nk3vBD8KHKgWZel_AAAB",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A430799991",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 9153,
+                  "packetsReceived": 429
+                },
+                {
+                  "id": "OT01A1268323676",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 9838,
+                  "packetsSent": 429,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "9SbaNLw0Anrni4YdAAAF",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A2225245415",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 4594,
+                  "packetsReceived": 352
+                },
+                {
+                  "id": "OT01A4257987862",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 5374,
+                  "packetsSent": 352,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": true,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        },
+        "C": {
+          "socketId": "9SbaNLw0Anrni4YdAAAF",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "Nk3vBD8KHKgWZel_AAAB",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A1016033871",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 7451,
+                  "packetsReceived": 353
+                },
+                {
+                  "id": "OT01A2103249239",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 4629,
+                  "packetsSent": 353,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V2211339322",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "ilt98e6nB6wmrOGlAAAD",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": true,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A4257987862",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 5374,
+                  "packetsReceived": 352
+                },
+                {
+                  "id": "OT01A2225245415",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 4594,
+                  "packetsSent": 352,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V2892216650",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": false,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "phase_3_C",
+      "expectations": [
+        {
+          "expectation": {
+            "page": "C",
+            "expectLocalAudio": true
+          },
+          "passed": true,
+          "localAudioTrack": {
+            "kind": "audio",
+            "enabled": true,
+            "muted": false,
+            "readyState": "live"
+          }
+        },
+        {
+          "expectation": {
+            "page": "A",
+            "expectAudioFrom": "C",
+            "minPackets": 10
+          },
+          "passed": false,
+          "packetsReceived": 480,
+          "deltaPackets": 127,
+          "previousPackets": 353,
+          "minPackets": 10,
+          "trackLive": true,
+          "playbackMuted": true
+        },
+        {
+          "expectation": {
+            "page": "B",
+            "expectAudioFrom": "C",
+            "minPackets": 10
+          },
+          "passed": false,
+          "packetsReceived": 479,
+          "deltaPackets": 127,
+          "previousPackets": 352,
+          "minPackets": 10,
+          "trackLive": true,
+          "playbackMuted": true
+        }
+      ],
+      "states": {
+        "A": {
+          "socketId": "Nk3vBD8KHKgWZel_AAAB",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "ilt98e6nB6wmrOGlAAAD",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A1268323676",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 10216,
+                  "packetsReceived": 555
+                },
+                {
+                  "id": "OT01A430799991",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 9534,
+                  "packetsSent": 556,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V4082431363",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "9SbaNLw0Anrni4YdAAAF",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": true,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A2103249239",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 7360,
+                  "packetsReceived": 480
+                },
+                {
+                  "id": "OT01A1016033871",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 7832,
+                  "packetsSent": 480,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": false,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        },
+        "B": {
+          "socketId": "ilt98e6nB6wmrOGlAAAD",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "Nk3vBD8KHKgWZel_AAAB",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A430799991",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 9534,
+                  "packetsReceived": 556
+                },
+                {
+                  "id": "OT01A1268323676",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 10216,
+                  "packetsSent": 555,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "9SbaNLw0Anrni4YdAAAF",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": true,
+              "hasMediaElement": true,
+              "mediaElementMuted": true,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                },
+                {
+                  "kind": "video",
+                  "enabled": true,
+                  "muted": true,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A2225245415",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 7325,
+                  "packetsReceived": 479
+                },
+                {
+                  "id": "OT01A4257987862",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 5755,
+                  "packetsSent": 479,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": false,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        },
+        "C": {
+          "socketId": "9SbaNLw0Anrni4YdAAAF",
+          "isVideoEnabled": false,
+          "localAudioMuted": false,
+          "participants": [
+            {
+              "id": "Nk3vBD8KHKgWZel_AAAB",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A1016033871",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 7832,
+                  "packetsReceived": 480
+                },
+                {
+                  "id": "OT01A2103249239",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 7360,
+                  "packetsSent": 480,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V2211339322",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            },
+            {
+              "id": "ilt98e6nB6wmrOGlAAAD",
+              "videoEnabled": false,
+              "presenceCam": false,
+              "presenceMic": false,
+              "hasMediaElement": true,
+              "mediaElementMuted": false,
+              "mediaElementVolume": 1,
+              "signalingState": "stable",
+              "connectionState": "connected",
+              "iceState": "connected",
+              "tracks": [
+                {
+                  "kind": "audio",
+                  "enabled": true,
+                  "muted": false,
+                  "readyState": "live"
+                }
+              ],
+              "stats": [
+                {
+                  "id": "IT01A4257987862",
+                  "type": "inbound-rtp",
+                  "kind": "audio",
+                  "bytesReceived": 5755,
+                  "packetsReceived": 479
+                },
+                {
+                  "id": "OT01A2225245415",
+                  "type": "outbound-rtp",
+                  "kind": "audio",
+                  "bytesSent": 7325,
+                  "packetsSent": 479,
+                  "nackCount": 0
+                },
+                {
+                  "id": "OT01V2892216650",
+                  "type": "outbound-rtp",
+                  "kind": "video",
+                  "bytesSent": 0,
+                  "framesEncoded": 0,
+                  "packetsSent": 0,
+                  "nackCount": 0
+                }
+              ]
+            }
+          ],
+          "localTracks": [
+            {
+              "kind": "audio",
+              "enabled": true,
+              "muted": false,
+              "readyState": "live"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "logs": [
+    "[A] LOG: Conference App initializing...",
+    "[A] LOG: ✅ App инициализирован",
+    "[A] ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[A] LOG: Подключение к конференции...",
+    "[A] LOG: Создание Socket.IO соединения...",
+    "[A] LOG: 🌐 SERVER_URL: http://localhost:4100",
+    "[A] LOG: Запрос доступа к микрофону...",
+    "[A] LOG: ✅ Доступ к микрофону получен",
+    "[A] LOG: ✅ Socket.IO подключен: Nk3vBD8KHKgWZel_AAAB",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📡 [presence:sync] Получен снимок участников: JSHandle@array selfId: Nk3vBD8KHKgWZel_AAAB",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: Conference App initializing...",
+    "[B] LOG: ✅ App инициализирован",
+    "[B] LOG: Подключение к конференции...",
+    "[B] LOG: Создание Socket.IO соединения...",
+    "[B] LOG: 🌐 SERVER_URL: http://localhost:4100",
+    "[B] LOG: Запрос доступа к микрофону...",
+    "[B] LOG: ✅ Доступ к микрофону получен",
+    "[B] LOG: ✅ Socket.IO подключен: ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 📡 [presence:update] JSHandle@object",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📡 [presence:sync] Получен снимок участников: JSHandle@array selfId: ilt98e6nB6wmrOGlAAAD",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📤 Создание offer для ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 🔄 Signaling state с ilt98e6nB6wmrOGlAAAD: have-local-offer",
+    "[A] LOG: ✅ Offer создан и отправлен для ilt98e6nB6wmrOGlAAAD",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: offer от Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 📥 Установка удаленного описания (offer)",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 🧊 Получен ICE кандидат от Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 🧊 Получен ICE кандидат от Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[B] LOG: 🔄 Signaling state с Nk3vBD8KHKgWZel_AAAB: have-remote-offer",
+    "[B] LOG: 🎥 Получен трек от Nk3vBD8KHKgWZel_AAAB audio JSHandle@object",
+    "[B] LOG: 🎥 Получен трек от Nk3vBD8KHKgWZel_AAAB video JSHandle@object",
+    "[B] LOG: 📥 Создание answer для Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: 🔄 Signaling state с Nk3vBD8KHKgWZel_AAAB: stable",
+    "[B] LOG: ✅ Answer создан и отправлен для Nk3vBD8KHKgWZel_AAAB",
+    "[B] LOG: 🧊 ICE соединение с Nk3vBD8KHKgWZel_AAAB: checking",
+    "[B] LOG: 🔗 Соединение с Nk3vBD8KHKgWZel_AAAB: connecting",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: answer от ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 📥 Получен answer от ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 📊 Текущее состояние соединения: have-local-offer",
+    "[A] LOG: 🧊 ICE соединение с ilt98e6nB6wmrOGlAAAD: checking",
+    "[B] LOG: 🧊 ICE соединение с Nk3vBD8KHKgWZel_AAAB: connected",
+    "[A] LOG: 🔗 Соединение с ilt98e6nB6wmrOGlAAAD: connecting",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🧊 Получен ICE кандидат от ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[A] LOG: 🔄 Signaling state с ilt98e6nB6wmrOGlAAAD: stable",
+    "[B] LOG: 🔗 Соединение с Nk3vBD8KHKgWZel_AAAB: connected",
+    "[A] LOG: 🎥 Получен трек от ilt98e6nB6wmrOGlAAAD audio JSHandle@object",
+    "[A] LOG: 🧊 ICE соединение с ilt98e6nB6wmrOGlAAAD: connected",
+    "[A] LOG: ✅ Remote description установлен (answer)",
+    "[A] LOG: 🔗 Соединение с ilt98e6nB6wmrOGlAAAD: connected",
+    "[C] LOG: Conference App initializing...",
+    "[C] LOG: ✅ App инициализирован",
+    "[C] LOG: Подключение к конференции...",
+    "[C] LOG: Создание Socket.IO соединения...",
+    "[C] LOG: 🌐 SERVER_URL: http://localhost:4100",
+    "[C] LOG: Запрос доступа к микрофону...",
+    "[C] LOG: ✅ Доступ к микрофону получен",
+    "[C] LOG: ✅ Socket.IO подключен: 9SbaNLw0Anrni4YdAAAF",
+    "[A] LOG: 📡 [presence:update] JSHandle@object",
+    "[C] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📡 [presence:update] JSHandle@object",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[C] LOG: 📡 [presence:sync] Получен снимок участников: JSHandle@array selfId: 9SbaNLw0Anrni4YdAAAF",
+    "[C] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[C] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[C] LOG: 📤 Создание offer для Nk3vBD8KHKgWZel_AAAB",
+    "[C] LOG: 🔄 Signaling state с Nk3vBD8KHKgWZel_AAAB: have-local-offer",
+    "[C] LOG: ✅ Offer создан и отправлен для Nk3vBD8KHKgWZel_AAAB",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: offer от 9SbaNLw0Anrni4YdAAAF",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 📥 Установка удаленного описания (offer)",
+    "[C] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[C] LOG: 📤 Создание offer для ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 🔄 Signaling state с 9SbaNLw0Anrni4YdAAAF: have-remote-offer",
+    "[A] LOG: 🎥 Получен трек от 9SbaNLw0Anrni4YdAAAF audio JSHandle@object",
+    "[A] LOG: 🎥 Получен трек от 9SbaNLw0Anrni4YdAAAF video JSHandle@object",
+    "[A] LOG: 📥 Создание answer для 9SbaNLw0Anrni4YdAAAF",
+    "[C] LOG: 🔄 Signaling state с ilt98e6nB6wmrOGlAAAD: have-local-offer",
+    "[C] LOG: ✅ Offer создан и отправлен для ilt98e6nB6wmrOGlAAAD",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: offer от 9SbaNLw0Anrni4YdAAAF",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🧊 Получен ICE кандидат от 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 📥 Установка удаленного описания (offer)",
+    "[A] LOG: 🔄 Signaling state с 9SbaNLw0Anrni4YdAAAF: stable",
+    "[A] LOG: ✅ Answer создан и отправлен для 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 🧊 Получен ICE кандидат от 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[A] LOG: ✅ ICE кандидат добавлен",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от 9SbaNLw0Anrni4YdAAAF",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🧊 Получен ICE кандидат от 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: 🔄 Signaling state с 9SbaNLw0Anrni4YdAAAF: have-remote-offer",
+    "[B] LOG: 🎥 Получен трек от 9SbaNLw0Anrni4YdAAAF audio JSHandle@object",
+    "[A] LOG: ✅ ICE кандидат добавлен",
+    "[B] LOG: 🎥 Получен трек от 9SbaNLw0Anrni4YdAAAF video JSHandle@object",
+    "[A] LOG: 🧊 ICE соединение с 9SbaNLw0Anrni4YdAAAF: checking",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от 9SbaNLw0Anrni4YdAAAF",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 🧊 Получен ICE кандидат от 9SbaNLw0Anrni4YdAAAF",
+    "[A] LOG: 🔗 Соединение с 9SbaNLw0Anrni4YdAAAF: connecting",
+    "[B] LOG: 📥 Создание answer для 9SbaNLw0Anrni4YdAAAF",
+    "[C] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: answer от Nk3vBD8KHKgWZel_AAAB",
+    "[C] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[C] LOG: 📥 Получен answer от Nk3vBD8KHKgWZel_AAAB",
+    "[C] LOG: 📊 Текущее состояние соединения: have-local-offer",
+    "[A] LOG: 🧊 ICE соединение с 9SbaNLw0Anrni4YdAAAF: connected",
+    "[C] LOG: 🧊 ICE соединение с Nk3vBD8KHKgWZel_AAAB: checking",
+    "[C] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от Nk3vBD8KHKgWZel_AAAB",
+    "[C] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[C] LOG: 🧊 Получен ICE кандидат от Nk3vBD8KHKgWZel_AAAB",
+    "[C] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[C] LOG: 🔗 Соединение с Nk3vBD8KHKgWZel_AAAB: connecting",
+    "[B] LOG: ✅ ICE кандидат добавлен",
+    "[A] LOG: 🔗 Соединение с 9SbaNLw0Anrni4YdAAAF: connected",
+    "[C] LOG: 🔄 Signaling state с Nk3vBD8KHKgWZel_AAAB: stable",
+    "[B] LOG: 🔄 Signaling state с 9SbaNLw0Anrni4YdAAAF: stable",
+    "[C] LOG: 🎥 Получен трек от Nk3vBD8KHKgWZel_AAAB audio JSHandle@object",
+    "[B] LOG: ✅ Answer создан и отправлен для 9SbaNLw0Anrni4YdAAAF",
+    "[C] LOG: 🧊 ICE соединение с Nk3vBD8KHKgWZel_AAAB: connected",
+    "[C] LOG: ✅ Remote description установлен (answer)",
+    "[B] LOG: 🧊 ICE соединение с 9SbaNLw0Anrni4YdAAAF: checking",
+    "[B] LOG: 🔗 Соединение с 9SbaNLw0Anrni4YdAAAF: connecting",
+    "[B] LOG: 🧊 ICE соединение с 9SbaNLw0Anrni4YdAAAF: connected",
+    "[C] LOG: 🔗 Соединение с Nk3vBD8KHKgWZel_AAAB: connected",
+    "[C] LOG: 🧊 ICE соединение с ilt98e6nB6wmrOGlAAAD: checking",
+    "[C] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: answer от ilt98e6nB6wmrOGlAAAD",
+    "[C] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[C] LOG: 📥 Получен answer от ilt98e6nB6wmrOGlAAAD",
+    "[C] LOG: 📊 Текущее состояние соединения: have-local-offer",
+    "[C] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от ilt98e6nB6wmrOGlAAAD",
+    "[C] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[C] LOG: 🧊 Получен ICE кандидат от ilt98e6nB6wmrOGlAAAD",
+    "[C] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[C] LOG: 🔗 Соединение с ilt98e6nB6wmrOGlAAAD: connecting",
+    "[B] LOG: 🔗 Соединение с 9SbaNLw0Anrni4YdAAAF: connected",
+    "[C] LOG: 🔄 Signaling state с ilt98e6nB6wmrOGlAAAD: stable",
+    "[C] LOG: 🎥 Получен трек от ilt98e6nB6wmrOGlAAAD audio JSHandle@object",
+    "[C] LOG: 🧊 ICE соединение с ilt98e6nB6wmrOGlAAAD: connected",
+    "[C] LOG: ✅ Remote description установлен (answer)",
+    "[C] LOG: 🔗 Соединение с ilt98e6nB6wmrOGlAAAD: connected"
+  ]
+}

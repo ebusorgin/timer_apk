@@ -1,0 +1,238 @@
+{
+  "stateA": {
+    "socketId": "rIeHSzLdaj2EhSSQAAAD",
+    "isVideoEnabled": false,
+    "participants": [
+      {
+        "id": "lZb8r8jcVBcIVvM1AAAB",
+        "videoEnabled": true,
+        "presenceCam": true,
+        "presenceMic": true,
+        "hasMediaElement": true,
+        "signalingState": "stable",
+        "connectionState": "connected",
+        "iceState": "connected",
+        "tracks": [
+          {
+            "kind": "audio",
+            "enabled": true,
+            "muted": false,
+            "readyState": "live"
+          },
+          {
+            "kind": "video",
+            "enabled": true,
+            "muted": false,
+            "readyState": "live"
+          }
+        ],
+        "stats": [
+          {
+            "id": "IT01A2678928840",
+            "type": "inbound-rtp",
+            "kind": "audio",
+            "bytesReceived": 7177,
+            "packetsReceived": 270
+          },
+          {
+            "id": "IT01V958077558",
+            "type": "inbound-rtp",
+            "kind": "video",
+            "bytesReceived": 142525,
+            "framesDecoded": 98,
+            "framesPerSecond": 20,
+            "packetsReceived": 207,
+            "nackCount": 0
+          },
+          {
+            "id": "OT01A3814954180",
+            "type": "outbound-rtp",
+            "kind": "audio",
+            "bytesSent": 7855,
+            "packetsSent": 270,
+            "nackCount": 0
+          }
+        ]
+      }
+    ],
+    "localTracks": [
+      {
+        "kind": "audio",
+        "enabled": true,
+        "muted": false,
+        "readyState": "live"
+      }
+    ]
+  },
+  "stateB": {
+    "socketId": "lZb8r8jcVBcIVvM1AAAB",
+    "isVideoEnabled": true,
+    "participants": [
+      {
+        "id": "rIeHSzLdaj2EhSSQAAAD",
+        "videoEnabled": false,
+        "presenceCam": false,
+        "presenceMic": true,
+        "hasMediaElement": true,
+        "signalingState": "stable",
+        "connectionState": "connected",
+        "iceState": "connected",
+        "tracks": [
+          {
+            "kind": "audio",
+            "enabled": true,
+            "muted": false,
+            "readyState": "live"
+          }
+        ],
+        "stats": [
+          {
+            "id": "IT01A3814954180",
+            "type": "inbound-rtp",
+            "kind": "audio",
+            "bytesReceived": 7855,
+            "packetsReceived": 270
+          },
+          {
+            "id": "OT01A2678928840",
+            "type": "outbound-rtp",
+            "kind": "audio",
+            "bytesSent": 7177,
+            "packetsSent": 270,
+            "nackCount": 0
+          },
+          {
+            "id": "OT01V958077558",
+            "type": "outbound-rtp",
+            "kind": "video",
+            "bytesSent": 142525,
+            "framesEncoded": 98,
+            "framesPerSecond": 20,
+            "packetsSent": 207,
+            "nackCount": 0
+          }
+        ]
+      }
+    ],
+    "localTracks": [
+      {
+        "kind": "audio",
+        "enabled": true,
+        "muted": false,
+        "readyState": "live"
+      },
+      {
+        "kind": "video",
+        "enabled": true,
+        "muted": false,
+        "readyState": "live"
+      }
+    ]
+  },
+  "expectations": [
+    {
+      "expectation": {
+        "page": "A",
+        "remoteIdFrom": "B",
+        "expectVideo": true
+      },
+      "passed": true,
+      "hasVideo": true,
+      "remoteId": "lZb8r8jcVBcIVvM1AAAB",
+      "videoFlag": true,
+      "presenceCam": true,
+      "presenceMic": true
+    }
+  ],
+  "logs": [
+    "[B] LOG: Conference App initializing...",
+    "[B] LOG: ✅ App инициализирован",
+    "[B] ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[B] LOG: Подключение к конференции...",
+    "[B] LOG: Создание Socket.IO соединения...",
+    "[B] LOG: 🌐 SERVER_URL: http://localhost:4100",
+    "[B] LOG: Запрос доступа к микрофону...",
+    "[B] LOG: ✅ Доступ к микрофону получен",
+    "[B] LOG: ✅ Socket.IO подключен: lZb8r8jcVBcIVvM1AAAB",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📡 [presence:sync] Получен снимок участников: JSHandle@array selfId: lZb8r8jcVBcIVvM1AAAB",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: Conference App initializing...",
+    "[A] LOG: ✅ App инициализирован",
+    "[A] LOG: Подключение к конференции...",
+    "[A] LOG: Создание Socket.IO соединения...",
+    "[A] LOG: 🌐 SERVER_URL: http://localhost:4100",
+    "[A] LOG: Запрос доступа к микрофону...",
+    "[A] LOG: ✅ Доступ к микрофону получен",
+    "[A] LOG: ✅ Socket.IO подключен: rIeHSzLdaj2EhSSQAAAD",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📡 [presence:update] JSHandle@object",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📡 [presence:sync] Получен снимок участников: JSHandle@array selfId: rIeHSzLdaj2EhSSQAAAD",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[A] LOG: 📊 [updateConferenceStatus] Обновление статуса: JSHandle@object",
+    "[B] LOG: 📤 Создание offer для rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: 🔄 Signaling state с rIeHSzLdaj2EhSSQAAAD: have-local-offer",
+    "[B] LOG: ✅ Offer создан и отправлен для rIeHSzLdaj2EhSSQAAAD",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: offer от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 📥 Установка удаленного описания (offer)",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🧊 Получен ICE кандидат от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🧊 Получен ICE кандидат от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[A] LOG: 🔄 Signaling state с lZb8r8jcVBcIVvM1AAAB: have-remote-offer",
+    "[A] LOG: 🎥 Получен трек от lZb8r8jcVBcIVvM1AAAB audio JSHandle@object",
+    "[A] LOG: 🎥 Получен трек от lZb8r8jcVBcIVvM1AAAB video JSHandle@object",
+    "[A] LOG: 📥 Создание answer для lZb8r8jcVBcIVvM1AAAB",
+    "[B] LOG: 📹 Запрос доступа к камере...",
+    "[A] LOG: 🔄 Signaling state с lZb8r8jcVBcIVvM1AAAB: stable",
+    "[A] LOG: ✅ Answer создан и отправлен для lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 🧊 ICE соединение с lZb8r8jcVBcIVvM1AAAB: checking",
+    "[B] LOG: 🧊 ICE соединение с rIeHSzLdaj2EhSSQAAAD: checking",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: answer от rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🔗 Соединение с lZb8r8jcVBcIVvM1AAAB: connecting",
+    "[B] LOG: 📥 Получен answer от rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: 📊 Текущее состояние соединения: have-local-offer",
+    "[B] LOG: 🔗 Соединение с rIeHSzLdaj2EhSSQAAAD: connecting",
+    "[A] LOG: 🧊 ICE соединение с lZb8r8jcVBcIVvM1AAAB: connected",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 🧊 Получен ICE кандидат от rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: ⏳ Сохранение ICE кандидата для добавления позже",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: ice-candidate от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 🧊 Получен ICE кандидат от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: ✅ ICE кандидат добавлен",
+    "[A] LOG: 🔗 Соединение с lZb8r8jcVBcIVvM1AAAB: connected",
+    "[B] LOG: 🔄 Signaling state с rIeHSzLdaj2EhSSQAAAD: stable",
+    "[B] LOG: 🎥 Получен трек от rIeHSzLdaj2EhSSQAAAD audio JSHandle@object",
+    "[B] LOG: 🧊 ICE соединение с rIeHSzLdaj2EhSSQAAAD: connected",
+    "[B] LOG: ✅ Remote description установлен (answer)",
+    "[B] LOG: 🔗 Соединение с rIeHSzLdaj2EhSSQAAAD: connected",
+    "[B] LOG: 🎯 attachVideoTrackToParticipant rIeHSzLdaj2EhSSQAAAD hasSender true hasTransceiver true streamTracks 1 enc [true]",
+    "[B] LOG: ✅ attachVideoTrackToParticipant replaceTrack success rIeHSzLdaj2EhSSQAAAD enc [true]",
+    "[B] LOG: 🔄 Signaling state с rIeHSzLdaj2EhSSQAAAD: have-local-offer",
+    "[A] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: offer от lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[A] LOG: 📥 Установка удаленного описания (offer)",
+    "[A] LOG: 🔄 Signaling state с lZb8r8jcVBcIVvM1AAAB: have-remote-offer",
+    "[A] LOG: 📥 Создание answer для lZb8r8jcVBcIVvM1AAAB",
+    "[A] LOG: 🔄 Signaling state с lZb8r8jcVBcIVvM1AAAB: stable",
+    "[A] LOG: ✅ Answer создан и отправлен для lZb8r8jcVBcIVvM1AAAB",
+    "[B] LOG: 📡 [webrtc-signal] Получен WebRTC сигнал: answer от rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: 📡 [webrtc-signal] Полные данные: JSHandle@object",
+    "[B] LOG: 📥 Получен answer от rIeHSzLdaj2EhSSQAAAD",
+    "[B] LOG: 📊 Текущее состояние соединения: have-local-offer",
+    "[B] LOG: 🔄 Signaling state с rIeHSzLdaj2EhSSQAAAD: stable",
+    "[B] LOG: ✅ Remote description установлен (answer)",
+    "[B] ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[A] ERROR: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

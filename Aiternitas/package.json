@@ -1,0 +1,21 @@
+{
+  "name": "aiternitas-main",
+  "version": "1.0.0",
+  "description": "Aiternitas main page",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "keywords": [
+    "aiternitas",
+    "main-page"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
+
