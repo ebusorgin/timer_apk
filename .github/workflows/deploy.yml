@@ -70,8 +70,10 @@ jobs:
               git checkout production
               git reset --hard origin/production
               
-              # Установка зависимостей
-              npm install --production
+              # Установка зависимостей (если есть package.json)
+              if [ -f "package.json" ]; then
+                npm install --production
+              fi
               
               # Перезапуск сервиса
               systemctl restart "$SERVICE_NAME"
@@ -82,9 +84,35 @@ jobs:
               echo ""
             }
             
-            # Обновляем оба сервиса
-            update_service /opt/voice-room-test voice-room-test.service
-            update_service /opt/voice-room voice-room.service
+            # Обновляем репозиторий
+            REPO_DIR="/opt/voice-room-test"
+            cd "$REPO_DIR"
+            git config --global --add safe.directory "$REPO_DIR" || true
+            git fetch origin
+            git checkout production
+            git reset --hard origin/production
+            
+            # Обновляем APK сервис (конференции)
+            echo "=== Updating APK (voice-room-test.service) ==="
+            cd "$REPO_DIR/APK"
+            if [ -f "package.json" ]; then
+              npm install --production
+            fi
+            systemctl restart voice-room-test.service
+            sleep 2
+            systemctl status voice-room-test.service --no-pager | head -10
+            echo ""
+            
+            # Обновляем Aiternitas сервис (главная страница)
+            echo "=== Updating Aiternitas (aiternitas-main.service) ==="
+            cd "$REPO_DIR/Aiternitas"
+            if [ -f "package.json" ]; then
+              npm install --production
+            fi
+            systemctl restart aiternitas-main.service
+            sleep 2
+            systemctl status aiternitas-main.service --no-pager | head -10
+            echo ""
           EOSSH
 
       - name: Verify deployment
@@ -98,27 +126,24 @@ jobs:
             set -e
             
             echo "=== Service Status ==="
-            echo "--- voice-room-test.service (port 3001) ---"
+            echo "--- voice-room-test.service (APK, port 3000) ---"
             systemctl status voice-room-test.service --no-pager | head -10
             echo ""
-            echo "--- voice-room.service (port 3000) ---"
-            systemctl status voice-room.service --no-pager | head -10
+            echo "--- aiternitas-main.service (Aiternitas, port 3001) ---"
+            systemctl status aiternitas-main.service --no-pager | head -10
             
             echo ""
-            echo "=== Last Commits ==="
-            echo "--- voice-room-test ---"
+            echo "=== Last Commit ==="
             cd /opt/voice-room-test && git log --oneline -1
-            echo "--- voice-room ---"
-            cd /opt/voice-room && git log --oneline -1
             
             echo ""
             echo "=== Service Health ==="
-            HTTP_CODE_3001=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
             HTTP_CODE_3000=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
-            echo "voice-room-test (3001) HTTP status: $HTTP_CODE_3001"
-            echo "voice-room (3000) HTTP status: $HTTP_CODE_3000"
+            HTTP_CODE_3001=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
+            echo "APK (3000) HTTP status: $HTTP_CODE_3000"
+            echo "Aiternitas (3001) HTTP status: $HTTP_CODE_3001"
             
-            if [ "$HTTP_CODE_3001" = "200" ] && [ "$HTTP_CODE_3000" = "200" ]; then
+            if [ "$HTTP_CODE_3000" = "200" ] && [ "$HTTP_CODE_3001" = "200" ]; then
               echo "✅ Both services are responding"
             else
               echo "⚠️ Some services may not be responding correctly"
@@ -135,3 +160,36 @@ jobs:
           echo "2. Add secret named 'SSH_PRIVATE_KEY' with your private SSH key content"
           echo "3. The key should be: ~/.ssh/id_rsa_aiternitas"
 
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - production
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          cd APK
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd APK
+          npm run test:all
