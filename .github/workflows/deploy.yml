@@ -54,36 +54,6 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            # Функция для обновления сервиса
-            update_service() {
-              local SERVICE_DIR=$1
-              local SERVICE_NAME=$2
-              
-              echo "=== Updating $SERVICE_NAME ==="
-              cd "$SERVICE_DIR"
-              
-              # Настройка git для безопасного доступа
-              git config --global --add safe.directory "$SERVICE_DIR" || true
-              
-              # Обновление кода
-              git fetch origin
-              git checkout production
-              git reset --hard origin/production
-              
-              # Установка зависимостей (если есть package.json)
-              if [ -f "package.json" ]; then
-                npm install --production
-              fi
-              
-              # Перезапуск сервиса
-              systemctl restart "$SERVICE_NAME"
-              
-              # Проверка статуса
-              sleep 2
-              systemctl status "$SERVICE_NAME" --no-pager | head -10
-              echo ""
-            }
-            
             # Обновляем репозиторий
             REPO_DIR="/opt/voice-room-test"
             cd "$REPO_DIR"
@@ -159,37 +129,3 @@ jobs:
           echo "1. Go to GitHub repository Settings > Secrets and variables > Actions"
           echo "2. Add secret named 'SSH_PRIVATE_KEY' with your private SSH key content"
           echo "3. The key should be: ~/.ssh/id_rsa_aiternitas"
-
-name: Test
-
-on:
-  push:
-    branches:
-      - master
-      - main
-      - production
-  pull_request:
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: |
-          cd APK
-          npm ci
-
-      - name: Run tests
-        run: |
-          cd APK
-          npm run test:all
