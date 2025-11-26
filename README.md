@@ -25,7 +25,7 @@ npm install
 npm start
 ```
 
-Приложение будет доступно на `http://localhost:3000` или `https://apk.aiternitas.ru`
+Приложение будет доступно на `http://localhost:3000` или `https://conference.aiternitas.ru`
 
 ## 📝 Описание
 

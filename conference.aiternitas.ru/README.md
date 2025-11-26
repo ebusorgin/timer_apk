@@ -26,7 +26,7 @@ npm start
 
 ## Деплой
 
-Проект автоматически деплоится на `https://apk.aiternitas.ru` при push в ветку `production`.
+Проект автоматически деплоится на `https://conference.aiternitas.ru` при push в ветку `production`.
 
 ## Структура проекта
 
