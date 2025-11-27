@@ -17,3 +17,6 @@ tests/e2e/artifacts/*.json
 .vscode/
 *.iml
 
+# Secrets
+SSH_KEY_FOR_GITHUB.txt
+

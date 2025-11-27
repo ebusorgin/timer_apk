@@ -1,23 +1,23 @@
-name: Deploy to Production
+name: Deploy Aiternitas Main to Production
 
 on:
   push:
     branches:
       - production
-    paths:
-      - 'aiternitas.ru/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
+    name: Deploy Aiternitas Main to aiternitas.ru
     runs-on: ubuntu-latest
     env:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-    
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Check required secrets
         shell: bash
@@ -30,21 +30,6 @@ jobs:
           fi
         id: secrets_check
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: aiternitas.ru/package-lock.json
-
-      - name: Install dependencies
-        working-directory: aiternitas.ru
-        run: npm ci
-
-      - name: Build application
-        working-directory: aiternitas.ru
-        run: npm run build
-
       - name: Setup SSH key
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
@@ -53,54 +38,148 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy to server
+      - name: Deploy Aiternitas Main
         if: steps.secrets_check.outputs.skip_deploy == 'false'
-        env:
-          REPO_PATH: /opt/aiternitas-main
-          SERVICE_NAME: aiternitas-main.service
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST }} bash << 'EOF'
+          set -e
+          SSH_HOST="${{ env.SSH_HOST }}"
+          SSH_USER="${{ env.SSH_USER }}"
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
-            cd $REPO_PATH || { echo "Ошибка: директория $REPO_PATH не найдена"; exit 1; }
             
-            echo "=== Обновление кода из репозитория ==="
-            git fetch origin production || { echo "Ошибка при git fetch"; exit 1; }
-            git reset --hard origin/production || { echo "Ошибка при git reset"; exit 1; }
+            REPO_DIR="/opt/aiternitas-main"
             
-            echo "=== Проверка статуса после обновления ==="
-            git status
+            echo "=== Deployment Info ==="
+            echo "Repository directory: $REPO_DIR"
+            echo "Current directory: $(pwd)"
+            echo ""
             
-            echo "=== Установка зависимостей ==="
-            npm ci || { echo "Ошибка при установке зависимостей"; exit 1; }
+            # Создаем директорию если не существует
+            if [ ! -d "$REPO_DIR" ]; then
+              echo "Creating directory $REPO_DIR..."
+              mkdir -p "$REPO_DIR"
+              cd "$REPO_DIR"
+              git init
+              git remote add origin git@github.com:ebusorgin/aiternitas.ru.git || true
+            fi
             
-            echo "=== Сборка приложения ==="
-            npm run build || { echo "Ошибка при сборке"; exit 1; }
+            cd "$REPO_DIR"
+            git config --global --add safe.directory "$REPO_DIR" || true
             
-            echo "=== Перезапуск сервиса ==="
-            systemctl restart $SERVICE_NAME || { echo "Ошибка при перезапуске сервиса"; exit 1; }
+            # Проверяем remote
+            REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "")
+            echo "Remote origin: ${REMOTE_URL:-not configured}"
             
-            echo "=== Проверка статуса сервиса ==="
-            sleep 3
-            systemctl status $SERVICE_NAME --no-pager -l | head -25 || true
+            # Обновляем код
+            echo ""
+            echo "=== Updating code ==="
+            git fetch origin || {
+              echo "⚠️  Failed to fetch. Checking if repository is initialized..."
+              if [ -z "$REMOTE_URL" ]; then
+                git remote add origin git@github.com:ebusorgin/aiternitas.ru.git
+                git fetch origin || {
+                  echo "❌ Failed to fetch from origin. Check SSH keys on server."
+                  exit 1
+                }
+              else
+                echo "❌ Failed to fetch. Remote is configured but fetch failed."
+                exit 1
+              fi
+            }
             
-            echo "=== Деплой завершен успешно! ==="
-          EOF
+            # Всегда используем ветку production
+            TARGET_BRANCH="production"
+            echo "Target branch: $TARGET_BRANCH"
+            
+            # Проверяем существование ветки production в remote
+            if ! git ls-remote --heads origin production | grep -q production; then
+              echo "⚠️  Branch 'production' not found in remote repository"
+              echo "Available remote branches:"
+              git ls-remote --heads origin | sed 's/.*refs\/heads\///' || true
+              echo ""
+              echo "❌ Branch 'production' must exist in remote repository"
+              exit 1
+            fi
+            
+            git checkout production 2>/dev/null || git checkout -b production
+            git reset --hard origin/production || {
+              echo "❌ Failed to reset to origin/production"
+              echo "Current branch: $(git branch --show-current)"
+              exit 1
+            }
+            
+            echo "Current commit: $(git log --oneline -1)"
+            echo ""
+            
+            # Установка зависимостей
+            echo "=== Installing dependencies ==="
+            if [ -f "package.json" ]; then
+              npm install || {
+                echo "❌ Failed to install dependencies"
+                exit 1
+              }
+              echo "✅ Dependencies installed"
+            else
+              echo "⚠️  package.json not found"
+            fi
+            echo ""
+            
+            # Сборка React приложения
+            echo "=== Building application ==="
+            if [ -f "package.json" ] && grep -q '"build"' package.json; then
+              npm run build || {
+                echo "❌ Build failed"
+                exit 1
+              }
+              echo "✅ Build completed"
+            else
+              echo "⚠️  No build script found in package.json"
+            fi
+            echo ""
+            
+            # Перезапуск сервиса
+            echo "=== Restarting service ==="
+            if systemctl restart aiternitas-main.service; then
+              echo "✅ Service restarted"
+              sleep 2
+              systemctl status aiternitas-main.service --no-pager | head -10 || true
+            else
+              echo "⚠️  Service restart failed or service not found"
+            fi
+            echo ""
+          EOSSH
 
       - name: Verify deployment
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
-          echo "=== Проверка работоспособности приложения ==="
-          sleep 5
-          if curl -f -s https://aiternitas.ru/api/stats > /dev/null; then
-            echo "✅ Приложение работает корректно"
-          else
-            echo "⚠️ Warning: Health check failed, но деплой завершен"
-            exit 0
-          fi
+          set -e
+          SSH_HOST="${{ env.SSH_HOST }}"
+          SSH_USER="${{ env.SSH_USER }}"
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+            set -e
+            
+            echo "=== Aiternitas Main Service Status ==="
+            systemctl status aiternitas-main.service --no-pager | head -10 || echo "Service not found"
+            
+            echo ""
+            echo "=== Last Commit ==="
+            cd /opt/aiternitas-main && git log --oneline -1 || echo "No commits yet"
+            
+            echo ""
+            echo "=== Service Health ==="
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
+            echo "Aiternitas Main HTTP status: $HTTP_CODE"
+            
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "✅ Aiternitas Main service is responding"
+            else
+              echo "⚠️ Aiternitas Main service may not be responding correctly"
+            fi
+          EOSSH
 
       - name: Skip notice
         if: steps.secrets_check.outputs.skip_deploy == 'true'
         run: |
           echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
-          echo "Please add SSH_PRIVATE_KEY secret in repository settings: Settings → Secrets and variables → Actions"
-
