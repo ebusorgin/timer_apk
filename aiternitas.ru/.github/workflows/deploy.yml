@@ -1,25 +1,23 @@
-name: Deploy Aiternitas to Production
+name: Deploy to Production
 
 on:
   push:
     branches:
-      - master
-      - main
       - production
-  workflow_dispatch:
+    paths:
+      - 'aiternitas.ru/**'
 
 jobs:
   deploy:
-    name: Deploy Aiternitas to aiternitas.ru
     runs-on: ubuntu-latest
     env:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check required secrets
         shell: bash
@@ -32,6 +30,21 @@ jobs:
           fi
         id: secrets_check
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: aiternitas.ru/package-lock.json
+
+      - name: Install dependencies
+        working-directory: aiternitas.ru
+        run: npm ci
+
+      - name: Build application
+        working-directory: aiternitas.ru
+        run: npm run build
+
       - name: Setup SSH key
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
@@ -40,74 +53,54 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy Aiternitas
+      - name: Deploy to server
         if: steps.secrets_check.outputs.skip_deploy == 'false'
+        env:
+          REPO_PATH: /opt/aiternitas-main
+          SERVICE_NAME: aiternitas-main.service
         run: |
-          set -e
-          SSH_HOST="${{ env.SSH_HOST }}"
-          SSH_USER="${{ env.SSH_USER }}"
-          
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST }} bash << 'EOF'
             set -e
+            cd $REPO_PATH || { echo "Ошибка: директория $REPO_PATH не найдена"; exit 1; }
             
-            REPO_DIR="/opt/aiternitas"
+            echo "=== Обновление кода из репозитория ==="
+            git fetch origin production || { echo "Ошибка при git fetch"; exit 1; }
+            git reset --hard origin/production || { echo "Ошибка при git reset"; exit 1; }
             
-            # Создаем директорию если не существует
-            if [ ! -d "$REPO_DIR" ]; then
-              mkdir -p "$REPO_DIR"
-              cd "$REPO_DIR"
-              git init
-              git remote add origin git@github.com:ebusorgin/aiternitas.git || true
-            fi
+            echo "=== Проверка статуса после обновления ==="
+            git status
             
-            cd "$REPO_DIR"
-            git config --global --add safe.directory "$REPO_DIR" || true
-            git fetch origin
-            git checkout production || git checkout -b production
-            git reset --hard origin/production
+            echo "=== Установка зависимостей ==="
+            npm ci || { echo "Ошибка при установке зависимостей"; exit 1; }
             
-            # Установка зависимостей
-            if [ -f "package.json" ]; then
-              npm install --production
-            fi
+            echo "=== Сборка приложения ==="
+            npm run build || { echo "Ошибка при сборке"; exit 1; }
             
-            # Перезапуск сервиса
-            systemctl restart aiternitas-main.service
-            sleep 2
-            systemctl status aiternitas-main.service --no-pager | head -10
-            echo ""
-          EOSSH
+            echo "=== Перезапуск сервиса ==="
+            systemctl restart $SERVICE_NAME || { echo "Ошибка при перезапуске сервиса"; exit 1; }
+            
+            echo "=== Проверка статуса сервиса ==="
+            sleep 3
+            systemctl status $SERVICE_NAME --no-pager -l | head -25 || true
+            
+            echo "=== Деплой завершен успешно! ==="
+          EOF
 
       - name: Verify deployment
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
-          set -e
-          SSH_HOST="${{ env.SSH_HOST }}"
-          SSH_USER="${{ env.SSH_USER }}"
-          
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
-            set -e
-            
-            echo "=== Aiternitas Service Status ==="
-            systemctl status aiternitas-main.service --no-pager | head -10
-            
-            echo ""
-            echo "=== Last Commit ==="
-            cd /opt/aiternitas && git log --oneline -1 || echo "No commits yet"
-            
-            echo ""
-            echo "=== Service Health ==="
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
-            echo "Aiternitas (3001) HTTP status: $HTTP_CODE"
-            
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Aiternitas service is responding"
-            else
-              echo "⚠️ Aiternitas service may not be responding correctly"
-            fi
-          EOSSH
+          echo "=== Проверка работоспособности приложения ==="
+          sleep 5
+          if curl -f -s https://aiternitas.ru/api/stats > /dev/null; then
+            echo "✅ Приложение работает корректно"
+          else
+            echo "⚠️ Warning: Health check failed, но деплой завершен"
+            exit 0
+          fi
 
       - name: Skip notice
         if: steps.secrets_check.outputs.skip_deploy == 'true'
         run: |
           echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
+          echo "Please add SSH_PRIVATE_KEY secret in repository settings: Settings → Secrets and variables → Actions"
+
