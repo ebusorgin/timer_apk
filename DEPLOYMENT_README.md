@@ -7,14 +7,16 @@
 1. **conference.aiternitas.ru** → `git@github.com:ebusorgin/conference.git`
 2. **aiternitas.ru** → `git@github.com:ebusorgin/aiternitas.ru.git`
 3. **balance.aiternitas.ru** → `git@github.com:ebusorgin/balans.git`
+4. **blagojevic.aiternitas.ru** → `git@github.com:ebusorgin/blagojevic.git`
 
 ## Структура на сервере
 
 На сервере (`82.146.44.126`) проекты развернуты в следующих директориях:
 
 - `/opt/conference` - Conference проект
-- `/opt/aiternitas-main` - Aiternitas Main проект  
+- `/opt/aiternitas-main` - Aiternitas Main проект
 - `/opt/balance-tracker` - Balance Tracker проект
+- `/opt/blagojevic` - Blagojevic Gradnja проект
 
 ## Systemd сервисы
 
@@ -23,6 +25,7 @@
 - `conference.service` - Conference (порт 3000)
 - `aiternitas-main.service` - Aiternitas Main (порт 3001)
 - `balance-tracker.service` - Balance Tracker (порт 3002)
+- `blagojevic.service` - Blagojevic Gradnja (порт 3003)
 
 ## GitHub Actions Workflows
 
@@ -31,6 +34,7 @@
 - `conference.aiternitas.ru/.github/workflows/deploy.yml`
 - `aiternitas.ru/.github/workflows/deploy.yml`
 - `balance.aiternitas.ru/.github/workflows/deploy.yml`
+- `blagojevic.aiternitas.ru/.github/workflows/deploy.yml`
 
 ### Настройка GitHub Secrets
 
@@ -75,6 +79,13 @@ git init
 git remote add origin git@github.com:ebusorgin/balans.git
 git fetch origin
 git checkout production
+
+# Для blagojevic
+cd /opt/blagojevic
+git init
+git remote add origin git@github.com:ebusorgin/blagojevic.git
+git fetch origin
+git checkout main
 ```
 
 ## Настройка SSH ключей на сервере для GitHub
@@ -118,6 +129,10 @@ cd conference.aiternitas.ru
 
 # balance
 cd balance.aiternitas.ru
+./deploy-update.sh
+
+# blagojevic
+cd blagojevic.aiternitas.ru
 ./deploy-update.sh
 ```
 
