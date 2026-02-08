@@ -14,10 +14,15 @@
     "seed-directions": "node scripts/seed-directions.mjs",
     "seed-programs": "node scripts/seed-programs.mjs",
     "seed-admin": "node scripts/seed-admin.mjs",
-    "build": "cd client && npm run build"
+    "build": "cd client && npm run build",
+    "test": "node --test tests/server/",
+    "test:client": "cd client && npm run test -- --no-watch --browsers=ChromeHeadless"
   },
   "keywords": ["school", "education", "aiternitas"],
   "license": "ISC",
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

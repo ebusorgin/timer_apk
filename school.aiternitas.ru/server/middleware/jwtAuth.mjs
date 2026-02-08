@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 
-const DEFAULT_TTL = 24 * 60 * 60;
+const DEFAULT_TTL = 7 * 24 * 60 * 60;
 
 function getJwtSecret() {
   return process.env.JWT_SECRET || process.env.ADMIN_SECRET || 'school-jwt-secret-change-me';

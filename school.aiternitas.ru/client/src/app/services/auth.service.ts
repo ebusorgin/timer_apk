@@ -26,11 +26,9 @@ export class AuthService {
   isLoaded = this.loadedSignal.asReadonly();
   isLoggedIn = computed(() => !!this.userSignal());
 
-  constructor(private api: ApiService, private router: Router) {
-    this.loadUser();
-  }
+  constructor(private api: ApiService, private router: Router) {}
 
-  async loadUser() {
+  async loadUser(): Promise<void> {
     const token = localStorage.getItem('token');
     if (!token) {
       this.loadedSignal.set(true);
@@ -41,10 +39,12 @@ export class AuthService {
       if (res?.success && res.user) {
         this.userSignal.set(res.user);
       } else {
-        this.logout();
+        localStorage.removeItem('token');
+        this.userSignal.set(null);
       }
     } catch {
-      this.logout();
+      localStorage.removeItem('token');
+      this.userSignal.set(null);
     } finally {
       this.loadedSignal.set(true);
     }
