@@ -4,7 +4,7 @@ import { provideHttpClient, withFetch } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { provideTranslateService, provideTranslateLoader } from '@ngx-translate/core';
-import { provideTranslateHttpLoader, TranslateHttpLoader, TRANSLATE_HTTP_LOADER_CONFIG } from '@ngx-translate/http-loader';
+import { TranslateHttpLoader, TRANSLATE_HTTP_LOADER_CONFIG } from '@ngx-translate/http-loader';
 
 import { routes } from './app.routes';
 import { AuthService } from './services/auth.service';
