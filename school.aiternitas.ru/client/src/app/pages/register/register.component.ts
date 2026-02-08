@@ -1,24 +1,26 @@
 import { Component } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { TranslateModule } from '@ngx-translate/core';
 import { AuthService } from '../../services/auth.service';
+import { TranslateService } from '@ngx-translate/core';
 
 @Component({
   selector: 'school-register',
   standalone: true,
-  imports: [RouterLink, FormsModule],
+  imports: [RouterLink, FormsModule, TranslateModule],
   template: `
     <div class="container auth-page">
       <div class="auth-card">
-        <h1>Регистрация</h1>
+        <h1>{{ 'auth.register' | translate }}</h1>
         <form (ngSubmit)="submit()">
-          <input type="email" [(ngModel)]="email" name="email" placeholder="Email" required />
-          <input type="text" [(ngModel)]="name" name="name" placeholder="Имя" required />
-          <input type="password" [(ngModel)]="password" name="password" placeholder="Пароль (мин. 4 символа)" required minlength="4" />
+          <input type="email" [(ngModel)]="email" name="email" [placeholder]="'auth.email' | translate" required />
+          <input type="text" [(ngModel)]="name" name="name" [placeholder]="'auth.name' | translate" required />
+          <input type="password" [(ngModel)]="password" name="password" [placeholder]="'auth.passwordHint' | translate" required minlength="4" />
           @if (error) { <p class="error">{{ error }}</p> }
-          <button type="submit" [disabled]="loading">{{ loading ? 'Регистрация...' : 'Зарегистрироваться' }}</button>
+          <button type="submit" [disabled]="loading">{{ (loading ? 'auth.submitRegisterLoading' : 'auth.submitRegister') | translate }}</button>
         </form>
-        <p><a routerLink="/login">Вход</a></p>
+        <p><a routerLink="/login">{{ 'auth.toLogin' | translate }}</a></p>
       </div>
     </div>
   `,
@@ -63,7 +65,11 @@ export class RegisterComponent {
   error = '';
   loading = false;
 
-  constructor(private auth: AuthService, private router: Router) {}
+  constructor(
+    private auth: AuthService,
+    private router: Router,
+    private translate: TranslateService,
+  ) {}
 
   async submit() {
     this.error = '';
@@ -72,7 +78,7 @@ export class RegisterComponent {
       await this.auth.register(this.email, this.name, this.password);
       this.router.navigate(['/cabinet']);
     } catch (e: unknown) {
-      this.error = (e as Error)?.message || 'Ошибка регистрации';
+      this.error = (e as Error)?.message || this.translate.instant('auth.registerError');
     } finally {
       this.loading = false;
     }

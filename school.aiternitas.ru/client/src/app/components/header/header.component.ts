@@ -1,27 +1,34 @@
 import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { AuthService } from '../../services/auth.service';
+import { LocaleService } from '../../services/locale.service';
 
 @Component({
   selector: 'school-header',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive],
+  imports: [RouterLink, RouterLinkActive, TranslateModule],
   template: `
     <header class="header">
       <a routerLink="/" class="logo">School</a>
       <nav class="nav">
-        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Главная</a>
-        <a routerLink="/programs" routerLinkActive="active">Программы</a>
+        <select class="lang-select" [value]="locale.locale()" (change)="onLangChange($event)">
+          @for (l of locale.getLocales(); track l) {
+            <option [value]="l">{{ l.toUpperCase() }}</option>
+          }
+        </select>
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">{{ 'nav.home' | translate }}</a>
+        <a routerLink="/programs" routerLinkActive="active">{{ 'nav.programs' | translate }}</a>
         @if (auth.user(); as u) {
-          <a routerLink="/cabinet" routerLinkActive="active">Кабинет</a>
+          <a routerLink="/cabinet" routerLinkActive="active">{{ 'nav.cabinet' | translate }}</a>
           @if (auth.isAdmin()) {
-            <a routerLink="/admin" routerLinkActive="active">Админ</a>
+            <a routerLink="/admin" routerLinkActive="active">{{ 'nav.admin' | translate }}</a>
           }
           <span class="user">{{ u.name }}</span>
-          <button type="button" (click)="auth.logout()">Выход</button>
+          <button type="button" (click)="auth.logout()">{{ 'nav.logout' | translate }}</button>
         } @else {
-          <a routerLink="/login">Вход</a>
-          <a routerLink="/register" class="btn-register">Регистрация</a>
+          <a routerLink="/login">{{ 'nav.login' | translate }}</a>
+          <a routerLink="/register" class="btn-register">{{ 'nav.register' | translate }}</a>
         }
       </nav>
     </header>
@@ -74,6 +81,14 @@ import { AuthService } from '../../services/auth.service';
       transition: border-color var(--transition), background var(--transition);
     }
     button:hover { background: var(--color-bg); }
+    .lang-select {
+      padding: 0.25rem 0.5rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-alt);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
     @media (max-width: 600px) {
       .header { padding: 1rem; }
       .nav { gap: 0.75rem; }
@@ -81,5 +96,15 @@ import { AuthService } from '../../services/auth.service';
   `],
 })
 export class HeaderComponent {
-  constructor(public auth: AuthService) {}
+  constructor(
+    public auth: AuthService,
+    public locale: LocaleService,
+    private translate: TranslateService,
+  ) {}
+
+  onLangChange(e: Event) {
+    const v = (e.target as HTMLSelectElement).value as 'ru' | 'sr' | 'en';
+    this.locale.setLocale(v);
+    this.translate.use(v);
+  }
 }

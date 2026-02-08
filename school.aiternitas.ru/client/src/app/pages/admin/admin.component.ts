@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 
 interface Stats {
@@ -51,28 +52,28 @@ interface Student {
 @Component({
   selector: 'school-admin',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, TranslateModule],
   template: `
     <div class="container page">
-      <h1>Админ-панель</h1>
+      <h1>{{ 'admin.title' | translate }}</h1>
       <div class="tabs">
-        <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">Дашборд</button>
-        <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadSchoolTypes()">Программы</button>
-        <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">Типы школ</button>
-        <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">Ученики</button>
+        <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">{{ 'admin.tabStats' | translate }}</button>
+        <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadSchoolTypes()">{{ 'admin.tabPrograms' | translate }}</button>
+        <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">{{ 'admin.tabSchoolTypes' | translate }}</button>
+        <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">{{ 'admin.tabStudents' | translate }}</button>
       </div>
 
       @if (tab() === 'stats') {
         @if (stats(); as s) {
           <div class="stats-grid">
-            <div class="stat-card"><span class="num">{{ s.students }}</span><span>Учеников</span></div>
-            <div class="stat-card"><span class="num">{{ s.enrollments }}</span><span>Записей</span></div>
-            <div class="stat-card"><span class="num">{{ s.programs }}</span><span>Программ</span></div>
+            <div class="stat-card"><span class="num">{{ s.students }}</span><span>{{ 'admin.students' | translate }}</span></div>
+            <div class="stat-card"><span class="num">{{ s.enrollments }}</span><span>{{ 'admin.enrollments' | translate }}</span></div>
+            <div class="stat-card"><span class="num">{{ s.programs }}</span><span>{{ 'admin.programs' | translate }}</span></div>
           </div>
-          <h3>Популярные программы</h3>
+          <h3>{{ 'admin.popularPrograms' | translate }}</h3>
           <ul>
             @for (p of s.popularPrograms; track p.id) {
-              <li>{{ p.title }} — {{ p.count }} записей</li>
+              <li>{{ p.title }} — {{ p.count }} {{ 'admin.enrollments' | translate }}</li>
             }
           </ul>
         }
@@ -81,24 +82,24 @@ interface Student {
       @if (tab() === 'programs') {
         <div class="programs-toolbar">
           <select (change)="onProgramFilter($event)">
-            <option value="">Все типы школ</option>
+            <option value="">{{ 'admin.allSchoolTypes' | translate }}</option>
             @for (st of schoolTypes(); track st.id) {
               <option [value]="st.id">{{ st.title }}</option>
             }
           </select>
-          <button (click)="openProgramForm()" class="btn-add">+ Добавить программу</button>
+          <button (click)="openProgramForm()" class="btn-add">{{ 'admin.addProgram' | translate }}</button>
         </div>
         <div class="list">
           @for (p of filteredPrograms(); track p.id) {
             <div class="row">
               <div class="row-content">
                 <strong>{{ p.title }}</strong>
-                <span class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</span>
+                <span class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</span>
                 <span>{{ getSchoolTypeTitle(p.schoolType || '') }}</span>
               </div>
               <div class="row-actions">
-                <button (click)="editProgram(p)">Изменить</button>
-                <button (click)="deleteProgram(p)" class="btn-danger">Удалить</button>
+                <button (click)="editProgram(p)">{{ 'admin.edit' | translate }}</button>
+                <button (click)="deleteProgram(p)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
               </div>
             </div>
           }
@@ -106,7 +107,7 @@ interface Student {
         @if (showProgramForm()) {
           <div class="modal-overlay" (click)="closeProgramForm()">
             <div class="modal" (click)="$event.stopPropagation()">
-              <h3>{{ editingProgram() ? 'Редактировать программу' : 'Новая программа' }}</h3>
+              <h3>{{ (editingProgram() ? 'admin.editProgram' : 'admin.newProgram') | translate }}</h3>
               @if (errorMessage()) {
                 <div class="form-error">{{ errorMessage() }}</div>
               }
@@ -114,31 +115,46 @@ interface Student {
                 <div class="form-success">{{ successMessage() }}</div>
               }
               <form (ngSubmit)="saveProgram()">
-                <label>Название <input [(ngModel)]="programForm.title" name="title" required /></label>
-                <label>Slug <input [(ngModel)]="programForm.slug" name="slug" /></label>
-                <label>Описание <textarea [(ngModel)]="programForm.description" name="desc" rows="3"></textarea></label>
-                <label>Возраст от <input type="number" [(ngModel)]="programForm.ageMin" name="ageMin" min="5" max="18" /></label>
-                <label>Возраст до <input type="number" [(ngModel)]="programForm.ageMax" name="ageMax" min="5" max="18" /></label>
-                <label>Тип школы
+                <div class="form-tabs">
+                  <button type="button" [class.active]="programFormLang() === 'ru'" (click)="programFormLang.set('ru')">RU</button>
+                  <button type="button" [class.active]="programFormLang() === 'sr'" (click)="programFormLang.set('sr')">SR</button>
+                  <button type="button" [class.active]="programFormLang() === 'en'" (click)="programFormLang.set('en')">EN</button>
+                </div>
+                @if (programFormLang() === 'ru') {
+                  <label>{{ 'admin.programTitle' | translate }} (RU) <input [(ngModel)]="programForm.titleRu" name="titleRu" required /></label>
+                  <label>{{ 'admin.description' | translate }} (RU) <textarea [(ngModel)]="programForm.descriptionRu" name="descRu" rows="3"></textarea></label>
+                  <label>{{ 'admin.curriculum' | translate }} (RU) <textarea [(ngModel)]="programForm.curriculumRuJson" name="currRu" rows="6" placeholder='[{"n":1,"topic":"Тема","description":"Что будет","conclusions":"Выводы","result":"Результат"}]'></textarea></label>
+                }
+                @if (programFormLang() === 'sr') {
+                  <label>{{ 'admin.programTitle' | translate }} (SR) <input [(ngModel)]="programForm.titleSr" name="titleSr" /></label>
+                  <label>{{ 'admin.description' | translate }} (SR) <textarea [(ngModel)]="programForm.descriptionSr" name="descSr" rows="3"></textarea></label>
+                  <label>{{ 'admin.curriculum' | translate }} (SR) <textarea [(ngModel)]="programForm.curriculumSrJson" name="currSr" rows="6"></textarea></label>
+                }
+                @if (programFormLang() === 'en') {
+                  <label>{{ 'admin.programTitle' | translate }} (EN) <input [(ngModel)]="programForm.titleEn" name="titleEn" /></label>
+                  <label>{{ 'admin.description' | translate }} (EN) <textarea [(ngModel)]="programForm.descriptionEn" name="descEn" rows="3"></textarea></label>
+                  <label>{{ 'admin.curriculum' | translate }} (EN) <textarea [(ngModel)]="programForm.curriculumEnJson" name="currEn" rows="6"></textarea></label>
+                }
+                <hr />
+                <label>{{ 'admin.slug' | translate }} <input [(ngModel)]="programForm.slug" name="slug" /></label>
+                <label>{{ 'admin.ageFrom' | translate }} <input type="number" [(ngModel)]="programForm.ageMin" name="ageMin" min="5" max="18" /></label>
+                <label>{{ 'admin.ageTo' | translate }} <input type="number" [(ngModel)]="programForm.ageMax" name="ageMax" min="5" max="18" /></label>
+                <label>{{ 'admin.schoolType' | translate }}
                   <select [(ngModel)]="programForm.schoolType" name="schoolType">
                     @for (st of schoolTypes(); track st.id) {
                       <option [value]="st.id">{{ st.title }}</option>
                     }
                   </select>
                 </label>
-                <label>Недель <input type="number" [(ngModel)]="programForm.durationWeeks" name="weeks" min="1" /></label>
-                <label>Занятий в неделю <input type="number" [(ngModel)]="programForm.lessonsPerWeek" name="lessonsPerWeek" min="1" max="7" /></label>
-                <label>Формат <input [(ngModel)]="programForm.format" name="format" placeholder="модульный, годовой" /></label>
-                <label>Изображение (URL) <input [(ngModel)]="programForm.imageUrl" name="imageUrl" placeholder="https://..." /></label>
-                <label>Цена (руб) <input type="number" [(ngModel)]="programForm.price" name="price" placeholder="пусто = бесплатно" /></label>
-                <label>Расписание <input [(ngModel)]="programForm.schedule" name="schedule" placeholder="Вт, Чт 16:00" /></label>
-                <label>Программа занятий (JSON)
-                  <textarea [(ngModel)]="programForm.curriculumJson" name="curriculum" rows="8" placeholder='[{"n":1,"topic":"Тема","description":"Что будет","conclusions":"Выводы","result":"Результат"}]'></textarea>
-                  <small>Массив уроков: n, topic, description, conclusions, result</small>
-                </label>
+                <label>{{ 'admin.weeks' | translate }} <input type="number" [(ngModel)]="programForm.durationWeeks" name="weeks" min="1" /></label>
+                <label>{{ 'admin.lessonsPerWeek' | translate }} <input type="number" [(ngModel)]="programForm.lessonsPerWeek" name="lessonsPerWeek" min="1" max="7" /></label>
+                <label>{{ 'admin.format' | translate }} <input [(ngModel)]="programForm.format" name="format" /></label>
+                <label>{{ 'admin.imageUrl' | translate }} <input [(ngModel)]="programForm.imageUrl" name="imageUrl" placeholder="https://..." /></label>
+                <label>{{ 'admin.price' | translate }} <input type="number" [(ngModel)]="programForm.price" name="price" [placeholder]="'admin.pricePlaceholder' | translate" /></label>
+                <label>{{ 'admin.schedule' | translate }} <input [(ngModel)]="programForm.schedule" name="schedule" /></label>
                 <div class="modal-actions">
-                  <button type="button" (click)="closeProgramForm()">Отмена</button>
-                  <button type="submit">Сохранить</button>
+                  <button type="button" (click)="closeProgramForm()">{{ 'admin.cancel' | translate }}</button>
+                  <button type="submit">{{ 'admin.save' | translate }}</button>
                 </div>
               </form>
             </div>
@@ -165,7 +181,7 @@ interface Student {
         @if (showSchoolTypeForm()) {
           <div class="modal-overlay" (click)="closeSchoolTypeForm()">
             <div class="modal" (click)="$event.stopPropagation()">
-              <h3>Редактировать тип школы</h3>
+              <h3>{{ 'admin.editSchoolType' | translate }}</h3>
               @if (schoolTypeError()) {
                 <div class="form-error">{{ schoolTypeError() }}</div>
               }
@@ -173,11 +189,26 @@ interface Student {
                 <div class="form-success">{{ schoolTypeSuccess() }}</div>
               }
               <form (ngSubmit)="saveSchoolType()">
-                <label>Название <input [(ngModel)]="schoolTypeForm.title" name="title" required /></label>
-                <label>Описание <textarea [(ngModel)]="schoolTypeForm.description" name="desc" rows="2" placeholder="Краткое описание для карточки"></textarea></label>
+                <div class="form-tabs">
+                  <button type="button" [class.active]="schoolTypeFormLang() === 'ru'" (click)="schoolTypeFormLang.set('ru')">RU</button>
+                  <button type="button" [class.active]="schoolTypeFormLang() === 'sr'" (click)="schoolTypeFormLang.set('sr')">SR</button>
+                  <button type="button" [class.active]="schoolTypeFormLang() === 'en'" (click)="schoolTypeFormLang.set('en')">EN</button>
+                </div>
+                @if (schoolTypeFormLang() === 'ru') {
+                  <label>{{ 'admin.programTitle' | translate }} (RU) <input [(ngModel)]="schoolTypeForm.titleRu" name="titleRu" required /></label>
+                  <label>{{ 'admin.description' | translate }} (RU) <textarea [(ngModel)]="schoolTypeForm.descriptionRu" name="descRu" rows="2"></textarea></label>
+                }
+                @if (schoolTypeFormLang() === 'sr') {
+                  <label>{{ 'admin.programTitle' | translate }} (SR) <input [(ngModel)]="schoolTypeForm.titleSr" name="titleSr" /></label>
+                  <label>{{ 'admin.description' | translate }} (SR) <textarea [(ngModel)]="schoolTypeForm.descriptionSr" name="descSr" rows="2"></textarea></label>
+                }
+                @if (schoolTypeFormLang() === 'en') {
+                  <label>{{ 'admin.programTitle' | translate }} (EN) <input [(ngModel)]="schoolTypeForm.titleEn" name="titleEn" /></label>
+                  <label>{{ 'admin.description' | translate }} (EN) <textarea [(ngModel)]="schoolTypeForm.descriptionEn" name="descEn" rows="2"></textarea></label>
+                }
                 <div class="modal-actions">
-                  <button type="button" (click)="closeSchoolTypeForm()">Отмена</button>
-                  <button type="submit">Сохранить</button>
+                  <button type="button" (click)="closeSchoolTypeForm()">{{ 'admin.cancel' | translate }}</button>
+                  <button type="submit">{{ 'admin.save' | translate }}</button>
                 </div>
               </form>
             </div>
@@ -186,7 +217,7 @@ interface Student {
       }
 
       @if (tab() === 'students') {
-        <input type="search" placeholder="Поиск по имени или email" (input)="onSearch($event)" />
+        <input type="search" [placeholder]="'admin.searchStudents' | translate" (input)="onSearch($event)" />
         <div class="students-list">
           @for (s of adminStudents(); track s.id) {
             <div class="student-row">
@@ -266,6 +297,11 @@ interface Student {
     .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
     .form-error { color: var(--color-error); margin-bottom: 1rem; }
     .form-success { color: var(--color-primary); margin-bottom: 1rem; }
+    .hint { display: block; font-size: 0.8rem; color: var(--color-muted); margin-top: 0.25rem; }
+    .form-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .form-tabs button { padding: 0.4rem 0.8rem; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg-alt); cursor: pointer; }
+    .form-tabs button.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+    .modal hr { margin: 1rem 0; border: none; border-top: 1px solid var(--color-border); }
   `],
 })
 export class AdminComponent implements OnInit {
@@ -285,9 +321,13 @@ export class AdminComponent implements OnInit {
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
   programForm = {
-    title: '',
+    titleRu: '',
+    titleSr: '',
+    titleEn: '',
     slug: '',
-    description: '',
+    descriptionRu: '',
+    descriptionSr: '',
+    descriptionEn: '',
     ageMin: 5,
     ageMax: 18,
     schoolType: 'tech',
@@ -297,12 +337,19 @@ export class AdminComponent implements OnInit {
     imageUrl: '' as string | null,
     price: null as number | string | null,
     schedule: '',
-    curriculumJson: '',
+    curriculumRuJson: '',
+    curriculumSrJson: '',
+    curriculumEnJson: '',
   };
-  schoolTypeForm = { title: '', description: '' };
+  schoolTypeForm = { titleRu: '', titleSr: '', titleEn: '', descriptionRu: '', descriptionSr: '', descriptionEn: '' };
+  programFormLang = signal<'ru' | 'sr' | 'en'>('ru');
+  schoolTypeFormLang = signal<'ru' | 'sr' | 'en'>('ru');
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private api: ApiService) {}
+  constructor(
+    private api: ApiService,
+    private translate: TranslateService,
+  ) {}
 
   ngOnInit() {
     this.loadStats();
@@ -363,10 +410,15 @@ export class AdminComponent implements OnInit {
     this.editingProgram.set(null);
     this.errorMessage.set(null);
     this.successMessage.set(null);
+    this.programFormLang.set('ru');
     this.programForm = {
-      title: '',
+      titleRu: '',
+      titleSr: '',
+      titleEn: '',
       slug: '',
-      description: '',
+      descriptionRu: '',
+      descriptionSr: '',
+      descriptionEn: '',
       ageMin: 5,
       ageMax: 18,
       schoolType: 'tech',
@@ -376,7 +428,9 @@ export class AdminComponent implements OnInit {
       imageUrl: null,
       price: null,
       schedule: '',
-      curriculumJson: '',
+      curriculumRuJson: '',
+      curriculumSrJson: '',
+      curriculumEnJson: '',
     };
     this.showProgramForm.set(true);
   }
@@ -385,22 +439,60 @@ export class AdminComponent implements OnInit {
     this.editingProgram.set(p);
     this.errorMessage.set(null);
     this.successMessage.set(null);
-    this.programForm = {
-      title: p.title,
-      slug: p.slug,
-      description: p.description,
-      ageMin: p.ageMin,
-      ageMax: p.ageMax,
-      schoolType: p.schoolType || 'tech',
-      durationWeeks: p.durationWeeks,
-      lessonsPerWeek: p.lessonsPerWeek ?? 1,
-      format: p.format || '',
-      imageUrl: p.imageUrl ?? null,
-      price: p.price ?? null,
-      schedule: p.schedule ?? '',
-      curriculumJson: p.curriculum?.length ? JSON.stringify(p.curriculum, null, 2) : '',
-    };
-    this.showProgramForm.set(true);
+    this.programFormLang.set('ru');
+    this.api.get<{ success: boolean; program: Program & { titleRu?: string; titleSr?: string; titleEn?: string; descriptionRu?: string; descriptionSr?: string; descriptionEn?: string; curriculumRu?: Lesson[]; curriculumSr?: Lesson[]; curriculumEn?: Lesson[] } }>(`/admin/programs/raw/${p.id}`).subscribe({
+      next: (res) => {
+        if (res.success && res.program) {
+          const prog = res.program as any;
+          this.programForm = {
+            titleRu: prog.titleRu ?? prog.title ?? '',
+            titleSr: prog.titleSr ?? '',
+            titleEn: prog.titleEn ?? '',
+            slug: prog.slug ?? '',
+            descriptionRu: prog.descriptionRu ?? prog.description ?? '',
+            descriptionSr: prog.descriptionSr ?? '',
+            descriptionEn: prog.descriptionEn ?? '',
+            ageMin: prog.ageMin ?? prog.age_min ?? 5,
+            ageMax: prog.ageMax ?? prog.age_max ?? 18,
+            schoolType: prog.schoolType ?? prog.school_type ?? 'tech',
+            durationWeeks: prog.durationWeeks ?? prog.duration_weeks ?? 12,
+            lessonsPerWeek: prog.lessonsPerWeek ?? prog.lessons_per_week ?? 1,
+            format: prog.format ?? '',
+            imageUrl: prog.imageUrl ?? prog.image_url ?? null,
+            price: prog.price ?? null,
+            schedule: prog.schedule ?? '',
+            curriculumRuJson: Array.isArray(prog.curriculumRu) ? JSON.stringify(prog.curriculumRu, null, 2) : '',
+            curriculumSrJson: Array.isArray(prog.curriculumSr) ? JSON.stringify(prog.curriculumSr, null, 2) : '',
+            curriculumEnJson: Array.isArray(prog.curriculumEn) ? JSON.stringify(prog.curriculumEn, null, 2) : '',
+          };
+        }
+        this.showProgramForm.set(true);
+      },
+      error: () => {
+        this.programForm = {
+          titleRu: p.title,
+          titleSr: '',
+          titleEn: '',
+          slug: p.slug,
+          descriptionRu: p.description,
+          descriptionSr: '',
+          descriptionEn: '',
+          ageMin: p.ageMin,
+          ageMax: p.ageMax,
+          schoolType: p.schoolType || 'tech',
+          durationWeeks: p.durationWeeks,
+          lessonsPerWeek: p.lessonsPerWeek ?? 1,
+          format: p.format || '',
+          imageUrl: p.imageUrl ?? null,
+          price: p.price ?? null,
+          schedule: p.schedule ?? '',
+          curriculumRuJson: p.curriculum?.length ? JSON.stringify(p.curriculum, null, 2) : '',
+          curriculumSrJson: '',
+          curriculumEnJson: '',
+        };
+        this.showProgramForm.set(true);
+      },
+    });
   }
 
   closeProgramForm() {
@@ -412,27 +504,44 @@ export class AdminComponent implements OnInit {
 
   saveProgram() {
     this.errorMessage.set(null);
-    if (!this.programForm.title?.trim()) {
-      this.errorMessage.set('Название обязательно');
+    const titleRu = this.programForm.titleRu?.trim() ?? '';
+    if (!titleRu) {
+      this.errorMessage.set(this.translate.instant('admin.titleRequired'));
       return;
     }
     if (this.programForm.ageMin > this.programForm.ageMax) {
-      this.errorMessage.set('Возраст «от» не может быть больше «до»');
+      this.errorMessage.set(this.translate.instant('admin.ageError'));
       return;
     }
-    let curriculum: Lesson[] = [];
+    let curriculumRu: Lesson[] = [];
+    let curriculumSr: Lesson[] = [];
+    let curriculumEn: Lesson[] = [];
     try {
-      if (this.programForm.curriculumJson?.trim()) {
-        curriculum = JSON.parse(this.programForm.curriculumJson);
+      if (this.programForm.curriculumRuJson?.trim()) {
+        curriculumRu = JSON.parse(this.programForm.curriculumRuJson);
+      }
+      if (this.programForm.curriculumSrJson?.trim()) {
+        curriculumSr = JSON.parse(this.programForm.curriculumSrJson);
+      }
+      if (this.programForm.curriculumEnJson?.trim()) {
+        curriculumEn = JSON.parse(this.programForm.curriculumEnJson);
       }
     } catch {
-      this.errorMessage.set('Неверный JSON в программе занятий');
+      this.errorMessage.set(this.translate.instant('admin.curriculumJsonError'));
       return;
     }
+    const slug = this.programForm.slug?.trim() || titleRu.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, '');
     const body = {
-      title: this.programForm.title.trim(),
-      slug: this.programForm.slug?.trim() || this.programForm.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, ''),
-      description: this.programForm.description || '',
+      titleRu,
+      titleSr: this.programForm.titleSr?.trim() ?? titleRu,
+      titleEn: this.programForm.titleEn?.trim() ?? titleRu,
+      slug,
+      descriptionRu: this.programForm.descriptionRu?.trim() ?? '',
+      descriptionSr: this.programForm.descriptionSr?.trim() ?? this.programForm.descriptionRu?.trim() ?? '',
+      descriptionEn: this.programForm.descriptionEn?.trim() ?? this.programForm.descriptionRu?.trim() ?? '',
+      curriculumRu,
+      curriculumSr,
+      curriculumEn,
       ageMin: this.programForm.ageMin,
       ageMax: this.programForm.ageMax,
       schoolType: this.programForm.schoolType,
@@ -442,40 +551,39 @@ export class AdminComponent implements OnInit {
       imageUrl: this.programForm.imageUrl?.trim() || null,
       price: (this.programForm.price != null && String(this.programForm.price).trim() !== '' && !Number.isNaN(Number(this.programForm.price))) ? Number(this.programForm.price) : null,
       schedule: this.programForm.schedule?.trim() || null,
-      curriculum,
     };
     const ed = this.editingProgram();
     if (ed) {
       this.api.put<{ success: boolean }>(`/admin/programs/${ed.id}`, body).subscribe({
         next: () => {
-          this.successMessage.set('Сохранено');
+          this.successMessage.set(this.translate.instant('admin.saved'));
           setTimeout(() => {
             this.closeProgramForm();
             this.loadPrograms();
           }, 500);
         },
         error: (err) => {
-          this.errorMessage.set(err.error?.error || 'Ошибка сохранения');
+          this.errorMessage.set(err.error?.error || this.translate.instant('admin.saveError'));
         },
       });
     } else {
       this.api.post<{ success: boolean }>('/admin/programs', body).subscribe({
         next: () => {
-          this.successMessage.set('Сохранено');
+          this.successMessage.set(this.translate.instant('admin.saved'));
           setTimeout(() => {
             this.closeProgramForm();
             this.loadPrograms();
           }, 500);
         },
         error: (err) => {
-          this.errorMessage.set(err.error?.error || 'Ошибка сохранения');
+          this.errorMessage.set(err.error?.error || this.translate.instant('admin.saveError'));
         },
       });
     }
   }
 
   deleteProgram(p: Program) {
-    if (!confirm('Удалить программу «' + p.title + '»?')) return;
+    if (!confirm(this.translate.instant('admin.deleteProgramConfirm', { title: p.title }))) return;
     this.api.delete<{ success: boolean }>(`/admin/programs/${p.id}`).subscribe({
       next: () => this.loadPrograms(),
     });
@@ -485,8 +593,27 @@ export class AdminComponent implements OnInit {
     this.editingSchoolType.set(st);
     this.schoolTypeError.set(null);
     this.schoolTypeSuccess.set(null);
-    this.schoolTypeForm = { title: st.title, description: st.description || '' };
-    this.showSchoolTypeForm.set(true);
+    this.schoolTypeFormLang.set('ru');
+    this.api.get<{ success: boolean; schoolType: { titleRu?: string; titleSr?: string; titleEn?: string; descriptionRu?: string; descriptionSr?: string; descriptionEn?: string } }>(`/admin/school-types/raw/${st.id}`).subscribe({
+      next: (res) => {
+        if (res.success && res.schoolType) {
+          const s = res.schoolType as any;
+          this.schoolTypeForm = {
+            titleRu: s.titleRu ?? st.title ?? '',
+            titleSr: s.titleSr ?? '',
+            titleEn: s.titleEn ?? '',
+            descriptionRu: s.descriptionRu ?? st.description ?? '',
+            descriptionSr: s.descriptionSr ?? '',
+            descriptionEn: s.descriptionEn ?? '',
+          };
+        }
+        this.showSchoolTypeForm.set(true);
+      },
+      error: () => {
+        this.schoolTypeForm = { titleRu: st.title ?? '', titleSr: '', titleEn: '', descriptionRu: st.description ?? '', descriptionSr: '', descriptionEn: '' };
+        this.showSchoolTypeForm.set(true);
+      },
+    });
   }
 
   closeSchoolTypeForm() {
@@ -500,19 +627,28 @@ export class AdminComponent implements OnInit {
     const st = this.editingSchoolType();
     if (!st) return;
     this.schoolTypeError.set(null);
+    const titleRu = this.schoolTypeForm.titleRu?.trim() ?? '';
+    if (!titleRu) {
+      this.schoolTypeError.set(this.translate.instant('admin.titleRequired'));
+      return;
+    }
     this.api.put<{ success: boolean; schoolType: SchoolType }>(`/admin/school-types/${st.id}`, {
-      title: this.schoolTypeForm.title.trim(),
-      description: this.schoolTypeForm.description?.trim() || '',
+      titleRu,
+      titleSr: this.schoolTypeForm.titleSr?.trim() ?? titleRu,
+      titleEn: this.schoolTypeForm.titleEn?.trim() ?? titleRu,
+      descriptionRu: this.schoolTypeForm.descriptionRu?.trim() ?? '',
+      descriptionSr: this.schoolTypeForm.descriptionSr?.trim() ?? this.schoolTypeForm.descriptionRu?.trim() ?? '',
+      descriptionEn: this.schoolTypeForm.descriptionEn?.trim() ?? this.schoolTypeForm.descriptionRu?.trim() ?? '',
     }).subscribe({
       next: () => {
-        this.schoolTypeSuccess.set('Сохранено');
+        this.schoolTypeSuccess.set(this.translate.instant('admin.saved'));
         this.loadSchoolTypes();
         this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
           next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
         });
         setTimeout(() => this.closeSchoolTypeForm(), 800);
       },
-      error: (err) => this.schoolTypeError.set(err.error?.error || 'Ошибка сохранения'),
+      error: (err) => this.schoolTypeError.set(err.error?.error || this.translate.instant('admin.saveError')),
     });
   }
 

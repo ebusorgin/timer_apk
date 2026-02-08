@@ -1,5 +1,17 @@
 import { createAdminAuthMiddleware } from '../middleware/adminAuth.mjs';
 
+const LOCALES = ['ru', 'sr', 'en'];
+function getLocale(req) {
+  const fromQuery = req.query?.locale ?? req.body?.locale;
+  if (LOCALES.includes(fromQuery)) return fromQuery;
+  const acceptLang = req.headers['accept-language'];
+  if (acceptLang) {
+    const match = acceptLang.match(/(ru|sr|en)/i);
+    if (match) return match[1].toLowerCase();
+  }
+  return 'ru';
+}
+
 export function registerAdminRoutes({ app, persistence, logger }) {
   const log = logger?.child?.({ scope: 'admin' }) || logger || console;
   const adminAuth = createAdminAuthMiddleware(persistence);
@@ -21,7 +33,7 @@ export function registerAdminRoutes({ app, persistence, logger }) {
 
   app.get('/api/admin/stats', adminAuth, async (req, res) => {
     try {
-      const stats = await persistence.getStats();
+      const stats = await persistence.getStats(getLocale(req));
       res.json({ success: true, stats });
     } catch (err) {
       log.error?.('Ошибка getStats', { error: err?.message });
@@ -29,9 +41,23 @@ export function registerAdminRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.get('/api/admin/programs/raw/:id', adminAuth, async (req, res) => {
+    try {
+      const program = await persistence.getProgramByIdRaw?.(req.params.id);
+      if (!program) {
+        res.status(404).json({ success: false, error: 'Программа не найдена' });
+        return;
+      }
+      res.json({ success: true, program });
+    } catch (err) {
+      log.error?.('Ошибка getProgramRaw', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка загрузки' });
+    }
+  });
+
   app.get('/api/admin/programs', adminAuth, async (req, res) => {
     try {
-      const programs = await persistence.getPrograms({});
+      const programs = await persistence.getPrograms({ locale: getLocale(req) });
       res.json({ success: true, programs });
     } catch (err) {
       log.error?.('Ошибка getPrograms', { error: err?.message });
@@ -42,10 +68,18 @@ export function registerAdminRoutes({ app, persistence, logger }) {
   app.post('/api/admin/programs', adminAuth, async (req, res) => {
     try {
       const body = req.body || {};
+      const slug = body.slug || (body.titleRu ?? body.title ?? '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, '');
       const program = await persistence.insertProgram({
-        title: body.title,
-        slug: body.slug || body.title?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, ''),
-        description: body.description || '',
+        titleRu: body.titleRu ?? body.title ?? '',
+        titleSr: body.titleSr ?? body.title_ru ?? body.title ?? '',
+        titleEn: body.titleEn ?? body.title_en ?? body.title ?? '',
+        slug,
+        descriptionRu: body.descriptionRu ?? body.description ?? '',
+        descriptionSr: body.descriptionSr ?? body.description_sr ?? body.description ?? '',
+        descriptionEn: body.descriptionEn ?? body.description_en ?? body.description ?? '',
+        curriculumRu: body.curriculumRu ?? body.curriculum ?? [],
+        curriculumSr: body.curriculumSr ?? body.curriculum_sr ?? body.curriculum ?? [],
+        curriculumEn: body.curriculumEn ?? body.curriculum_en ?? body.curriculum ?? [],
         ageMin: body.ageMin ?? body.age_min ?? 5,
         ageMax: body.ageMax ?? body.age_max ?? 18,
         durationWeeks: body.durationWeeks ?? body.duration_weeks ?? 12,
@@ -55,7 +89,6 @@ export function registerAdminRoutes({ app, persistence, logger }) {
         imageUrl: body.imageUrl ?? body.image_url ?? null,
         price: body.price != null ? body.price : null,
         schedule: body.schedule ?? null,
-        curriculum: body.curriculum ?? [],
       });
       res.json({ success: true, program });
     } catch (err) {
@@ -95,7 +128,7 @@ export function registerAdminRoutes({ app, persistence, logger }) {
 
   app.get('/api/admin/school-types', adminAuth, async (req, res) => {
     try {
-      const schoolTypes = await persistence.getSchoolTypes();
+      const schoolTypes = await persistence.getSchoolTypes(getLocale(req));
       res.json({ success: true, schoolTypes });
     } catch (err) {
       log.error?.('Ошибка getSchoolTypes', { error: err?.message });
@@ -105,7 +138,19 @@ export function registerAdminRoutes({ app, persistence, logger }) {
 
   app.post('/api/admin/school-types', adminAuth, async (req, res) => {
     try {
-      const st = await persistence.insertSchoolType(req.body || {});
+      const body = req.body || {};
+      const st = await persistence.insertSchoolType({
+        id: body.id,
+        title: body.title ?? body.titleRu ?? body.title_ru ?? '',
+        titleRu: body.titleRu ?? body.title,
+        titleSr: body.titleSr ?? body.title_sr ?? body.title,
+        titleEn: body.titleEn ?? body.title_en ?? body.title,
+        sortOrder: body.sortOrder ?? body.sort_order ?? 0,
+        description: body.description ?? body.descriptionRu ?? body.description_ru ?? '',
+        descriptionRu: body.descriptionRu ?? body.description,
+        descriptionSr: body.descriptionSr ?? body.description_sr ?? body.description,
+        descriptionEn: body.descriptionEn ?? body.description_en ?? body.description,
+      });
       res.json({ success: true, schoolType: st });
     } catch (err) {
       log.error?.('Ошибка createSchoolType', { error: err?.message });
@@ -113,14 +158,34 @@ export function registerAdminRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.get('/api/admin/school-types/raw/:id', adminAuth, async (req, res) => {
+    try {
+      const st = await persistence.getSchoolTypeByIdRaw?.(req.params.id);
+      if (!st) {
+        res.status(404).json({ success: false, error: 'Тип школы не найден' });
+        return;
+      }
+      res.json({ success: true, schoolType: st });
+    } catch (err) {
+      log.error?.('Ошибка getSchoolTypeRaw', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка загрузки' });
+    }
+  });
+
   app.put('/api/admin/school-types/:id', adminAuth, async (req, res) => {
     try {
       const body = req.body || {};
       const st = await persistence.updateSchoolType(req.params.id, {
-        title: body.title,
+        title: body.title ?? body.titleRu,
+        titleRu: body.titleRu ?? body.title,
+        titleSr: body.titleSr ?? body.title_sr,
+        titleEn: body.titleEn ?? body.title_en,
         sortOrder: body.sortOrder ?? body.sort_order,
-        description: body.description,
-      });
+        description: body.description ?? body.descriptionRu,
+        descriptionRu: body.descriptionRu ?? body.description,
+        descriptionSr: body.descriptionSr ?? body.description_sr,
+        descriptionEn: body.descriptionEn ?? body.description_en,
+      }, getLocale(req));
       if (!st) {
         res.status(404).json({ success: false, error: 'Направление не найдено' });
         return;

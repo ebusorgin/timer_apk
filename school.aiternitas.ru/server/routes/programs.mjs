@@ -1,10 +1,22 @@
+const LOCALES = ['ru', 'sr', 'en'];
+function getLocale(req) {
+  const fromQuery = req.query?.locale;
+  if (LOCALES.includes(fromQuery)) return fromQuery;
+  const acceptLang = req.headers['accept-language'];
+  if (acceptLang) {
+    const match = acceptLang.match(/(ru|sr|en)/i);
+    if (match) return match[1].toLowerCase();
+  }
+  return 'ru';
+}
+
 export function registerProgramsRoutes({ app, persistence, logger }) {
   const log = logger?.child?.({ scope: 'programs' }) || logger || console;
 
   app.get('/api/programs', async (req, res) => {
     try {
       const { age_min, age_max, school_type } = req.query || {};
-      const filters = {};
+      const filters = { locale: getLocale(req) };
       if (age_min != null) filters.ageMin = parseInt(age_min, 10);
       if (age_max != null) filters.ageMax = parseInt(age_max, 10);
       if (school_type) filters.schoolType = String(school_type).trim();
@@ -19,7 +31,7 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
 
   app.get('/api/programs/meta/school-types', async (req, res) => {
     try {
-      const schoolTypes = await persistence.getSchoolTypes();
+      const schoolTypes = await persistence.getSchoolTypes(getLocale(req));
       res.json({ success: true, schoolTypes });
     } catch (err) {
       log.error?.('Ошибка getSchoolTypes', { error: err?.message });
@@ -29,12 +41,13 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
 
   app.get('/api/school-types/:id', async (req, res) => {
     try {
-      const schoolType = await persistence.getSchoolTypeById(req.params.id);
+      const locale = getLocale(req);
+      const schoolType = await persistence.getSchoolTypeById(req.params.id, locale);
       if (!schoolType) {
         res.status(404).json({ success: false, error: 'Тип школы не найден' });
         return;
       }
-      const programs = await persistence.getPrograms({ schoolType: req.params.id });
+      const programs = await persistence.getPrograms({ schoolType: req.params.id, locale });
       res.json({ success: true, schoolType, programs });
     } catch (err) {
       log.error?.('Ошибка getSchoolType', { error: err?.message });
@@ -44,7 +57,7 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
 
   app.get('/api/programs/:id', async (req, res) => {
     try {
-      const program = await persistence.getProgramById(req.params.id);
+      const program = await persistence.getProgramById(req.params.id, getLocale(req));
       if (!program) {
         res.status(404).json({ success: false, error: 'Программа не найдена' });
         return;

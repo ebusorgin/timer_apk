@@ -9,6 +9,13 @@ const normalizeId = (id) => {
   return Number.isInteger(n) ? n : null;
 };
 
+const LOCALES = ['ru', 'sr', 'en'];
+const pickLocale = (row, locale, base) => {
+  const loc = LOCALES.includes(locale) ? locale : 'ru';
+  const key = `${base}_${loc}`;
+  return row[key] ?? row[`${base}_ru`] ?? row[`${base}_sr`] ?? row[`${base}_en`] ?? row[base] ?? '';
+};
+
 export async function ensureSchema(pool, logger) {
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
 
@@ -90,13 +97,14 @@ function userFromRow(row) {
   };
 }
 
-function programFromRow(row) {
+function programFromRow(row, locale = 'ru') {
   if (!row) return null;
+  const curriculum = pickLocale(row, locale, 'curriculum');
   return {
     id: String(row.id),
-    title: row.title,
+    title: pickLocale(row, locale, 'title'),
     slug: row.slug,
-    description: row.description,
+    description: pickLocale(row, locale, 'description'),
     ageMin: row.age_min,
     ageMax: row.age_max,
     durationWeeks: row.duration_weeks,
@@ -106,9 +114,19 @@ function programFromRow(row) {
     imageUrl: row.image_url || null,
     price: row.price != null ? row.price : null,
     schedule: row.schedule || null,
-    curriculum: row.curriculum || [],
+    curriculum: Array.isArray(curriculum) ? curriculum : (row.curriculum || []),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
+  };
+}
+
+function schoolTypeFromRow(row, locale = 'ru') {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: pickLocale(row, locale, 'title'),
+    sortOrder: row.sort_order ?? 0,
+    description: pickLocale(row, locale, 'description'),
   };
 }
 
@@ -171,8 +189,8 @@ export function createPostgresAdapter(poolConfig, logger) {
     },
 
     async getPrograms(filters = {}) {
-      const { ageMin, ageMax, schoolType } = filters;
-      let query = `SELECT * FROM ${schema('programs')} ORDER BY age_min, title`;
+      const { ageMin, ageMax, schoolType, locale = 'ru' } = filters;
+      let query = `SELECT * FROM ${schema('programs')} ORDER BY age_min, COALESCE(title_ru, title)`;
       const params = [];
       const conditions = [];
 
@@ -189,23 +207,53 @@ export function createPostgresAdapter(poolConfig, logger) {
         conditions.push(`school_type = $${params.length}`);
       }
       if (conditions.length) {
-        query = `SELECT * FROM ${schema('programs')} WHERE ${conditions.join(' AND ')} ORDER BY age_min, title`;
+        query = `SELECT * FROM ${schema('programs')} WHERE ${conditions.join(' AND ')} ORDER BY age_min, COALESCE(title_ru, title)`;
       }
 
       const { rows } = await pool.query(query, params);
-      return rows.map(programFromRow);
+      return rows.map((r) => programFromRow(r, locale));
     },
 
-    async getProgramById(id) {
+    async getProgramById(id, locale = 'ru') {
       const nid = normalizeId(id);
       if (nid == null) return null;
       const { rows } = await pool.query(`SELECT * FROM ${schema('programs')} WHERE id = $1`, [nid]);
-      return programFromRow(rows[0]);
+      return programFromRow(rows[0], locale);
     },
 
-    async getProgramBySlug(slug) {
+    async getProgramByIdRaw(id) {
+      const nid = normalizeId(id);
+      if (nid == null) return null;
+      const { rows } = await pool.query(`SELECT * FROM ${schema('programs')} WHERE id = $1`, [nid]);
+      const r = rows[0];
+      if (!r) return null;
+      return {
+        id: String(r.id),
+        slug: r.slug,
+        titleRu: r.title_ru ?? r.title ?? '',
+        titleSr: r.title_sr ?? r.title_ru ?? r.title ?? '',
+        titleEn: r.title_en ?? r.title_ru ?? r.title ?? '',
+        descriptionRu: r.description_ru ?? r.description ?? '',
+        descriptionSr: r.description_sr ?? r.description_ru ?? r.description ?? '',
+        descriptionEn: r.description_en ?? r.description_ru ?? r.description ?? '',
+        curriculumRu: r.curriculum_ru ?? r.curriculum ?? [],
+        curriculumSr: r.curriculum_sr ?? r.curriculum_ru ?? r.curriculum ?? [],
+        curriculumEn: r.curriculum_en ?? r.curriculum_ru ?? r.curriculum ?? [],
+        ageMin: r.age_min,
+        ageMax: r.age_max,
+        durationWeeks: r.duration_weeks,
+        lessonsPerWeek: r.lessons_per_week ?? 1,
+        format: r.format,
+        schoolType: r.school_type || 'tech',
+        imageUrl: r.image_url || null,
+        price: r.price != null ? r.price : null,
+        schedule: r.schedule || null,
+      };
+    },
+
+    async getProgramBySlug(slug, locale = 'ru') {
       const { rows } = await pool.query(`SELECT * FROM ${schema('programs')} WHERE slug = $1`, [slug]);
-      return programFromRow(rows[0]);
+      return programFromRow(rows[0], locale);
     },
 
     async insertProgram(program) {
@@ -214,15 +262,23 @@ export function createPostgresAdapter(poolConfig, logger) {
       const imageUrl = program.imageUrl ?? program.image_url ?? null;
       const price = program.price != null ? program.price : null;
       const schedule = program.schedule ?? null;
-      const curriculum = program.curriculum ?? [];
+      const titleRu = program.titleRu ?? program.title_ru ?? program.title ?? '';
+      const titleSr = program.titleSr ?? program.title_sr ?? titleRu;
+      const titleEn = program.titleEn ?? program.title_en ?? titleRu;
+      const descRu = program.descriptionRu ?? program.description_ru ?? program.description ?? '';
+      const descSr = program.descriptionSr ?? program.description_sr ?? descRu;
+      const descEn = program.descriptionEn ?? program.description_en ?? descRu;
+      const currRu = program.curriculumRu ?? program.curriculum_ru ?? program.curriculum ?? [];
+      const currSr = program.curriculumSr ?? program.curriculum_sr ?? currRu;
+      const currEn = program.curriculumEn ?? program.curriculum_en ?? currRu;
       const { rows } = await pool.query(
-        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, curriculum, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $14)
+        `INSERT INTO ${schema('programs')} (title, title_ru, title_sr, title_en, slug, description, description_ru, description_sr, description_en, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, curriculum, curriculum_ru, curriculum_sr, curriculum_en, created_at, updated_at)
+         VALUES ($1, $1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $17::jsonb, $18::jsonb, $19::jsonb, $20, $20)
          RETURNING *`,
         [
-          program.title,
+          titleRu, titleSr, titleEn,
           program.slug,
-          program.description,
+          descRu, descSr, descEn,
           program.ageMin ?? program.age_min,
           program.ageMax ?? program.age_max,
           program.durationWeeks ?? program.duration_weeks,
@@ -232,19 +288,24 @@ export function createPostgresAdapter(poolConfig, logger) {
           imageUrl,
           price,
           schedule,
-          JSON.stringify(curriculum),
+          JSON.stringify(currRu),
+          JSON.stringify(currSr),
+          JSON.stringify(currEn),
           now,
         ]
       );
-      return programFromRow(rows[0]);
+      return programFromRow(rows[0], 'ru');
     },
 
-    async updateProgram(id, updates) {
+    async updateProgram(id, updates, locale = 'ru') {
       const nid = normalizeId(id);
       if (nid == null) return null;
       const now = Date.now();
       const fieldMap = {
         title: 'title', slug: 'slug', description: 'description',
+        titleRu: 'title_ru', titleSr: 'title_sr', titleEn: 'title_en',
+        descriptionRu: 'description_ru', descriptionSr: 'description_sr', descriptionEn: 'description_en',
+        curriculumRu: 'curriculum_ru', curriculumSr: 'curriculum_sr', curriculumEn: 'curriculum_en',
         ageMin: 'age_min', age_min: 'age_min', ageMax: 'age_max', age_max: 'age_max',
         durationWeeks: 'duration_weeks', duration_weeks: 'duration_weeks',
         lessonsPerWeek: 'lessons_per_week', lessons_per_week: 'lessons_per_week',
@@ -260,19 +321,27 @@ export function createPostgresAdapter(poolConfig, logger) {
         const val = updates[key];
         if (val !== undefined) {
           idx++;
-          setClauses.push(col === 'curriculum' ? `${col} = $${idx}::jsonb` : `${col} = $${idx}`);
-          values.push(col === 'curriculum' ? JSON.stringify(val) : (Array.isArray(val) ? val : val));
+          const isJsonb = col.startsWith('curriculum');
+          setClauses.push(isJsonb ? `${col} = $${idx}::jsonb` : `${col} = $${idx}`);
+          values.push(isJsonb ? JSON.stringify(val) : (Array.isArray(val) ? val : val));
         }
       }
-      if (setClauses.length === 0) return this.getProgramById(id);
+      if (setClauses.length === 0) return this.getProgramById(id, locale);
+      const hasI18n = ['title_ru', 'title_sr', 'title_en', 'description_ru', 'description_sr', 'description_en', 'curriculum_ru', 'curriculum_sr', 'curriculum_en'].some((c) => setClauses.some((s) => s.startsWith(c)));
+      if (hasI18n) {
+        setClauses.push('title = COALESCE(title_ru, title)', 'description = COALESCE(description_ru, description)', 'curriculum = COALESCE(curriculum_ru, curriculum)');
+      }
       idx++;
       setClauses.push(`updated_at = $${idx}`);
-      values.push(now, nid);
+      values.push(now);
+      idx++;
+      values.push(nid);
       const { rows } = await pool.query(
-        `UPDATE ${schema('programs')} SET ${setClauses.join(', ')} WHERE id = $${idx + 1} RETURNING *`,
+        `UPDATE ${schema('programs')} SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
         values
       );
-      return programFromRow(rows[0]);
+      if (rows.length === 0) return null;
+      return programFromRow(rows[0], locale);
     },
 
     async deleteProgram(id) {
@@ -282,11 +351,11 @@ export function createPostgresAdapter(poolConfig, logger) {
       return rowCount > 0;
     },
 
-    async getEnrollmentsByUserId(userId) {
+    async getEnrollmentsByUserId(userId, locale = 'ru') {
       const nid = normalizeId(userId);
       if (nid == null) return [];
       const { rows } = await pool.query(
-        `SELECT e.*, p.title as program_title, p.slug as program_slug, p.school_type as program_school_type
+        `SELECT e.*, p.title_ru, p.title_sr, p.title_en, p.slug as program_slug, p.school_type as program_school_type
          FROM ${schema('enrollments')} e
          JOIN ${schema('programs')} p ON p.id = e.program_id
          WHERE e.user_id = $1
@@ -295,7 +364,7 @@ export function createPostgresAdapter(poolConfig, logger) {
       );
       return rows.map((r) => ({
         ...enrollmentFromRow(r),
-        programTitle: r.program_title,
+        programTitle: pickLocale(r, locale, 'title'),
         programSlug: r.program_slug,
         programSchoolType: r.program_school_type,
       }));
@@ -358,17 +427,17 @@ export function createPostgresAdapter(poolConfig, logger) {
       return Number(rows[0]?.c ?? 0);
     },
 
-    async getStats() {
+    async getStats(locale = 'ru') {
       const [students, enrollments, programs] = await Promise.all([
         this.countStudents(),
         this.countEnrollments(),
         pool.query(`SELECT COUNT(*) as c FROM ${schema('programs')}`).then((r) => Number(r.rows[0]?.c ?? 0)),
       ]);
       const { rows: PopularRows } = await pool.query(
-        `SELECT p.id, p.title, p.slug, COUNT(e.id) as cnt
+        `SELECT p.id, p.title_ru, p.title_sr, p.title_en, p.title, p.slug, COUNT(e.id) as cnt
          FROM ${schema('programs')} p
          LEFT JOIN ${schema('enrollments')} e ON e.program_id = p.id AND e.status = 'active'
-         GROUP BY p.id, p.title, p.slug
+         GROUP BY p.id, p.title_ru, p.title_sr, p.title_en, p.title, p.slug
          ORDER BY cnt DESC
          LIMIT 10`
       );
@@ -376,71 +445,115 @@ export function createPostgresAdapter(poolConfig, logger) {
         students,
         enrollments,
         programs,
-        popularPrograms: PopularRows.map((r) => ({ id: String(r.id), title: r.title, slug: r.slug, count: Number(r.cnt) })),
+        popularPrograms: PopularRows.map((r) => ({
+          id: String(r.id),
+          title: pickLocale(r, locale, 'title'),
+          slug: r.slug,
+          count: Number(r.cnt),
+        })),
       };
     },
 
-    async getSchoolTypes() {
+    async getSchoolTypes(locale = 'ru') {
       const { rows } = await pool.query(
-        `SELECT id, title, sort_order, description FROM ${schema('school_types')} ORDER BY sort_order, id`
+        `SELECT * FROM ${schema('school_types')} ORDER BY sort_order, id`
       );
-      return rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        sortOrder: r.sort_order ?? 0,
-        description: r.description || '',
-      }));
+      return rows.map((r) => schoolTypeFromRow(r, locale));
     },
 
-    async getSchoolTypeById(id) {
+    async getSchoolTypeByIdRaw(id) {
+      const { rows } = await pool.query(`SELECT * FROM ${schema('school_types')} WHERE id = $1`, [id]);
+      const r = rows[0];
+      if (!r) return null;
+      return {
+        id: r.id,
+        titleRu: r.title_ru ?? r.title ?? '',
+        titleSr: r.title_sr ?? r.title_ru ?? r.title ?? '',
+        titleEn: r.title_en ?? r.title_ru ?? r.title ?? '',
+        sortOrder: r.sort_order ?? 0,
+        descriptionRu: r.description_ru ?? r.description ?? '',
+        descriptionSr: r.description_sr ?? r.description_ru ?? r.description ?? '',
+        descriptionEn: r.description_en ?? r.description_ru ?? r.description ?? '',
+      };
+    },
+
+    async getSchoolTypeById(id, locale = 'ru') {
       const { rows } = await pool.query(
-        `SELECT id, title, sort_order, description FROM ${schema('school_types')} WHERE id = $1`,
+        `SELECT * FROM ${schema('school_types')} WHERE id = $1`,
         [id]
       );
-      const r = rows[0];
-      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
+      return schoolTypeFromRow(rows[0], locale);
     },
 
-    async insertSchoolType({ id, title, sortOrder = 0, description = '' }) {
+    async insertSchoolType(data) {
+      const id = data.id;
+      const titleRu = data.titleRu ?? data.title_ru ?? data.title ?? '';
+      const titleSr = data.titleSr ?? data.title_sr ?? titleRu;
+      const titleEn = data.titleEn ?? data.title_en ?? titleRu;
+      const descRu = data.descriptionRu ?? data.description_ru ?? data.description ?? '';
+      const descSr = data.descriptionSr ?? data.description_sr ?? descRu;
+      const descEn = data.descriptionEn ?? data.description_en ?? descRu;
+      const sortOrder = data.sortOrder ?? data.sort_order ?? 0;
       const { rows } = await pool.query(
-        `INSERT INTO ${schema('school_types')} (id, title, sort_order, description) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, sort_order = EXCLUDED.sort_order, description = EXCLUDED.description
-         RETURNING id, title, sort_order, description`,
-        [id, title, sortOrder, description || '']
+        `INSERT INTO ${schema('school_types')} (id, title, title_ru, title_sr, title_en, sort_order, description, description_ru, description_sr, description_en)
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $6, $7, $8)
+         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, title_ru = EXCLUDED.title_ru, title_sr = EXCLUDED.title_sr, title_en = EXCLUDED.title_en, sort_order = EXCLUDED.sort_order, description = EXCLUDED.description, description_ru = EXCLUDED.description_ru, description_sr = EXCLUDED.description_sr, description_en = EXCLUDED.description_en
+         RETURNING *`,
+        [id, titleRu, titleSr, titleEn, sortOrder, descRu, descSr, descEn]
       );
-      const r = rows[0];
-      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
+      return schoolTypeFromRow(rows[0], 'ru');
     },
 
-    async updateSchoolType(id, updates) {
-      const { title, sortOrder, description } = updates;
+    async updateSchoolType(id, updates, locale = 'ru') {
+      const { titleRu, titleSr, titleEn, title, sortOrder, descriptionRu, descriptionSr, descriptionEn, description } = updates;
       const setClauses = [];
       const values = [];
       let idx = 0;
-      if (title !== undefined) {
+      if (titleRu !== undefined || title !== undefined) {
         idx++;
-        setClauses.push(`title = $${idx}`);
-        values.push(title);
+        const v = titleRu ?? title ?? '';
+        setClauses.push(`title = $${idx}`, `title_ru = $${idx}`);
+        values.push(v);
+      }
+      if (titleSr !== undefined) {
+        idx++;
+        setClauses.push(`title_sr = $${idx}`);
+        values.push(titleSr);
+      }
+      if (titleEn !== undefined) {
+        idx++;
+        setClauses.push(`title_en = $${idx}`);
+        values.push(titleEn);
       }
       if (sortOrder !== undefined) {
         idx++;
         setClauses.push(`sort_order = $${idx}`);
         values.push(sortOrder);
       }
-      if (description !== undefined) {
+      if (descriptionRu !== undefined || description !== undefined) {
         idx++;
-        setClauses.push(`description = $${idx}`);
-        values.push(description);
+        const v = descriptionRu ?? description ?? '';
+        setClauses.push(`description = $${idx}`, `description_ru = $${idx}`);
+        values.push(v);
       }
-      if (setClauses.length === 0) return this.getSchoolTypes().then((arr) => arr.find((st) => st.id === id) || null);
+      if (descriptionSr !== undefined) {
+        idx++;
+        setClauses.push(`description_sr = $${idx}`);
+        values.push(descriptionSr);
+      }
+      if (descriptionEn !== undefined) {
+        idx++;
+        setClauses.push(`description_en = $${idx}`);
+        values.push(descriptionEn);
+      }
+      if (setClauses.length === 0) return this.getSchoolTypeById(id, locale);
       idx++;
       values.push(id);
       const { rows } = await pool.query(
         `UPDATE ${schema('school_types')} SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
         values
       );
-      const r = rows[0];
-      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
+      return schoolTypeFromRow(rows[0], locale);
     },
 
     async close() {

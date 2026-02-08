@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 
 interface Program {
@@ -25,20 +26,20 @@ interface SchoolType {
 @Component({
   selector: 'school-school-type-detail',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, TranslateModule],
   template: `
     <div class="container page">
       @if (loading()) {
-        <p>Загрузка...</p>
+        <p>{{ 'programs.loading' | translate }}</p>
       } @else if (schoolType()) {
-        <a routerLink="/" class="back">← На главную</a>
+        <a routerLink="/" class="back">{{ 'schoolType.back' | translate }}</a>
         <div class="school-type-header">
           <h1>{{ schoolType()!.title }}</h1>
           @if (schoolType()!.description) {
             <p class="description">{{ schoolType()!.description }}</p>
           }
         </div>
-        <h2 class="programs-title">Программы</h2>
+        <h2 class="programs-title">{{ 'schoolType.programs' | translate }}</h2>
         <div class="grid">
           @for (p of programs(); track p.id) {
             <a [routerLink]="['/programs', p.id]" [queryParams]="{from: schoolType()!.id}" class="card">
@@ -47,7 +48,7 @@ interface SchoolType {
               }
               <div class="card-body">
                 <h3>{{ p.title }}</h3>
-                <p class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</p>
+                <p class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</p>
                 <p class="desc">{{ p.description }}</p>
                 @if (p.price != null) {
                   <span class="price">{{ p.price }} ₽</span>
@@ -57,7 +58,7 @@ interface SchoolType {
           }
         </div>
       } @else {
-        <p>Тип школы не найден</p>
+        <p>{{ 'schoolType.notFound' | translate }}</p>
       }
     </div>
   `,

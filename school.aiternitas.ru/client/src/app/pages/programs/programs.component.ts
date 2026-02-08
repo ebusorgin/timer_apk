@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { RouterLink, ActivatedRoute } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 
 export interface Program {
@@ -25,27 +26,27 @@ interface SchoolType {
 @Component({
   selector: 'school-programs',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, TranslateModule],
   template: `
     <div class="container page">
-      <h1>Программы обучения</h1>
+      <h1>{{ 'programs.title' | translate }}</h1>
       <div class="school-tabs">
-        <a [routerLink]="['/programs']" [queryParams]="{}" [class.active]="!schoolType()" class="tab">Все</a>
+        <a [routerLink]="['/programs']" [queryParams]="{}" [class.active]="!schoolType()" class="tab">{{ 'programs.all' | translate }}</a>
         @for (st of schoolTypes(); track st.id) {
           <a [routerLink]="['/programs']" [queryParams]="{school_type: st.id}" [class.active]="schoolType() === st.id" class="tab">{{ st.title }}</a>
         }
       </div>
       <div class="filters">
         <select (change)="onAgeChange($event)">
-          <option value="">Все возрасты</option>
-          <option value="5-7">5–7 лет</option>
-          <option value="8-10">8–10 лет</option>
-          <option value="11-13">11–13 лет</option>
-          <option value="14-18">14+ лет</option>
+          <option value="">{{ 'programs.allAges' | translate }}</option>
+          <option value="5-7">{{ 'programs.age50' | translate }}</option>
+          <option value="8-10">{{ 'programs.age810' | translate }}</option>
+          <option value="11-13">{{ 'programs.age1113' | translate }}</option>
+          <option value="14-18">{{ 'programs.age1418' | translate }}</option>
         </select>
       </div>
       @if (loading()) {
-        <p>Загрузка...</p>
+        <p>{{ 'programs.loading' | translate }}</p>
       } @else {
         <div class="grid">
           @for (p of programs(); track p.id) {
@@ -55,7 +56,7 @@ interface SchoolType {
               }
               <div class="card-body">
                 <h3>{{ p.title }}</h3>
-                <p class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</p>
+                <p class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</p>
                 <p class="desc">{{ p.description }}</p>
                 <div class="card-meta">
                   @if (p.price != null) {

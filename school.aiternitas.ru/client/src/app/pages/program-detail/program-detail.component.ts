@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 
@@ -31,11 +32,11 @@ interface Program {
 @Component({
   selector: 'school-program-detail',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, TranslateModule],
   template: `
     <div class="container page">
       @if (loading()) {
-        <p>Загрузка...</p>
+        <p>{{ 'programs.loading' | translate }}</p>
       } @else if (program()) {
         @let p = program()!;
         <a [routerLink]="backLink()" class="back">{{ backLabel() }}</a>
@@ -44,11 +45,11 @@ interface Program {
         }
         <h1>{{ p.title }}</h1>
         <div class="meta">
-          <span class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</span>
+          <span class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</span>
           @if (p.schoolType) {
-            <span class="badge">{{ p.schoolType === 'art' ? 'Художественная школа' : 'Техническое направление' }}</span>
+            <span class="badge">{{ p.schoolType === 'art' ? ('programDetail.artBadge' | translate) : ('programDetail.techBadge' | translate) }}</span>
           }
-          <span>{{ p.durationWeeks }} недель</span>
+          <span>{{ p.durationWeeks }} {{ 'programDetail.weeks' | translate }}</span>
           @if (p.price != null) {
             <span class="price">{{ p.price }} ₽</span>
           }
@@ -59,19 +60,19 @@ interface Program {
         <p class="desc">{{ p.description }}</p>
         @if (p.curriculum && p.curriculum.length > 0) {
           <div class="curriculum">
-            <h3>Программа занятий</h3>
+            <h3>{{ 'programDetail.curriculum' | translate }}</h3>
             @for (lesson of p.curriculum; track lesson.n) {
               <div class="lesson-card">
-                <div class="lesson-num">Урок {{ lesson.n }}</div>
+                <div class="lesson-num">{{ 'programDetail.lesson' | translate }} {{ lesson.n }}</div>
                 <h4>{{ lesson.topic }}</h4>
                 @if (lesson.description) {
-                  <p><strong>На уроке:</strong> {{ lesson.description }}</p>
+                  <p><strong>{{ 'programDetail.onLesson' | translate }}:</strong> {{ lesson.description }}</p>
                 }
                 @if (lesson.conclusions) {
-                  <p><strong>Выводы:</strong> {{ lesson.conclusions }}</p>
+                  <p><strong>{{ 'programDetail.conclusions' | translate }}:</strong> {{ lesson.conclusions }}</p>
                 }
                 @if (lesson.result) {
-                  <p><strong>Результат:</strong> {{ lesson.result }}</p>
+                  <p><strong>{{ 'programDetail.result' | translate }}:</strong> {{ lesson.result }}</p>
                 }
               </div>
             }
@@ -79,13 +80,13 @@ interface Program {
         }
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
           <button (click)="enroll()" [disabled]="enrolling()">
-            {{ enrolling() ? 'Записываю...' : 'Записаться' }}
+            {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
           </button>
         } @else if (!auth.isLoggedIn()) {
-          <a routerLink="/register" class="btn-register">Регистрация для записи</a>
+          <a routerLink="/register" class="btn-register">{{ 'programDetail.registerToEnroll' | translate }}</a>
         }
       } @else {
-        <p>Программа не найдена</p>
+        <p>{{ 'programDetail.notFound' | translate }}</p>
       }
     </div>
   `,
@@ -146,13 +147,16 @@ export class ProgramDetailComponent implements OnInit {
 
   backLabel() {
     const from = this.route.snapshot.queryParamMap.get('from');
-    return from ? (from === 'art' ? '← Назад к художественной школе' : '← Назад к техническому направлению') : '← Назад к программам';
+    if (from === 'art') return '← ' + this.translate.instant('programDetail.backArt');
+    if (from) return '← ' + this.translate.instant('programDetail.backTech');
+    return '← ' + this.translate.instant('programDetail.back');
   }
 
   constructor(
     private route: ActivatedRoute,
     private api: ApiService,
     public auth: AuthService,
+    private translate: TranslateService,
   ) {}
 
   ngOnInit() {
@@ -173,7 +177,7 @@ export class ProgramDetailComponent implements OnInit {
     this.enrolling.set(true);
     this.api.post<{ success: boolean }>('/me/enrollments', { programId: p.id }).subscribe({
       next: (res) => {
-        if (res.success) alert('Вы записаны!');
+        if (res.success) alert(this.translate.instant('programDetail.enrolled'));
         this.enrolling.set(false);
       },
       error: () => this.enrolling.set(false),

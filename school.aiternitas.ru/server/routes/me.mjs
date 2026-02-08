@@ -1,5 +1,17 @@
 import { createJwtAuthMiddleware, createRoleAuthMiddleware } from '../middleware/jwtAuth.mjs';
 
+const LOCALES = ['ru', 'sr', 'en'];
+function getLocale(req) {
+  const fromQuery = req.query?.locale;
+  if (LOCALES.includes(fromQuery)) return fromQuery;
+  const acceptLang = req.headers['accept-language'];
+  if (acceptLang) {
+    const match = acceptLang.match(/(ru|sr|en)/i);
+    if (match) return match[1].toLowerCase();
+  }
+  return 'ru';
+}
+
 export function registerMeRoutes({ app, persistence, logger }) {
   const log = logger?.child?.({ scope: 'me' }) || logger || console;
   const auth = createRoleAuthMiddleware(persistence, ['student', 'admin']);
@@ -20,7 +32,7 @@ export function registerMeRoutes({ app, persistence, logger }) {
 
   app.get('/api/me/enrollments', auth, async (req, res) => {
     try {
-      const enrollments = await persistence.getEnrollmentsByUserId(req.userId);
+      const enrollments = await persistence.getEnrollmentsByUserId(req.userId, getLocale(req));
       res.json({ success: true, enrollments });
     } catch (err) {
       log.error?.('Ошибка getEnrollments', { error: err?.message });

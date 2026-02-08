@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
 import { ParticleCanvasComponent } from '../../components/particle-canvas/particle-canvas.component';
 import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive';
 import { ApiService } from '../../services/api.service';
@@ -7,7 +8,7 @@ import { ApiService } from '../../services/api.service';
 @Component({
   selector: 'school-landing',
   standalone: true,
-  imports: [RouterLink, ParticleCanvasComponent, ScrollRevealDirective],
+  imports: [RouterLink, TranslateModule, ParticleCanvasComponent, ScrollRevealDirective],
   template: `
     <section class="hero">
       <div class="hero-bg">
@@ -17,28 +18,26 @@ import { ApiService } from '../../services/api.service';
         <school-particle-canvas></school-particle-canvas>
       </div>
       <div class="container hero-content">
-        <p class="hero-badge">Образование будущего</p>
+        <p class="hero-badge">{{ 'hero.badge' | translate }}</p>
         <h1 class="hero-title">
-          <span class="hero-title-line">Школа для</span>
-          <span class="hero-title-accent">творческих умов</span>
+          <span class="hero-title-line">{{ 'hero.title1' | translate }}</span>
+          <span class="hero-title-accent">{{ 'hero.title2' | translate }}</span>
         </h1>
-        <p class="hero-subtitle">
-          Техническая школа: программирование, робототехника, нейросети. Художественная школа: рисование, живопись, дизайн. Гибкие программы для детей 5–18 лет.
-        </p>
+        <p class="hero-subtitle">{{ 'hero.subtitle' | translate }}</p>
         <div class="hero-actions">
           <a routerLink="/programs" class="btn-hero btn-primary">
-            <span>Смотреть программы</span>
+            <span>{{ 'hero.viewPrograms' | translate }}</span>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
           </a>
-          <a routerLink="/register" class="btn-hero btn-ghost">Записаться</a>
+          <a routerLink="/register" class="btn-hero btn-ghost">{{ 'hero.signUp' | translate }}</a>
         </div>
       </div>
     </section>
     <section class="directions">
       <div class="container">
-        <h2 class="section-title" schoolScrollReveal>Тип школы</h2>
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.schoolType' | translate }}</h2>
         <div class="school-types">
           @for (st of schoolTypes(); track st.id) {
             <a [routerLink]="['/school-types', st.id]" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>
@@ -61,13 +60,13 @@ import { ApiService } from '../../services/api.service';
             <img src="hero-school.png" alt="Занятия в школе" />
           </div>
           <div class="about-text">
-            <h2 class="section-title">О школе</h2>
-            <p>Мы объединяем техническое и художественное образование под одной крышей. Дети учатся программировать, собирать роботов и работать с нейросетями — а также рисовать, лепить и создавать дизайн.</p>
-            <p>Небольшие группы, внимательные педагоги, современное оборудование. Программы построены по принципу «от простого к сложному» и учитывают индивидуальный темп каждого ребёнка.</p>
+            <h2 class="section-title">{{ 'section.about' | translate }}</h2>
+            <p>{{ 'section.aboutText1' | translate }}</p>
+            <p>{{ 'section.aboutText2' | translate }}</p>
             <ul class="about-list">
-              <li>Опытные преподаватели с практикой в IT и искусстве</li>
-              <li>Гибкое расписание и форматы занятий</li>
-              <li>Доступ к материалам и проектам после курса</li>
+              <li>{{ 'section.aboutItem1' | translate }}</li>
+              <li>{{ 'section.aboutItem2' | translate }}</li>
+              <li>{{ 'section.aboutItem3' | translate }}</li>
             </ul>
           </div>
         </div>
@@ -75,13 +74,13 @@ import { ApiService } from '../../services/api.service';
     </section>
     <section class="benefits">
       <div class="container">
-        <h2 class="section-title" schoolScrollReveal>Почему выбирают нас</h2>
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.whyUs' | translate }}</h2>
         <div class="benefits-grid">
           @for (b of benefits; track b.icon) {
             <div class="benefit-card" schoolScrollReveal>
               <span class="benefit-icon">{{ b.icon }}</span>
-              <h3>{{ b.title }}</h3>
-              <p>{{ b.text }}</p>
+              <h3>{{ b.titleKey | translate }}</h3>
+              <p>{{ b.textKey | translate }}</p>
             </div>
           }
         </div>
@@ -89,15 +88,15 @@ import { ApiService } from '../../services/api.service';
     </section>
     <section class="ages">
       <div class="container">
-        <h2 class="section-title" schoolScrollReveal>Программы по возрастам</h2>
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.ages' | translate }}</h2>
         <div class="ages-grid">
-          @for (a of ageGroups; track a.range) {
+          @for (a of ageGroups; track a.rangeKey) {
             <div class="age-card" schoolScrollReveal>
               <div class="age-image" [style.background-image]="'url(' + a.img + ')'"></div>
               <div class="age-body">
-                <span class="age-range">{{ a.range }} лет</span>
-                <h3>{{ a.title }}</h3>
-                <p>{{ a.desc }}</p>
+                <span class="age-range">{{ a.rangeKey | translate }} {{ 'programs.years' | translate }}</span>
+                <h3>{{ a.titleKey | translate }}</h3>
+                <p>{{ a.descKey | translate }}</p>
               </div>
             </div>
           }
@@ -106,13 +105,13 @@ import { ApiService } from '../../services/api.service';
     </section>
     <section class="how">
       <div class="container">
-        <h2 class="section-title" schoolScrollReveal>Как записаться</h2>
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.how' | translate }}</h2>
         <div class="steps">
-          @for (s of steps; track s.title; let i = $index) {
+          @for (s of steps; track s.titleKey; let i = $index) {
             <div class="step" schoolScrollReveal>
               <span class="step-num">{{ i + 1 }}</span>
-              <h3>{{ s.title }}</h3>
-              <p>{{ s.text }}</p>
+              <h3>{{ s.titleKey | translate }}</h3>
+              <p>{{ s.textKey | translate }}</p>
             </div>
           }
         </div>
@@ -120,7 +119,7 @@ import { ApiService } from '../../services/api.service';
     </section>
     <section class="gallery">
       <div class="container">
-        <h2 class="section-title" schoolScrollReveal>Жизнь школы</h2>
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.gallery' | translate }}</h2>
         <div class="gallery-grid" schoolScrollReveal>
           <div class="gallery-item"><img src="gallery-tech-class.png" alt="Технические занятия" /></div>
           <div class="gallery-item"><img src="gallery-art-class.png" alt="Художественные занятия" /></div>
@@ -132,10 +131,10 @@ import { ApiService } from '../../services/api.service';
     <section class="cta" schoolScrollReveal>
       <div class="container">
         <div class="cta-content">
-          <h2>Готовы начать?</h2>
-          <p>Зарегистрируйтесь и запишитесь на программу</p>
+          <h2>{{ 'cta.title' | translate }}</h2>
+          <p>{{ 'cta.subtitle' | translate }}</p>
           <a routerLink="/register" class="btn-hero btn-primary btn-lg">
-            <span>Регистрация</span>
+            <span>{{ 'cta.register' | translate }}</span>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
@@ -592,19 +591,19 @@ export class LandingComponent implements OnInit {
     return id === 'tech' ? 'tech-class.png' : id === 'art' ? 'art-class.png' : 'hero-dynamic.png';
   }
   benefits = [
-    { icon: '🎯', title: 'Практика с первого дня', text: 'Минимум теории — максимум проектов. Дети сразу создают игры, роботов и рисунки.' },
-    { icon: '📈', title: 'Пошаговое развитие', text: 'Программы выстроены от основ к сложным темам. Учёт возраста и предыдущего опыта.' },
-    { icon: '👥', title: 'Небольшие группы', text: 'До 8–10 человек в группе. Каждому ребёнку уделяется внимание.' },
-    { icon: '🔧', title: 'Современные инструменты', text: 'Scratch, Python, Arduino, нейросети, акварель, цифровой дизайн.' },
+    { icon: '🎯', titleKey: 'benefit1.title', textKey: 'benefit1.text' },
+    { icon: '📈', titleKey: 'benefit2.title', textKey: 'benefit2.text' },
+    { icon: '👥', titleKey: 'benefit3.title', textKey: 'benefit3.text' },
+    { icon: '🔧', titleKey: 'benefit4.title', textKey: 'benefit4.text' },
   ];
   ageGroups = [
-    { range: '5–7', title: 'Младшие', desc: 'Логика, творчество, первые конструкции и эксперименты с цветом.', img: 'tech-class.png' },
-    { range: '8–11', title: 'Средние', desc: 'Scratch, робототехника, Python, рисование, основы дизайна.', img: 'art-class.png' },
-    { range: '12–18', title: 'Старшие', desc: 'Веб-разработка, нейросети, Arduino, ESP32, профессиональная графика.', img: 'teens-coding.png' },
+    { rangeKey: 'age1.range', titleKey: 'age1.title', descKey: 'age1.desc', img: 'tech-class.png' },
+    { rangeKey: 'age2.range', titleKey: 'age2.title', descKey: 'age2.desc', img: 'art-class.png' },
+    { rangeKey: 'age3.range', titleKey: 'age3.title', descKey: 'age3.desc', img: 'teens-coding.png' },
   ];
   steps = [
-    { title: 'Регистрация', text: 'Создайте аккаунт на сайте и заполните данные ребёнка.' },
-    { title: 'Выбор программы', text: 'Изучите каталог и выберите подходящий курс по возрасту и интересам.' },
-    { title: 'Запись на программу', text: 'Оформите заявку — мы свяжемся для уточнения деталей.' },
+    { titleKey: 'step1.title', textKey: 'step1.text' },
+    { titleKey: 'step2.title', textKey: 'step2.text' },
+    { titleKey: 'step3.title', textKey: 'step3.text' },
   ];
 }

@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 
@@ -16,24 +17,24 @@ interface Enrollment {
 @Component({
   selector: 'school-cabinet',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, TranslateModule],
   template: `
     <div class="container page">
-      <h1>Личный кабинет</h1>
+      <h1>{{ 'cabinet.title' | translate }}</h1>
       @if (auth.user(); as u) {
-        <p class="user-name">Здравствуйте, {{ u.name }}!</p>
+        <p class="user-name">{{ 'cabinet.greeting' | translate:{name: u.name} }}</p>
       }
-      <h2>Мои записи</h2>
+      <h2>{{ 'cabinet.myEnrollments' | translate }}</h2>
       @if (loading()) {
-        <p>Загрузка...</p>
+        <p>{{ 'programs.loading' | translate }}</p>
       } @else if (enrollments().length === 0) {
-        <p>У вас пока нет записей. <a routerLink="/programs">Выберите программу</a></p>
+        <p>{{ 'cabinet.noEnrollments' | translate }} <a routerLink="/programs">{{ 'cabinet.chooseProgram' | translate }}</a></p>
       } @else {
         <div class="list">
           @for (e of enrollments(); track e.id) {
             <a [routerLink]="['/programs', e.programId]" class="card">
               <h3>{{ e.programTitle }}</h3>
-              <p>Статус: {{ e.status }}, прогресс: {{ e.progress }}%</p>
+              <p>{{ 'cabinet.status' | translate }}: {{ e.status }}, {{ 'cabinet.progress' | translate }}: {{ e.progress }}%</p>
             </a>
           }
         </div>
