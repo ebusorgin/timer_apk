@@ -1,0 +1,17 @@
+[Unit]
+Description=School.aiternitas.ru - Node.js server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/school
+Environment=NODE_ENV=production
+Environment=PORT=3010
+EnvironmentFile=/opt/school/.env
+ExecStart=/usr/bin/node server/server.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -139,6 +139,26 @@ export function registerMeProfileRoutes({ app, persistence, subscriberAuth, conf
       });
   });
 
+  // POST /api/me/fcm-token — сохранить FCM-токен для full-screen звонков (APK)
+  app.post('/api/me/fcm-token', subscriberAuth, (req, res) => {
+    const token = req.body?.token ?? req.body?.fcmToken ?? req.body;
+    if (!token || typeof token !== 'string' || !token.trim()) {
+      res.status(400).json({ success: false, error: 'Некорректный FCM-токен' });
+      return;
+    }
+    if (typeof persistence.saveFcmToken !== 'function') {
+      res.status(500).json({ success: false, error: 'FCM не поддерживается' });
+      return;
+    }
+    persistence
+      .saveFcmToken(req.subscriberId, token.trim())
+      .then(() => res.json({ success: true }))
+      .catch((err) => {
+        log.error?.('Ошибка сохранения FCM-токена', { error: err?.message });
+        res.status(500).json({ success: false, error: 'Не удалось сохранить токен' });
+      });
+  });
+
   // POST /api/me/avatar
   app.post('/api/me/avatar', subscriberAuth, (req, res, next) => {
     upload.single('avatar')(req, res, async (err) => {

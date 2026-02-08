@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "676382236990",
+    "project_id": "conference-22e48",
+    "storage_bucket": "conference-22e48.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676382236990:android:3be9c12a459d31a2798c6f",
+        "android_client_info": {
+          "package_name": "conference.aiternitas.ru"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAb1kPEDku6Xs38nBOqSUiKcNXhF31XnYw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676382236990:android:041d1c9ed6bbe32c798c6f",
+        "android_client_info": {
+          "package_name": "ru.aiternitas.conference"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAb1kPEDku6Xs38nBOqSUiKcNXhF31XnYw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

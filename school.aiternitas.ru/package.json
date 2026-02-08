@@ -1,0 +1,31 @@
+{
+  "name": "school",
+  "version": "1.0.0",
+  "description": "School.aiternitas.ru - образовательная платформа для детей",
+  "type": "module",
+  "main": "server/server.mjs",
+  "scripts": {
+    "server": "node server/server.mjs",
+    "dev": "node server/server.mjs",
+    "start": "node server/server.mjs",
+    "migrate-db": "node scripts/migrate-db.mjs",
+    "migrate-to-schema": "node scripts/migrate-to-schema.mjs",
+    "seed-school-types": "node scripts/seed-school-types.mjs",
+    "seed-directions": "node scripts/seed-directions.mjs",
+    "seed-programs": "node scripts/seed-programs.mjs",
+    "seed-admin": "node scripts/seed-admin.mjs",
+    "build": "cd client && npm run build"
+  },
+  "keywords": ["school", "education", "aiternitas"],
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.1",
+    "ioredis": "^5.9.2",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.16.3"
+  }
+}

@@ -1,8 +1,8 @@
 import { sanitizeDisplayName } from '../utils/subscriberUtils.mjs';
 import { CALL_STATUS_SET, CALL_TYPE_VALUES } from '../persistence/validators.mjs';
 import { createRequestValidator, enumField, stringField } from '../middleware/validation.mjs';
-import { emitToSubscriber } from '../sockets/chat.mjs';
-import { sendIncomingCallPush, sendCallDeclinedPush } from '../services/push.mjs';
+import { emitToSubscriber, getSubscriberOnlineStatus } from '../sockets/chat.mjs';
+import { sendIncomingCallFCM, sendIncomingCallPush, sendCallDeclinedFCM, sendCallDeclinedPush } from '../services/push.mjs';
 
 function assertPersistence(persistence) {
   if (!persistence) {
@@ -131,8 +131,10 @@ export function registerCallRoutes({ app, persistence, io, subscriberAuth, logge
       await persistence.cleanupCalls(cleanupThreshold);
 
       const callerId = updated?.from?.id;
-      if (io && callerId) {
-        emitToSubscriber(io, callerId, 'call:ack', {
+      const calleeId = updated?.to?.id;
+      const recipientId = nextStatus === 'cancelled' ? calleeId : callerId;
+      if (io && recipientId) {
+        emitToSubscriber(io, recipientId, 'call:ack', {
           callId,
           status: nextStatus,
           call: updated,
@@ -140,11 +142,20 @@ export function registerCallRoutes({ app, persistence, io, subscriberAuth, logge
       }
       if (nextStatus === 'declined' && callerId) {
         const calleeName = updated?.to?.name || 'Кто-то';
-        sendCallDeclinedPush(
-          (id) => persistence.getPushSubscription(id),
-          callerId,
-          { fromName: calleeName }
-        ).catch(() => {});
+        (async () => {
+          const sentFcm = await sendCallDeclinedFCM(
+            (id) => persistence.getFcmToken(id),
+            callerId,
+            { fromName: calleeName }
+          ).catch(() => false);
+          if (!sentFcm) {
+            await sendCallDeclinedPush(
+              (id) => persistence.getPushSubscription(id),
+              callerId,
+              { fromName: calleeName }
+            ).catch(() => {});
+          }
+        })();
       }
 
       scopedLogger.info('Статус звонка обновлён', {
@@ -218,11 +229,23 @@ export function registerCallRoutes({ app, persistence, io, subscriberAuth, logge
       if (io) {
         emitToSubscriber(io, targetId, 'call:initiated', storedCall);
       }
-      sendIncomingCallPush(
-        (id) => persistence.getPushSubscription(id),
-        targetId,
-        { fromName: callerName, callType: resolvedCallType, callId: storedCall.id }
-      ).catch(() => {});
+      if (!getSubscriberOnlineStatus(targetId)) {
+        (async () => {
+          const payload = { fromName: callerName, callType: resolvedCallType, callId: storedCall.id };
+          const sentFcm = await sendIncomingCallFCM(
+            (id) => persistence.getFcmToken(id),
+            targetId,
+            payload
+          ).catch(() => false);
+          if (!sentFcm) {
+            await sendIncomingCallPush(
+              (id) => persistence.getPushSubscription(id),
+              targetId,
+              payload
+            ).catch(() => {});
+          }
+        })();
+      }
 
       scopedLogger.info('Звонок инициирован', {
         callId: storedCall.id,

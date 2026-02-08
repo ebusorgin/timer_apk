@@ -421,6 +421,19 @@ export function createPersistence(paths = {}, options = {}) {
     return null;
   };
 
+  const saveFcmToken = async (subscriberId, token) => {
+    if (typeof adapter.saveFcmToken === 'function') {
+      return adapter.saveFcmToken(subscriberId, token);
+    }
+  };
+
+  const getFcmToken = async (subscriberId) => {
+    if (typeof adapter.getFcmToken === 'function') {
+      return adapter.getFcmToken(subscriberId);
+    }
+    return null;
+  };
+
   const isAdmin = async (subscriberId) => {
     const sub = await getSubscriberById(subscriberId);
     return !!(sub && (sub.role === 'admin' || sub.isAdmin));
@@ -454,6 +467,8 @@ export function createPersistence(paths = {}, options = {}) {
     updateContactRequestStatus,
     savePushSubscription,
     getPushSubscription,
+    saveFcmToken,
+    getFcmToken,
     getSubscriberByLogin,
     insertSubscriber,
     isAdmin,

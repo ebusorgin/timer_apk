@@ -233,4 +233,42 @@ describe('calls API', () => {
     expect(ack.callId).toBe(callId);
     expect(ack.call?.status).toBe('acknowledged');
   });
+
+  it('call:ack with declined is emitted to caller when callee declines', async () => {
+    await request.post('/api/subscribers').send({ id: 'caller-decline', name: 'CallerDecline' });
+    await request.post('/api/subscribers').send({ id: 'callee-decline', name: 'CalleeDecline' });
+    const caller = ioClient(serverUrl, {
+      path: '/socket.io/',
+      transports: ['websocket'],
+      reconnection: false,
+      auth: { subscriberId: 'caller-decline' },
+    });
+    const declinedPromise = new Promise((resolve) => {
+      caller.once('call:ack', (data) => resolve(data));
+    });
+    await new Promise((r, e) => {
+      caller.once('connect', r);
+      caller.once('connect_error', e);
+    });
+
+    const createRes = await request
+      .post('/api/calls')
+      .set('X-Subscriber-Id', 'caller-decline')
+      .send({ toId: 'callee-decline', fromName: 'CallerDecline' });
+    const callId = createRes.body.call.id;
+
+    await request
+      .post(`/api/calls/${callId}/ack`)
+      .set('X-Subscriber-Id', 'callee-decline')
+      .send({ status: 'declined' });
+
+    const ack = await Promise.race([
+      declinedPromise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('call:ack declined timeout')), 2000)),
+    ]);
+    caller.disconnect();
+    expect(ack.status).toBe('declined');
+    expect(ack.callId).toBe(callId);
+    expect(ack.call?.status).toBe('declined');
+  });
 });

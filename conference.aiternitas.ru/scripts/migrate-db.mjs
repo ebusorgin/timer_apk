@@ -17,6 +17,7 @@ async function main() {
   try {
     console.log('Удаление старых таблиц...');
     await pool.query(`
+      DROP TABLE IF EXISTS push_subscriptions CASCADE;
       DROP TABLE IF EXISTS contact_requests CASCADE;
       DROP TABLE IF EXISTS chat_messages CASCADE;
       DROP TABLE IF EXISTS contacts CASCADE;
@@ -104,6 +105,17 @@ async function main() {
       CREATE INDEX IF NOT EXISTS contact_requests_to_id_idx ON contact_requests(to_id);
       CREATE INDEX IF NOT EXISTS contact_requests_from_id_idx ON contact_requests(from_id);
       CREATE INDEX IF NOT EXISTS contact_requests_status_idx ON contact_requests(status);
+    `);
+
+    await pool.query(`
+      CREATE TABLE push_subscriptions (
+        subscriber_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (subscriber_id)
+      );
     `);
 
     console.log('Миграция выполнена.');

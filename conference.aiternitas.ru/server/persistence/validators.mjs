@@ -1,6 +1,6 @@
 import { sanitizeDisplayName } from '../utils/subscriberUtils.mjs';
 
-export const CALL_STATUS_VALUES = ['pending', 'acknowledged', 'accepted', 'declined', 'ignored'];
+export const CALL_STATUS_VALUES = ['pending', 'acknowledged', 'accepted', 'declined', 'ignored', 'cancelled'];
 export const CALL_STATUS_SET = new Set(CALL_STATUS_VALUES);
 export const CALL_TYPE_VALUES = ['audio', 'video'];
 export const CALL_TYPE_SET = new Set(CALL_TYPE_VALUES);

@@ -13,6 +13,10 @@ const App = {
     playbackUnlockHandler: null,
     audioContext: null,
     connectionInProgress: false,
+    callRingtoneInterval: null,
+    callRingtoneOscillator: null,
+    callRingtoneGain: null,
+    callRingtoneContext: null,
 
     SERVER_URL: window.location.origin,
 
@@ -333,9 +337,58 @@ const App = {
         this.registerServiceWorker();
         this.setupServiceWorkerMessages();
         this.registerPushSubscription();
+        this.registerFcmTokenIfNative();
+        this.setupFullScreenCallListener();
+        this.setupAppUpdateCheckOnResume();
+        this.checkForAppUpdate();
         this.setupContactsTabSearch();
         this.setupContactRequestsUI();
+        this.checkForAppUpdate();
         this.showTab('chats');
+    },
+
+    isVersionNewer(serverVer, currentVer) {
+        const parse = (v) => {
+            const s = String(v || '0').replace(/[^\d.]/g, '');
+            return s.split('.').map((n) => parseInt(n, 10) || 0);
+        };
+        const a = parse(serverVer);
+        const b = parse(currentVer);
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+            const x = a[i] || 0;
+            const y = b[i] || 0;
+            if (x > y) return true;
+            if (x < y) return false;
+        }
+        return false;
+    },
+
+    async checkForAppUpdate() {
+        if (!this.isInNativeApp()) return;
+        try {
+            const cap = window.Capacitor;
+            const App = cap?.Plugins?.App;
+            if (!App) return;
+            const info = await App.getInfo();
+            const currentVersion = info?.version || info?.appVersion || '0';
+            const res = await fetch(this.SERVER_URL + '/app-version.json?t=' + Date.now());
+            if (!res.ok) return;
+            const data = await res.json();
+            const serverVersion = data?.version;
+            const downloadUrl = data?.downloadUrl || '/conference-app.apk';
+            if (!serverVersion || !this.isVersionNewer(serverVersion, currentVersion)) return;
+            const banner = this.elements.updateBanner;
+            const btn = this.elements.btnUpdateApp;
+            if (banner) banner.style.display = 'flex';
+            if (btn) {
+                btn.onclick = () => {
+                    const url = downloadUrl.startsWith('http') ? downloadUrl : this.SERVER_URL + downloadUrl;
+                    const App = window.Capacitor?.Plugins?.App;
+                    if (App?.openUrl) App.openUrl({ url }).catch(() => window.open(url));
+                    else window.open(url);
+                };
+            }
+        } catch (e) { console.warn('[App] Version check failed:', e); }
     },
 
     initPresenceWorker() {
@@ -565,8 +618,12 @@ const App = {
             if (url) el.settingsAvatar.innerHTML = `<img src="${url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
             else el.settingsAvatar.textContent = (this.displayName || '?').charAt(0).toUpperCase();
         }
+        if (el.settingsDisplayName) el.settingsDisplayName.textContent = this.displayName || '—';
         if (el.inputSettingsName) el.inputSettingsName.value = this.displayName || '';
+        if (el.settingsNameView) el.settingsNameView.style.display = '';
+        if (el.settingsNameEdit) el.settingsNameEdit.style.display = 'none';
         if (el.settingsUserId) el.settingsUserId.textContent = this.getMySubscriberId();
+        if (el.settingsAndroidDownload) el.settingsAndroidDownload.style.display = this.isInNativeApp() ? 'none' : 'block';
         if (el.adminLinkSection) {
             try {
                 const res = await this.authFetch(this.SERVER_URL + '/api/me/is-admin', { headers: this.getSubscriberHeaders() });
@@ -577,6 +634,16 @@ const App = {
             }
         }
         this.showOverlay('settingsOverlay');
+    },
+
+    startEditName() {
+        const el = this.elements;
+        if (el.settingsNameView) el.settingsNameView.style.display = 'none';
+        if (el.settingsNameEdit) el.settingsNameEdit.style.display = 'flex';
+        if (el.inputSettingsName) {
+            el.inputSettingsName.value = this.displayName || '';
+            el.inputSettingsName.focus();
+        }
     },
 
     async saveProfile() {
@@ -593,6 +660,9 @@ const App = {
                 this.displayName = data.profile.name;
                 try { localStorage.setItem('conference:displayName', data.profile.name); } catch(e){}
                 this.updateHeaderUser();
+                if (this.elements.settingsDisplayName) this.elements.settingsDisplayName.textContent = data.profile.name;
+                if (this.elements.settingsNameView) this.elements.settingsNameView.style.display = '';
+                if (this.elements.settingsNameEdit) this.elements.settingsNameEdit.style.display = 'none';
                 this.showMessage('Профиль обновлён', 'success');
             } else { this.showMessage(data.error || 'Ошибка', 'error'); }
         } catch (err) { this.showMessage('Ошибка сети', 'error'); }
@@ -748,6 +818,117 @@ const App = {
         }
     },
 
+    async registerFcmTokenIfNative() {
+        if (!this.isInNativeApp()) return;
+        try {
+            const cap = window.Capacitor;
+            if (cap?.getPlatform?.() !== 'android') return;
+            const PushNotifications = cap.Plugins?.PushNotifications;
+            if (!PushNotifications) return;
+            const perm = await PushNotifications.requestPermissions();
+            if (perm?.receive !== 'granted') return;
+            PushNotifications.addListener('registration', async (ev) => {
+                const token = ev?.value;
+                if (token) {
+                    try {
+                        await this.authFetch(this.SERVER_URL + '/api/me/fcm-token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                            body: JSON.stringify({ token }),
+                        });
+                    } catch (e) { console.warn('[App] FCM token save failed:', e); }
+                }
+            });
+            await PushNotifications.register();
+        } catch (e) { console.warn('[App] FCM registration failed:', e); }
+    },
+
+    compareVersions(a, b) {
+        const parse = (v) => (String(v || '0').match(/\d+/g) || ['0']).map(Number);
+        const pa = parse(a);
+        const pb = parse(b);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+            const na = pa[i] || 0;
+            const nb = pb[i] || 0;
+            if (na > nb) return 1;
+            if (na < nb) return -1;
+        }
+        return 0;
+    },
+
+    setupAppUpdateCheckOnResume() {
+        if (!this.isInNativeApp()) return;
+        try {
+            const App = window.Capacitor?.Plugins?.App;
+            if (!App?.addListener) return;
+            App.addListener('appStateChange', ({ isActive }) => {
+                if (isActive) this.checkForAppUpdate();
+            });
+        } catch (e) { console.warn('[App] AppState listener failed:', e); }
+    },
+
+    async checkForAppUpdate() {
+        if (!this.isInNativeApp()) return;
+        try {
+            const cap = window.Capacitor;
+            const App = cap?.Plugins?.App;
+            if (!App?.getInfo) return;
+            const info = await App.getInfo();
+            const currentVersion = String(info?.version || info?.appVersion || '0').trim();
+            const res = await fetch(this.SERVER_URL + '/app-version.json?t=' + Date.now());
+            if (!res.ok) return;
+            const data = await res.json();
+            const serverVersion = (data?.version || '').trim();
+            const downloadUrl = data?.downloadUrl || '/conference-app.apk';
+            if (!serverVersion || this.compareVersions(serverVersion, currentVersion) <= 0) return;
+            if (this.elements.updateBanner) this.elements.updateBanner.style.display = 'flex';
+            if (this.elements.btnUpdateApp) {
+                const fullUrl = downloadUrl.startsWith('http') ? downloadUrl : this.SERVER_URL + downloadUrl;
+                this.elements.btnUpdateApp.onclick = () => {
+                    const Browser = window.Capacitor?.Plugins?.Browser;
+                    if (Browser?.open) {
+                        Browser.open({ url: fullUrl }).catch(() => {
+                            if (App?.openUrl) App.openUrl({ url: fullUrl }).catch(() => window.open(fullUrl));
+                            else window.open(fullUrl);
+                        });
+                    } else if (App?.openUrl) {
+                        App.openUrl({ url: fullUrl }).catch(() => window.open(fullUrl));
+                    } else {
+                        window.open(fullUrl);
+                    }
+                };
+            }
+        } catch (e) { console.warn('[App] Version check failed:', e); }
+    },
+
+    setupFullScreenCallListener() {
+        if (!this.isInNativeApp()) return;
+        try {
+            const cap = window.Capacitor;
+            if (cap?.getPlatform?.() !== 'android') return;
+            const FullScreenNotification = cap.Plugins?.FullScreenNotification;
+            if (!FullScreenNotification) return;
+            FullScreenNotification.addListener('launch', (data) => {
+                const fullScreenId = data?.fullScreenId || '';
+                const actionId = data?.actionId || '';
+                if (!fullScreenId.startsWith('call:')) return;
+                const parts = fullScreenId.split(':');
+                const callId = parts[1];
+                const callType = parts[2] || 'audio';
+                if (!callId) return;
+                FullScreenNotification.cancelNotification?.();
+                const base = new URL('/', window.location.origin).href;
+                if (actionId === 'accept') {
+                    window.location.href = base + '?acceptCall=' + encodeURIComponent(callId) + '&callType=' + encodeURIComponent(callType);
+                } else if (actionId === 'decline') {
+                    window.location.href = base + '?declineCall=' + encodeURIComponent(callId);
+                } else {
+                    window.location.href = base + '?acceptCall=' + encodeURIComponent(callId) + '&callType=' + encodeURIComponent(callType);
+                }
+            });
+        } catch (e) { console.warn('[App] FullScreen listener failed:', e); }
+    },
+
     _urlBase64ToUint8Array(base64String) {
         const padding = '='.repeat((4 - base64String.length % 4) % 4);
         const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -780,15 +961,19 @@ const App = {
         });
         this.socket.on('call:initiated', (data) => {
             const myId = this.getMySubscriberId();
-            if (data?.to?.id === myId) {
+            if (String(data?.to?.id) === String(myId)) {
+                this.showMainApp();
                 this.showIncomingCallModal(data);
             }
         });
         this.socket.on('call:ack', (data) => {
             const myId = this.getMySubscriberId();
-            if (data?.status === 'declined' && data?.call?.from?.id === myId) {
+            if (data?.status === 'declined' && String(data?.call?.from?.id) === String(myId)) {
                 this.showMessage('Звонок отклонён', 'info');
                 this.disconnect();
+            }
+            if (data?.status === 'cancelled' && String(data?.call?.to?.id) === String(myId)) {
+                this.hideIncomingCallModal();
             }
         });
         this.socket.on('connect_error', (error) => {
@@ -830,6 +1015,7 @@ const App = {
             this.showScreen('conferenceScreen');
         }
         setTimeout(() => this.clearConnectStatusMessage(), 1000);
+        const isP2PCall = this.currentRoomId?.startsWith('call_');
         if (this.elements.conferenceRoomTitle) {
             this.elements.conferenceRoomTitle.textContent = 'Комната: ' + this.currentRoomId;
         }
@@ -843,6 +1029,10 @@ const App = {
             if (headerEl) headerEl.style.display = 'none';
             if (participantsEl) participantsEl.style.display = 'none';
             if (statusEl) statusEl.style.display = 'none';
+        } else if (isP2PCall) {
+            if (headerEl) headerEl.style.display = 'none';
+            if (participantsEl) participantsEl.style.display = '';
+            if (statusEl) statusEl.style.display = '';
         } else {
             if (headerEl) headerEl.style.display = '';
             if (participantsEl) participantsEl.style.display = '';
@@ -881,6 +1071,8 @@ const App = {
             searchResults: document.getElementById('searchResults'),
             myContactsList: document.getElementById('myContactsList'),
             contactsEmpty: document.getElementById('contactsEmpty'),
+            updateBanner: document.getElementById('updateBanner'),
+            btnUpdateApp: document.getElementById('btnUpdateApp'),
             contactRequestsBanner: document.getElementById('contactRequestsBanner'),
             contactRequestsList: document.getElementById('contactRequestsList'),
             btnShowRequests: document.getElementById('btnShowRequests'),
@@ -966,8 +1158,13 @@ const App = {
             settingsAvatar: document.getElementById('settingsAvatar'),
             inputAvatarFile: document.getElementById('inputAvatarFile'),
             inputSettingsName: document.getElementById('inputSettingsName'),
-            btnSaveProfile: document.getElementById('btnSaveProfile'),
+            settingsNameView: document.getElementById('settingsNameView'),
+            settingsNameEdit: document.getElementById('settingsNameEdit'),
+            settingsDisplayName: document.getElementById('settingsDisplayName'),
+            btnEditName: document.getElementById('btnEditName'),
+            btnSaveName: document.getElementById('btnSaveName'),
             settingsUserId: document.getElementById('settingsUserId'),
+            settingsAndroidDownload: document.getElementById('settingsAndroidDownload'),
             btnLogout: document.getElementById('btnLogout'),
             adminLinkSection: document.getElementById('adminLinkSection'),
             headerUser: document.getElementById('headerUser'),
@@ -986,6 +1183,12 @@ const App = {
         this.chatMessages = [];
         this.pendingIncomingCall = null;
         this.activeTab = 'chats';
+    },
+
+    isInNativeApp() {
+        try {
+            return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+        } catch (e) { return false; }
     },
 
     getSubscriberHeaders() {
@@ -1181,7 +1384,9 @@ const App = {
         if (this.elements.headerUser) this.elements.headerUser.addEventListener('click', () => this.showSettings());
         if (this.elements.btnBackFromSettings) this.elements.btnBackFromSettings.addEventListener('click', () => this.hideOverlay('settingsOverlay'));
         if (this.elements.btnLogout) this.elements.btnLogout.addEventListener('click', () => this.logout());
-        if (this.elements.btnSaveProfile) this.elements.btnSaveProfile.addEventListener('click', () => this.saveProfile());
+        if (this.elements.btnEditName) this.elements.btnEditName.addEventListener('click', () => this.startEditName());
+        if (this.elements.btnSaveName) this.elements.btnSaveName.addEventListener('click', () => this.saveProfile());
+        if (this.elements.inputSettingsName) this.elements.inputSettingsName.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.saveProfile(); });
         if (this.elements.inputAvatarFile) this.elements.inputAvatarFile.addEventListener('change', (e) => { if (e.target.files?.[0]) this.uploadAvatar(e.target.files[0]); });
     },
 
@@ -1277,14 +1482,17 @@ const App = {
             const myId = this.getMySubscriberId();
             if (msg.toId !== myId && msg.fromId !== myId) return;
             // Update open chat if it matches
-            if (this.selectedContact && (msg.fromId === this.selectedContact.id || msg.toId === this.selectedContact.id)) {
+            const isInOpenChat = this.selectedContact && (msg.fromId === this.selectedContact.id || msg.toId === this.selectedContact.id);
+            if (isInOpenChat) {
                 this.chatMessages.push(msg);
                 this.renderChatMessages();
             }
-            // Always refresh chats list for last message preview
-            {
-                this.renderChatsList();
+            // Звук уведомления для входящего сообщения (только если чат не открыт и сообщение адресовано мне)
+            if (msg.toId === myId && !isInOpenChat) {
+                this.playMessageSound();
             }
+            // Always refresh chats list for last message preview
+            this.renderChatsList();
         });
     },
 
@@ -1640,7 +1848,17 @@ const App = {
         }
     },
 
-    hangupP2PCall() {
+    async hangupP2PCall() {
+        const callId = this.pendingOutgoingCall?.id || (this.currentRoomId?.startsWith('call_') ? this.currentRoomId : null);
+        if (callId) {
+            try {
+                await this.authFetch(this.SERVER_URL + '/api/calls/' + encodeURIComponent(callId) + '/ack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                    body: JSON.stringify({ status: 'cancelled' })
+                });
+            } catch (e) {}
+        }
         this.disconnect();
     },
 
@@ -1655,6 +1873,62 @@ const App = {
         this.connect();
     },
 
+    playCallRingtone() {
+        this.stopCallRingtone();
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.callRingtoneContext = ctx;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.value = 800;
+            gain.gain.value = 0.3;
+            osc.start();
+            this.callRingtoneOscillator = osc;
+            this.callRingtoneGain = gain;
+            let on = true;
+            this.callRingtoneInterval = setInterval(() => {
+                if (!this.callRingtoneGain) return;
+                this.callRingtoneGain.gain.setTargetAtTime(on ? 0.3 : 0, ctx.currentTime, 0.05);
+                on = !on;
+            }, 600);
+        } catch (e) { console.warn('Ringtone:', e); }
+    },
+
+    stopCallRingtone() {
+        if (this.callRingtoneInterval) {
+            clearInterval(this.callRingtoneInterval);
+            this.callRingtoneInterval = null;
+        }
+        if (this.callRingtoneOscillator) {
+            try { this.callRingtoneOscillator.stop(); } catch (e) {}
+            this.callRingtoneOscillator = null;
+        }
+        this.callRingtoneGain = null;
+        if (this.callRingtoneContext) {
+            try { this.callRingtoneContext.close(); } catch (e) {}
+            this.callRingtoneContext = null;
+        }
+    },
+
+    playMessageSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.value = 660;
+            gain.gain.setValueAtTime(0.2, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.15);
+        } catch (e) { console.warn('Message sound:', e); }
+    },
+
     showIncomingCallModal(call) {
         this.pendingIncomingCall = call;
         const callType = call?.callType || 'audio';
@@ -1662,13 +1936,23 @@ const App = {
         if (this.elements.incomingCallFrom) this.elements.incomingCallFrom.textContent = call?.from?.name || 'Неизвестный';
         if (this.elements.incomingCallType) this.elements.incomingCallType.textContent = callType === 'video' ? 'Входящий видео-звонок' : 'Входящий аудио-звонок';
         if (this.elements.incomingCallAvatar) this.elements.incomingCallAvatar.textContent = (call?.from?.name || '?').charAt(0).toUpperCase();
-        if (this.elements.incomingCallModal) this.elements.incomingCallModal.style.display = 'flex';
+        const modal = this.elements.incomingCallModal;
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.style.zIndex = '2147483647';
+            modal.classList.add('incoming-call-overlay');
+        }
+        this.playCallRingtone();
     },
 
     hideIncomingCallModal() {
+        this.stopCallRingtone();
         this.pendingIncomingCall = null;
-        if (this.elements.incomingCallModal) {
-            this.elements.incomingCallModal.style.display = 'none';
+        const modal = this.elements.incomingCallModal;
+        if (modal) {
+            modal.style.display = 'none';
+            modal.style.zIndex = '';
+            modal.classList.remove('incoming-call-overlay');
         }
     },
 
@@ -1713,6 +1997,7 @@ const App = {
             this.pendingPlaybackElements.clear();
         }
         this.removeSelfParticipantEntry();
+        this.updateVideoButton();
     },
 
     removeSelfParticipantEntry() {

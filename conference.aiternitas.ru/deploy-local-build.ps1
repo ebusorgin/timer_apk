@@ -1,10 +1,25 @@
 # Deploy conference.aiternitas.ru to production
+# Требуется DATABASE_URL: перед деплоем задайте переменную окружения, например:
+#   $env:DATABASE_URL = "postgresql://user:pass@host:5432/conference"
 $SERVER = "root@82.146.44.126"
 $SSH_KEY = "$env:USERPROFILE\.ssh\id_rsa_aiternitas"
 $REMOTE_DIR = "/opt/conference"
 
 if (-not (Test-Path $SSH_KEY)) {
     Write-Error "SSH key not found: $SSH_KEY"
+    exit 1
+}
+
+if (-not $env:DATABASE_URL) {
+    Write-Host "DATABASE_URL не задан локально. Пытаюсь получить с сервера..." -ForegroundColor Yellow
+    $remoteDb = ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SERVER "grep '^DATABASE_URL=' /opt/conference/.env 2>/dev/null | cut -d= -f2-" 2>$null
+    if ($remoteDb) {
+        $env:DATABASE_URL = $remoteDb.Trim()
+        Write-Host "Используется DATABASE_URL с сервера." -ForegroundColor Green
+    }
+}
+if (-not $env:DATABASE_URL) {
+    Write-Error "DATABASE_URL не задан. Укажите: `$env:DATABASE_URL = 'postgresql://user:pass@host:5432/dbname'"
     exit 1
 }
 
@@ -16,6 +31,9 @@ ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SERVER "mkdir -p ${REMOTE_DIR}/serv
 scp -i $SSH_KEY -o StrictHostKeyChecking=no package.json package-lock.json "${SERVER}:${REMOTE_DIR}/"
 scp -i $SSH_KEY -o StrictHostKeyChecking=no server/app.mjs server/config.mjs server/server.mjs "${SERVER}:${REMOTE_DIR}/server/"
 scp -i $SSH_KEY -o StrictHostKeyChecking=no -r server/middleware server/persistence server/routes server/services server/sockets server/utils "${SERVER}:${REMOTE_DIR}/server/"
+if (Test-Path "server/firebase-service-account.json") {
+    scp -i $SSH_KEY -o StrictHostKeyChecking=no server/firebase-service-account.json "${SERVER}:${REMOTE_DIR}/server/"
+}
 scp -i $SSH_KEY -o StrictHostKeyChecking=no -r www/* "${SERVER}:${REMOTE_DIR}/www/"
 scp -i $SSH_KEY -o StrictHostKeyChecking=no -r scripts/* "${SERVER}:${REMOTE_DIR}/scripts/"
 
@@ -27,12 +45,15 @@ $DEFAULT_VAPID_PRIVATE = "yidI8R79AEgpSyRplEo1O10dIxSX98nQRUYgNCyX6qw"
 $VAPID_PUBLIC = if ($env:VAPID_PUBLIC_KEY) { $env:VAPID_PUBLIC_KEY } else { $DEFAULT_VAPID_PUBLIC }
 $VAPID_PRIVATE = if ($env:VAPID_PRIVATE_KEY) { $env:VAPID_PRIVATE_KEY } else { $DEFAULT_VAPID_PRIVATE }
 # Формируем .env и передаём через base64 (избегаем проблем с кавычками в ssh)
+$DATABASE_URL_ESC = $env:DATABASE_URL -replace '"', '\"'
 $envContent = @"
 PORT=3002
 HOST=0.0.0.0
 NODE_ENV=production
 CORS_ORIGIN=https://conference.aiternitas.ru
-PERSISTENCE_DRIVER=file
+PERSISTENCE_DRIVER=postgres
+PGSSLMODE=disable
+DATABASE_URL=$DATABASE_URL_ESC
 ADMIN_SECRET=SevAdminSecret2026Prod
 REDIS_URL=redis://localhost:6379
 VAPID_PUBLIC_KEY=$VAPID_PUBLIC

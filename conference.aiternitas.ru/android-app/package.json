@@ -1,22 +1,28 @@
-{
-  "name": "conference-app",
-  "version": "1.0.0",
-  "private": true,
-  "capacitor": {
-    "platforms": ["android"]
-  },
-  "scripts": {
-    "build": "echo 'No build step - loads remote URL'",
-    "cap:sync": "npx cap sync android"
-  },
-  "dependencies": {
-    "@capacitor/core": "^6.0.0"
-  },
-  "devDependencies": {
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/cli": "^6.0.0"
-  },
-  "capabilities": {
-    "webDir": "web"
-  }
+﻿{
+    "name":  "conference-app",
+    "version":  "1.0.5",
+    "private":  true,
+    "capacitor":  {
+                      "platforms":  [
+                                        "android"
+                                    ]
+                  },
+    "scripts":  {
+                    "build":  "echo \u0027No build step - loads remote URL\u0027",
+                    "cap:sync":  "npx cap sync android"
+                },
+    "dependencies":  {
+                         "@capacitor/app":  "^6.0.3",
+                         "@capacitor/browser":  "^6.0.0",
+                         "@capacitor/core":  "^6.0.0",
+                         "@capacitor/push-notifications":  "^6.0.0",
+                         "capacitor-fullscreen-notification":  "^6.0.2"
+                     },
+    "devDependencies":  {
+                            "@capacitor/android":  "^6.0.0",
+                            "@capacitor/cli":  "^6.0.0"
+                        },
+    "capabilities":  {
+                         "webDir":  "web"
+                     }
 }

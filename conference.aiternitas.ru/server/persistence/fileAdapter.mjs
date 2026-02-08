@@ -52,6 +52,7 @@ export function createFileAdapter({
   const resolvedChatMessagesFile = chatMessagesFile || path.join(dataDir, 'chat_messages.json');
   const resolvedContactRequestsFile = contactRequestsFile || path.join(dataDir, 'contact_requests.json');
   const resolvedPushSubscriptionsFile = path.join(dataDir, 'push_subscriptions.json');
+  const resolvedFcmTokensFile = path.join(dataDir, 'fcm_tokens.json');
   const resolvedAdminsFile = adminsFile || path.join(dataDir, 'admins.json');
   const resolvedAppSettingsFile = appSettingsFile || path.join(dataDir, 'app_settings.json');
 
@@ -63,6 +64,7 @@ export function createFileAdapter({
     chat_messages: { filePath: resolvedChatMessagesFile, property: 'messages' },
     contact_requests: { filePath: resolvedContactRequestsFile, property: 'requests' },
     push_subscriptions: { filePath: resolvedPushSubscriptionsFile, property: 'subscriptions' },
+    fcm_tokens: { filePath: resolvedFcmTokensFile, property: 'tokens' },
     admins: { filePath: resolvedAdminsFile, property: 'admins' },
   };
 
@@ -328,6 +330,24 @@ export function createFileAdapter({
     return r?.subscription || null;
   };
 
+  const saveFcmToken = async (subscriberId, token) => {
+    if (!token || typeof token !== 'string') return;
+    await ensureFile('fcm_tokens');
+    const items = await read('fcm_tokens');
+    const sid = String(subscriberId);
+    const idx = items.findIndex((t) => String(t.subscriberId) === sid);
+    const record = { subscriberId: sid, token: token.trim(), updatedAt: Date.now() };
+    if (idx >= 0) items[idx] = record;
+    else items.push(record);
+    await write('fcm_tokens', items);
+  };
+
+  const getFcmToken = async (subscriberId) => {
+    const items = await read('fcm_tokens');
+    const r = items.find((t) => String(t.subscriberId) === String(subscriberId));
+    return r?.token || null;
+  };
+
   const getSetting = async (key) => {
     ensureDirectory(dataDir);
     if (!existsSync(resolvedAppSettingsFile)) return null;
@@ -370,6 +390,8 @@ export function createFileAdapter({
     updateContactRequestStatus,
     savePushSubscription,
     getPushSubscription,
+    saveFcmToken,
+    getFcmToken,
     listSubscribers,
     getSubscriberById,
     getSubscriberByLogin,

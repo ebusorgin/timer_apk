@@ -148,7 +148,9 @@ export function registerMeContactsRoutes({ app, persistence, io, subscriberAuth,
       });
     } catch (error) {
       log.error?.('Ошибка отправки запроса на контакт', { error: error?.message, stack: error?.stack });
-      const msg = process.env.NODE_ENV === 'development' ? (error?.message || 'Не удалось отправить запрос') : 'Не удалось отправить запрос';
+      const msg = (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
+        ? (error?.message || 'Не удалось отправить запрос')
+        : 'Не удалось отправить запрос';
       res.status(500).json({ success: false, error: msg });
     }
   });

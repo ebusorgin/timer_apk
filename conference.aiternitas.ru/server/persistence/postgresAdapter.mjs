@@ -100,6 +100,15 @@ const ensureSchema = (pool, logger) => {
         )
       `);
 
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS fcm_tokens (
+          subscriber_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token TEXT NOT NULL,
+          updated_at BIGINT NOT NULL,
+          PRIMARY KEY (subscriber_id)
+        )
+      `);
+
       logger?.info?.('PostgreSQL persistence schema ensured');
     })();
     return initialized;
@@ -189,7 +198,7 @@ export function createPostgresAdapter(options = {}) {
     if (existingId != null) {
     const { rows } = await resolvedPool.query(
       `UPDATE users SET name = $2,
-         password_hash = CASE WHEN $3 IS NOT NULL AND $3 <> '' THEN $3 ELSE password_hash END,
+         password_hash = CASE WHEN $3::TEXT IS NOT NULL AND $3::TEXT <> '' THEN $3::TEXT ELSE password_hash END,
          avatar_url = COALESCE($4, avatar_url), role = $5, updated_at = $6
          WHERE id = $1 RETURNING *`,
       [existingId, name, passwordHash, avatarUrl, role, ts.updated]
@@ -199,7 +208,7 @@ export function createPostgresAdapter(options = {}) {
 
     const { rows } = await resolvedPool.query(
       `INSERT INTO users (login, name, password_hash, avatar_url, role, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       VALUES ($1, $2, $3::TEXT, $4, $5, $6, $7)
        ON CONFLICT (login) DO UPDATE SET name = EXCLUDED.name,
          password_hash = CASE WHEN EXCLUDED.password_hash IS NOT NULL AND EXCLUDED.password_hash <> '' THEN EXCLUDED.password_hash ELSE users.password_hash END,
          avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url), updated_at = EXCLUDED.updated_at
@@ -440,6 +449,11 @@ export function createPostgresAdapter(options = {}) {
     const fromId = normalizeId(record.fromId);
     const toId = normalizeId(record.toId);
     if (fromId == null || toId == null) throw new Error('fromId и toId обязательны');
+    const fromName = (record.fromName != null ? String(record.fromName) : '').trim() || 'Unknown';
+    const toName = (record.toName != null ? String(record.toName) : '').trim() || 'Unknown';
+    const createdAt = typeof record.createdAt === 'number' && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : Date.now();
     const { rows: existing } = await resolvedPool.query(
       `SELECT * FROM contact_requests WHERE from_id = $1 AND to_id = $2 AND status = 'pending' LIMIT 1`,
       [fromId, toId]
@@ -459,7 +473,7 @@ export function createPostgresAdapter(options = {}) {
     const { rows } = await resolvedPool.query(
       `INSERT INTO contact_requests (from_id, from_name, to_id, to_name, status, created_at)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [fromId, record.fromName, toId, record.toName, record.status || 'pending', record.createdAt || Date.now()]
+      [fromId, fromName, toId, toName, record.status || 'pending', createdAt]
     );
     const r = rows[0];
     return {
@@ -535,6 +549,28 @@ export function createPostgresAdapter(options = {}) {
     };
   };
 
+  const saveFcmToken = async (subscriberId, token) => {
+    const nid = normalizeId(subscriberId);
+    if (nid == null || !token || typeof token !== 'string') return;
+    await ensure();
+    await resolvedPool.query(
+      `INSERT INTO fcm_tokens (subscriber_id, token, updated_at) VALUES ($1, $2, $3)
+       ON CONFLICT (subscriber_id) DO UPDATE SET token = $2, updated_at = $3`,
+      [nid, token.trim(), Date.now()]
+    );
+  };
+
+  const getFcmToken = async (subscriberId) => {
+    const nid = normalizeId(subscriberId);
+    if (nid == null) return null;
+    await ensure();
+    const { rows } = await resolvedPool.query(
+      `SELECT token FROM fcm_tokens WHERE subscriber_id = $1 LIMIT 1`,
+      [nid]
+    );
+    return rows[0]?.token || null;
+  };
+
   const updateContactRequestStatus = async (requestId, status) => {
     const nid = normalizeId(requestId);
     if (nid == null) return null;
@@ -579,6 +615,8 @@ export function createPostgresAdapter(options = {}) {
     updateContactRequestStatus,
     savePushSubscription,
     getPushSubscription,
+    saveFcmToken,
+    getFcmToken,
     getSetting,
     setSetting,
     close: () => (resolvedPool?.end ? resolvedPool.end() : Promise.resolve()),
