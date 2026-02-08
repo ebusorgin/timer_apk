@@ -16,8 +16,10 @@ export const appConfig: ApplicationConfig = {
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     provideHttpClient(withFetch()),
-    provideTranslateService({ defaultLanguage: 'ru' }),
-    provideTranslateHttpLoader({ prefix: '/i18n/', suffix: '.json' }),
+    provideTranslateService({
+      defaultLanguage: 'ru',
+      loader: provideTranslateHttpLoader({ prefix: '/i18n/', suffix: '.json' }),
+    }),
     {
       provide: APP_INITIALIZER,
       useFactory: (auth: AuthService) => () => auth.loadUser(),
