@@ -2,13 +2,8 @@ import { Injectable, signal, computed } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
+import { TranslateService } from '@ngx-translate/core';
 import { ApiService } from './api.service';
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof HttpErrorResponse && err.error?.error) return err.error.error;
-  if (err instanceof Error) return err.message;
-  return 'Ошибка';
-}
 
 export interface User {
   id: string;
@@ -26,7 +21,7 @@ export class AuthService {
   isLoaded = this.loadedSignal.asReadonly();
   isLoggedIn = computed(() => !!this.userSignal());
 
-  constructor(private api: ApiService, private router: Router) {}
+  constructor(private api: ApiService, private router: Router, private translate: TranslateService) {}
 
   async loadUser(): Promise<void> {
     const token = localStorage.getItem('token');
@@ -53,22 +48,28 @@ export class AuthService {
   async login(email: string, password: string) {
     try {
       const res = await firstValueFrom(this.api.post<{ success: boolean; token: string; user: User }>('/auth/login', { email, password }));
-      if (!res?.success || !res.token) throw new Error('Ошибка входа');
+      if (!res?.success || !res.token) throw new Error(this.translate.instant('auth.loginError'));
       localStorage.setItem('token', res.token);
       this.userSignal.set(res.user);
     } catch (e) {
-      throw new Error(getErrorMessage(e));
+      throw new Error(this.getErrorMessage(e));
     }
+  }
+
+  private getErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse && err.error?.error) return err.error.error;
+    if (err instanceof Error) return err.message;
+    return this.translate.instant('auth.genericError');
   }
 
   async register(email: string, name: string, password: string) {
     try {
       const res = await firstValueFrom(this.api.post<{ success: boolean; token: string; user: User }>('/auth/register', { email, name, password }));
-      if (!res?.success || !res.token) throw new Error('Ошибка регистрации');
+      if (!res?.success || !res.token) throw new Error(this.translate.instant('auth.registerError'));
       localStorage.setItem('token', res.token);
       this.userSignal.set(res.user);
     } catch (e) {
-      throw new Error(getErrorMessage(e));
+      throw new Error(this.getErrorMessage(e));
     }
   }
 

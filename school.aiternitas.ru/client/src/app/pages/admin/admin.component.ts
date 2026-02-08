@@ -123,7 +123,7 @@ interface Student {
                 @if (programFormLang() === 'ru') {
                   <label>{{ 'admin.programTitle' | translate }} (RU) <input [(ngModel)]="programForm.titleRu" name="titleRu" required /></label>
                   <label>{{ 'admin.description' | translate }} (RU) <textarea [(ngModel)]="programForm.descriptionRu" name="descRu" rows="3"></textarea></label>
-                  <label>{{ 'admin.curriculum' | translate }} (RU) <textarea [(ngModel)]="programForm.curriculumRuJson" name="currRu" rows="6" placeholder='[{"n":1,"topic":"Тема","description":"Что будет","conclusions":"Выводы","result":"Результат"}]'></textarea></label>
+                  <label>{{ 'admin.curriculum' | translate }} (RU) <textarea [(ngModel)]="programForm.curriculumRuJson" name="currRu" rows="6" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea></label>
                 }
                 @if (programFormLang() === 'sr') {
                   <label>{{ 'admin.programTitle' | translate }} (SR) <input [(ngModel)]="programForm.titleSr" name="titleSr" /></label>
@@ -173,7 +173,7 @@ interface Student {
                 }
               </div>
               <div class="row-actions">
-                <button (click)="editSchoolType(st)">Изменить</button>
+                <button (click)="editSchoolType(st)">{{ 'admin.edit' | translate }}</button>
               </div>
             </div>
           }

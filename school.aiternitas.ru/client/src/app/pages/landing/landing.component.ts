@@ -57,7 +57,7 @@ import { ApiService } from '../../services/api.service';
       <div class="container">
         <div class="about-grid" schoolScrollReveal>
           <div class="about-image">
-            <img src="hero-school.png" alt="Занятия в школе" />
+            <img src="hero-school.png" [attr.alt]="'gallery.altSchool' | translate" />
           </div>
           <div class="about-text">
             <h2 class="section-title">{{ 'section.about' | translate }}</h2>
@@ -121,10 +121,10 @@ import { ApiService } from '../../services/api.service';
       <div class="container">
         <h2 class="section-title" schoolScrollReveal>{{ 'section.gallery' | translate }}</h2>
         <div class="gallery-grid" schoolScrollReveal>
-          <div class="gallery-item"><img src="gallery-tech-class.png" alt="Технические занятия" /></div>
-          <div class="gallery-item"><img src="gallery-art-class.png" alt="Художественные занятия" /></div>
-          <div class="gallery-item"><img src="gallery-robotics.png" alt="Робототехника" /></div>
-          <div class="gallery-item"><img src="gallery-creative.png" alt="Творческие проекты" /></div>
+          <div class="gallery-item"><img src="gallery-tech-class.png" [attr.alt]="'gallery.altTech' | translate" /></div>
+          <div class="gallery-item"><img src="gallery-art-class.png" [attr.alt]="'gallery.altArt' | translate" /></div>
+          <div class="gallery-item"><img src="gallery-robotics.png" [attr.alt]="'gallery.altRobotics' | translate" /></div>
+          <div class="gallery-item"><img src="gallery-creative.png" [attr.alt]="'gallery.altCreative' | translate" /></div>
         </div>
       </div>
     </section>

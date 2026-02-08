@@ -16,7 +16,7 @@ export const appConfig: ApplicationConfig = {
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     provideHttpClient(withFetch()),
-    provideTranslateHttpLoader({ prefix: 'i18n/', suffix: '.json' }),
+    provideTranslateHttpLoader({ prefix: '/i18n/', suffix: '.json' }),
     provideTranslateService({ defaultLanguage: 'ru' }),
     {
       provide: APP_INITIALIZER,
@@ -26,9 +26,13 @@ export const appConfig: ApplicationConfig = {
     },
     {
       provide: APP_INITIALIZER,
-      useFactory: (locale: LocaleService, translate: TranslateService) => () => {
+      useFactory: (locale: LocaleService, translate: TranslateService) => async () => {
         const lang = locale.getLocale();
-        return firstValueFrom(translate.use(lang));
+        try {
+          await firstValueFrom(translate.use(lang));
+        } catch {
+          await firstValueFrom(translate.use('ru'));
+        }
       },
       deps: [LocaleService, TranslateService],
       multi: true,
