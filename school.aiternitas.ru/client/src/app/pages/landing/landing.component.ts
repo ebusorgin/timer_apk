@@ -16,14 +16,13 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
         <school-particle-canvas></school-particle-canvas>
       </div>
       <div class="container hero-content">
-        <p class="hero-badge">Код и кисть</p>
+        <p class="hero-badge">Образование будущего</p>
         <h1 class="hero-title">
-          <span class="hero-title-line">Программируй.</span>
-          <span class="hero-title-line">Рисуй.</span>
-          <span class="hero-title-accent">Твори.</span>
+          <span class="hero-title-line">Школа для</span>
+          <span class="hero-title-accent">творческих умов</span>
         </h1>
         <p class="hero-subtitle">
-          Где технологии встречаются с искусством
+          Техническая школа: программирование, робототехника, нейросети. Художественная школа: рисование, живопись, дизайн. Гибкие программы для детей 5–18 лет.
         </p>
         <div class="hero-actions">
           <a routerLink="/programs" class="btn-hero btn-primary">
@@ -63,6 +62,81 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
           @for (d of directions; track d) {
             <div class="card" schoolScrollReveal>{{ d }}</div>
           }
+        </div>
+      </div>
+    </section>
+    <section class="about">
+      <div class="container">
+        <div class="about-grid" schoolScrollReveal>
+          <div class="about-image">
+            <img src="hero-school.png" alt="Занятия в школе" />
+          </div>
+          <div class="about-text">
+            <h2 class="section-title">О школе</h2>
+            <p>Мы объединяем техническое и художественное образование под одной крышей. Дети учатся программировать, собирать роботов и работать с нейросетями — а также рисовать, лепить и создавать дизайн.</p>
+            <p>Небольшие группы, внимательные педагоги, современное оборудование. Программы построены по принципу «от простого к сложному» и учитывают индивидуальный темп каждого ребёнка.</p>
+            <ul class="about-list">
+              <li>Опытные преподаватели с практикой в IT и искусстве</li>
+              <li>Гибкое расписание и форматы занятий</li>
+              <li>Доступ к материалам и проектам после курса</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="benefits">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>Почему выбирают нас</h2>
+        <div class="benefits-grid">
+          @for (b of benefits; track b.icon) {
+            <div class="benefit-card" schoolScrollReveal>
+              <span class="benefit-icon">{{ b.icon }}</span>
+              <h3>{{ b.title }}</h3>
+              <p>{{ b.text }}</p>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+    <section class="ages">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>Программы по возрастам</h2>
+        <div class="ages-grid">
+          @for (a of ageGroups; track a.range) {
+            <div class="age-card" schoolScrollReveal>
+              <div class="age-image" [style.background-image]="'url(' + a.img + ')'"></div>
+              <div class="age-body">
+                <span class="age-range">{{ a.range }} лет</span>
+                <h3>{{ a.title }}</h3>
+                <p>{{ a.desc }}</p>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+    <section class="how">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>Как записаться</h2>
+        <div class="steps">
+          @for (s of steps; track s.title; let i = $index) {
+            <div class="step" schoolScrollReveal>
+              <span class="step-num">{{ i + 1 }}</span>
+              <h3>{{ s.title }}</h3>
+              <p>{{ s.text }}</p>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+    <section class="gallery">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>Жизнь школы</h2>
+        <div class="gallery-grid" schoolScrollReveal>
+          <div class="gallery-item"><img src="tech-class.png" alt="Технические занятия" /></div>
+          <div class="gallery-item"><img src="art-class.png" alt="Художественные занятия" /></div>
+          <div class="gallery-item"><img src="hero-dynamic.png" alt="Обучение" /></div>
+          <div class="gallery-item"><img src="hero-school.png" alt="Школа" /></div>
         </div>
       </div>
     </section>
@@ -344,6 +418,157 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       color: var(--color-muted);
       margin: 0 0 2rem;
     }
+    .about {
+      padding: 6rem 0;
+      background: var(--color-bg);
+    }
+    .about-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    .about-image {
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+    .about-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      min-height: 280px;
+    }
+    .about-text .section-title { text-align: left; margin-bottom: 1.5rem; }
+    .about-text p { color: var(--color-muted); line-height: 1.7; margin: 0 0 1rem; }
+    .about-list {
+      margin: 1.5rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .about-list li {
+      padding: 0.5rem 0 0.5rem 1.75rem;
+      position: relative;
+      color: var(--color-muted);
+    }
+    .about-list li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: var(--color-accent);
+      font-weight: 700;
+    }
+    .benefits {
+      padding: 6rem 0;
+      background: var(--color-bg-alt);
+    }
+    .benefits-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+    }
+    .benefit-card {
+      padding: 2rem;
+      background: var(--color-bg-card);
+      border-radius: var(--radius);
+      border: 1px solid var(--color-border);
+      transition: transform var(--transition), border-color var(--transition);
+    }
+    .benefit-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--color-primary);
+    }
+    .benefit-icon { font-size: 2rem; display: block; margin-bottom: 1rem; }
+    .benefit-card h3 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+    .benefit-card p { margin: 0; font-size: 0.95rem; color: var(--color-muted); line-height: 1.6; }
+    .ages {
+      padding: 6rem 0;
+      background: var(--color-bg);
+    }
+    .ages-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    .age-card {
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      transition: transform var(--transition), box-shadow var(--transition);
+    }
+    .age-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+    .age-image {
+      height: 140px;
+      background-size: cover;
+      background-position: center;
+    }
+    .age-body { padding: 1.5rem; }
+    .age-range {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      background: rgba(99,102,241,0.2);
+      border-radius: 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--color-accent);
+      margin-bottom: 0.75rem;
+    }
+    .age-card h3 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+    .age-card p { margin: 0; font-size: 0.9rem; color: var(--color-muted); line-height: 1.5; }
+    .how {
+      padding: 6rem 0;
+      background: var(--color-bg-alt);
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .step {
+      text-align: center;
+      padding: 2rem 1.5rem;
+      position: relative;
+    }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 50%;
+      font-weight: 800;
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .step h3 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+    .step p { margin: 0; font-size: 0.95rem; color: var(--color-muted); line-height: 1.6; }
+    .gallery {
+      padding: 6rem 0;
+      background: var(--color-bg);
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    .gallery-item {
+      border-radius: var(--radius);
+      overflow: hidden;
+      aspect-ratio: 4/3;
+      transition: transform var(--transition);
+    }
+    .gallery-item:hover { transform: scale(1.02); }
+    .gallery-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(24px); }
       to { opacity: 1; transform: translateY(0); }
@@ -365,6 +590,13 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
     .grid .card:nth-child(4) { transition-delay: 0.2s; }
     .grid .card:nth-child(5) { transition-delay: 0.25s; }
     .grid .card:nth-child(6) { transition-delay: 0.3s; }
+    @media (max-width: 768px) {
+      .about-grid { grid-template-columns: 1fr; }
+      .about-image { order: -1; }
+      .ages-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .gallery-grid { grid-template-columns: 1fr; }
+    }
     @media (max-width: 600px) {
       .hero { min-height: 70vh; }
       .hero-title { font-size: 2rem; }
@@ -379,4 +611,20 @@ export class LandingComponent {
   directions = ['Программирование', 'Робототехника', 'Нейросети', 'Рисование', 'Живопись', 'Дизайн'];
   techBg = 'tech-class.png';
   artBg = 'art-class.png';
+  benefits = [
+    { icon: '🎯', title: 'Практика с первого дня', text: 'Минимум теории — максимум проектов. Дети сразу создают игры, роботов и рисунки.' },
+    { icon: '📈', title: 'Пошаговое развитие', text: 'Программы выстроены от основ к сложным темам. Учёт возраста и предыдущего опыта.' },
+    { icon: '👥', title: 'Небольшие группы', text: 'До 8–10 человек в группе. Каждому ребёнку уделяется внимание.' },
+    { icon: '🔧', title: 'Современные инструменты', text: 'Scratch, Python, Arduino, нейросети, акварель, цифровой дизайн.' },
+  ];
+  ageGroups = [
+    { range: '5–7', title: 'Младшие', desc: 'Логика, творчество, первые конструкции и эксперименты с цветом.', img: 'tech-class.png' },
+    { range: '8–11', title: 'Средние', desc: 'Scratch, робототехника, Python, рисование, основы дизайна.', img: 'art-class.png' },
+    { range: '12–18', title: 'Старшие', desc: 'Веб-разработка, нейросети, Arduino, ESP32, профессиональная графика.', img: 'hero-dynamic.png' },
+  ];
+  steps = [
+    { title: 'Регистрация', text: 'Создайте аккаунт на сайте и заполните данные ребёнка.' },
+    { title: 'Выбор программы', text: 'Изучите каталог и выберите подходящий курс по возрасту и интересам.' },
+    { title: 'Запись на программу', text: 'Оформите заявку — мы свяжемся для уточнения деталей.' },
+  ];
 }
