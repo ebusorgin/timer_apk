@@ -1,25 +1,29 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { ParticleCanvasComponent } from '../../components/particle-canvas/particle-canvas.component';
+import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive';
 
 @Component({
   selector: 'school-landing',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, ParticleCanvasComponent, ScrollRevealDirective],
   template: `
     <section class="hero">
       <div class="hero-bg">
-        <img src="hero-school.png" alt="" class="hero-img" />
+        <img src="hero-dynamic.png" alt="" class="hero-img" />
         <div class="hero-overlay"></div>
         <div class="hero-glow"></div>
+        <school-particle-canvas></school-particle-canvas>
       </div>
       <div class="container hero-content">
-        <p class="hero-badge">Образование будущего</p>
+        <p class="hero-badge">Код и кисть</p>
         <h1 class="hero-title">
-          <span class="hero-title-line">Школа для</span>
-          <span class="hero-title-accent">творческих умов</span>
+          <span class="hero-title-line">Программируй.</span>
+          <span class="hero-title-line">Рисуй.</span>
+          <span class="hero-title-accent">Твори.</span>
         </h1>
         <p class="hero-subtitle">
-          Техническая школа: программирование, робототехника, нейросети. Художественная школа: рисование, живопись, дизайн. Гибкие программы для детей 5–18 лет.
+          Где технологии встречаются с искусством
         </p>
         <div class="hero-actions">
           <a routerLink="/programs" class="btn-hero btn-primary">
@@ -34,29 +38,35 @@ import { RouterLink } from '@angular/router';
     </section>
     <section class="directions">
       <div class="container">
-        <h2 class="section-title">Выберите направление</h2>
+        <h2 class="section-title" schoolScrollReveal>Выберите направление</h2>
         <div class="school-types">
-          <a routerLink="/programs" [queryParams]="{school_type: 'tech'}" class="school-card tech">
-            <div class="school-card-icon">⚡</div>
-            <h3>Техническая школа</h3>
-            <p>Программирование, робототехника, микроконтроллеры, нейросети, радиотехника</p>
-            <span class="school-card-arrow">→</span>
+          <a routerLink="/programs" [queryParams]="{school_type: 'tech'}" class="school-card tech" schoolScrollReveal>
+            <div class="school-card-bg" [style.background-image]="'url(' + techBg + ')'"></div>
+            <div class="school-card-body">
+              <div class="school-card-icon">⚡</div>
+              <h3>Техническая школа</h3>
+              <p>Программирование, робототехника, микроконтроллеры, нейросети, радиотехника</p>
+              <span class="school-card-arrow">→</span>
+            </div>
           </a>
-          <a routerLink="/programs" [queryParams]="{school_type: 'art'}" class="school-card art">
-            <div class="school-card-icon">🎨</div>
-            <h3>Художественная школа</h3>
-            <p>Рисование, живопись, графика, декоративно-прикладное искусство, дизайн</p>
-            <span class="school-card-arrow">→</span>
+          <a routerLink="/programs" [queryParams]="{school_type: 'art'}" class="school-card art" schoolScrollReveal>
+            <div class="school-card-bg" [style.background-image]="'url(' + artBg + ')'"></div>
+            <div class="school-card-body">
+              <div class="school-card-icon">🎨</div>
+              <h3>Художественная школа</h3>
+              <p>Рисование, живопись, графика, декоративно-прикладное искусство, дизайн</p>
+              <span class="school-card-arrow">→</span>
+            </div>
           </a>
         </div>
         <div class="grid">
           @for (d of directions; track d) {
-            <div class="card">{{ d }}</div>
+            <div class="card" schoolScrollReveal>{{ d }}</div>
           }
         </div>
       </div>
     </section>
-    <section class="cta">
+    <section class="cta" schoolScrollReveal>
       <div class="container">
         <div class="cta-content">
           <h2>Готовы начать?</h2>
@@ -139,10 +149,16 @@ import { RouterLink } from '@angular/router';
     }
     .hero-title-accent {
       display: block;
-      background: linear-gradient(135deg, #6366f1, #a855f7, #06b6d4);
+      background: linear-gradient(135deg, #6366f1, #a855f7, #06b6d4, #6366f1);
+      background-size: 300% 300%;
+      animation: gradientShift 4s ease infinite;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+    }
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
     }
     .hero-subtitle {
       font-size: 1.15rem;
@@ -218,17 +234,47 @@ import { RouterLink } from '@angular/router';
     }
     .school-card {
       position: relative;
-      padding: 2.5rem;
+      min-height: 320px;
       border-radius: var(--radius-lg);
       text-decoration: none;
       color: inherit;
       overflow: hidden;
       transition: transform var(--transition), box-shadow var(--transition);
       border: 1px solid var(--color-border);
+      display: flex;
+      align-items: flex-end;
     }
     .school-card:hover {
-      transform: translateY(-6px);
+      transform: translateY(-6px) scale(1.01);
       box-shadow: var(--shadow-lg);
+    }
+    .school-card-bg {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      transition: transform 0.6s ease;
+    }
+    .school-card:hover .school-card-bg {
+      transform: scale(1.08);
+    }
+    .school-card-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(15,15,26,0.95) 0%, rgba(15,15,26,0.6) 40%, transparent 70%);
+    }
+    .school-card.tech .school-card-bg::after {
+      background: linear-gradient(to top, rgba(15,15,26,0.95) 0%, rgba(99,102,241,0.2) 40%, transparent 70%);
+    }
+    .school-card.art .school-card-bg::after {
+      background: linear-gradient(to top, rgba(15,15,26,0.95) 0%, rgba(168,85,247,0.2) 40%, transparent 70%);
+    }
+    .school-card-body {
+      position: relative;
+      z-index: 1;
+      padding: 2.5rem;
+      width: 100%;
     }
     .school-card.tech {
       background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(6,182,212,0.1) 100%);
@@ -302,6 +348,23 @@ import { RouterLink } from '@angular/router';
       from { opacity: 0; transform: translateY(24px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    [schoolScrollReveal] {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    [schoolScrollReveal].revealed {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .school-card[schoolScrollReveal].revealed { transition-delay: 0.1s; }
+    .grid .card[schoolScrollReveal] { transition-duration: 0.5s; }
+    .grid .card:nth-child(1) { transition-delay: 0.05s; }
+    .grid .card:nth-child(2) { transition-delay: 0.1s; }
+    .grid .card:nth-child(3) { transition-delay: 0.15s; }
+    .grid .card:nth-child(4) { transition-delay: 0.2s; }
+    .grid .card:nth-child(5) { transition-delay: 0.25s; }
+    .grid .card:nth-child(6) { transition-delay: 0.3s; }
     @media (max-width: 600px) {
       .hero { min-height: 70vh; }
       .hero-title { font-size: 2rem; }
@@ -314,4 +377,6 @@ import { RouterLink } from '@angular/router';
 })
 export class LandingComponent {
   directions = ['Программирование', 'Робототехника', 'Нейросети', 'Рисование', 'Живопись', 'Дизайн'];
+  techBg = 'tech-class.png';
+  artBg = 'art-class.png';
 }
