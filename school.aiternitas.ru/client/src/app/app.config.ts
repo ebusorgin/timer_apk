@@ -1,6 +1,7 @@
 import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withFetch } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 
 import { provideTranslateService } from '@ngx-translate/core';
 import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
@@ -27,7 +28,7 @@ export const appConfig: ApplicationConfig = {
       provide: APP_INITIALIZER,
       useFactory: (locale: LocaleService, translate: TranslateService) => () => {
         const lang = locale.getLocale();
-        return translate.use(lang).toPromise?.() ?? Promise.resolve();
+        return firstValueFrom(translate.use(lang));
       },
       deps: [LocaleService, TranslateService],
       multi: true,
