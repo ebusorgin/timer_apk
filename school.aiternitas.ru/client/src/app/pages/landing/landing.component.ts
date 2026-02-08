@@ -133,10 +133,10 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       <div class="container">
         <h2 class="section-title" schoolScrollReveal>Жизнь школы</h2>
         <div class="gallery-grid" schoolScrollReveal>
-          <div class="gallery-item"><img src="tech-class.png" alt="Технические занятия" /></div>
-          <div class="gallery-item"><img src="art-class.png" alt="Художественные занятия" /></div>
-          <div class="gallery-item"><img src="hero-dynamic.png" alt="Обучение" /></div>
-          <div class="gallery-item"><img src="hero-school.png" alt="Школа" /></div>
+          <div class="gallery-item"><img src="gallery-tech-class.png" alt="Технические занятия" /></div>
+          <div class="gallery-item"><img src="gallery-art-class.png" alt="Художественные занятия" /></div>
+          <div class="gallery-item"><img src="gallery-robotics.png" alt="Робототехника" /></div>
+          <div class="gallery-item"><img src="gallery-creative.png" alt="Творческие проекты" /></div>
         </div>
       </div>
     </section>
@@ -620,7 +620,7 @@ export class LandingComponent {
   ageGroups = [
     { range: '5–7', title: 'Младшие', desc: 'Логика, творчество, первые конструкции и эксперименты с цветом.', img: 'tech-class.png' },
     { range: '8–11', title: 'Средние', desc: 'Scratch, робототехника, Python, рисование, основы дизайна.', img: 'art-class.png' },
-    { range: '12–18', title: 'Старшие', desc: 'Веб-разработка, нейросети, Arduino, ESP32, профессиональная графика.', img: 'hero-dynamic.png' },
+    { range: '12–18', title: 'Старшие', desc: 'Веб-разработка, нейросети, Arduino, ESP32, профессиональная графика.', img: 'teens-coding.png' },
   ];
   steps = [
     { title: 'Регистрация', text: 'Создайте аккаунт на сайте и заполните данные ребёнка.' },
