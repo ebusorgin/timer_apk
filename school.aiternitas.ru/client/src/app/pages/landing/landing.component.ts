@@ -41,7 +41,7 @@ import { ApiService } from '../../services/api.service';
         <h2 class="section-title" schoolScrollReveal>Тип школы</h2>
         <div class="school-types">
           @for (st of schoolTypes(); track st.id) {
-            <a [routerLink]="['/programs']" [queryParams]="{school_type: st.id}" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>
+            <a [routerLink]="['/school-types', st.id]" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>
               <div class="school-card-bg" [style.background-image]="'url(' + getBg(st.id) + ')'"></div>
               <div class="school-card-body">
                 <div class="school-card-icon">{{ st.id === 'tech' ? '⚡' : '🎨' }}</div>

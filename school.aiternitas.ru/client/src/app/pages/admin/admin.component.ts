@@ -9,6 +9,14 @@ interface Stats {
   popularPrograms: { id: string; title: string; slug: string; count: number }[];
 }
 
+interface Lesson {
+  n: number;
+  topic: string;
+  description?: string;
+  conclusions?: string;
+  result?: string;
+}
+
 interface Program {
   id: string;
   title: string;
@@ -23,6 +31,7 @@ interface Program {
   imageUrl?: string | null;
   price?: number | null;
   schedule?: string | null;
+  curriculum?: Lesson[];
 }
 
 interface SchoolType {
@@ -123,6 +132,10 @@ interface Student {
                 <label>Изображение (URL) <input [(ngModel)]="programForm.imageUrl" name="imageUrl" placeholder="https://..." /></label>
                 <label>Цена (руб) <input type="number" [(ngModel)]="programForm.price" name="price" placeholder="пусто = бесплатно" /></label>
                 <label>Расписание <input [(ngModel)]="programForm.schedule" name="schedule" placeholder="Вт, Чт 16:00" /></label>
+                <label>Программа занятий (JSON)
+                  <textarea [(ngModel)]="programForm.curriculumJson" name="curriculum" rows="8" placeholder='[{"n":1,"topic":"Тема","description":"Что будет","conclusions":"Выводы","result":"Результат"}]'></textarea>
+                  <small>Массив уроков: n, topic, description, conclusions, result</small>
+                </label>
                 <div class="modal-actions">
                   <button type="button" (click)="closeProgramForm()">Отмена</button>
                   <button type="submit">Сохранить</button>
@@ -284,6 +297,7 @@ export class AdminComponent implements OnInit {
     imageUrl: '' as string | null,
     price: null as number | string | null,
     schedule: '',
+    curriculumJson: '',
   };
   schoolTypeForm = { title: '', description: '' };
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -362,6 +376,7 @@ export class AdminComponent implements OnInit {
       imageUrl: null,
       price: null,
       schedule: '',
+      curriculumJson: '',
     };
     this.showProgramForm.set(true);
   }
@@ -383,6 +398,7 @@ export class AdminComponent implements OnInit {
       imageUrl: p.imageUrl ?? null,
       price: p.price ?? null,
       schedule: p.schedule ?? '',
+      curriculumJson: p.curriculum?.length ? JSON.stringify(p.curriculum, null, 2) : '',
     };
     this.showProgramForm.set(true);
   }
@@ -404,6 +420,15 @@ export class AdminComponent implements OnInit {
       this.errorMessage.set('Возраст «от» не может быть больше «до»');
       return;
     }
+    let curriculum: Lesson[] = [];
+    try {
+      if (this.programForm.curriculumJson?.trim()) {
+        curriculum = JSON.parse(this.programForm.curriculumJson);
+      }
+    } catch {
+      this.errorMessage.set('Неверный JSON в программе занятий');
+      return;
+    }
     const body = {
       title: this.programForm.title.trim(),
       slug: this.programForm.slug?.trim() || this.programForm.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, ''),
@@ -417,6 +442,7 @@ export class AdminComponent implements OnInit {
       imageUrl: this.programForm.imageUrl?.trim() || null,
       price: (this.programForm.price != null && String(this.programForm.price).trim() !== '' && !Number.isNaN(Number(this.programForm.price))) ? Number(this.programForm.price) : null,
       schedule: this.programForm.schedule?.trim() || null,
+      curriculum,
     };
     const ed = this.editingProgram();
     if (ed) {

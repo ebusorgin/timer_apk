@@ -3,6 +3,14 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 
+interface Lesson {
+  n: number;
+  topic: string;
+  description?: string;
+  conclusions?: string;
+  result?: string;
+}
+
 interface Program {
   id: string;
   title: string;
@@ -17,6 +25,7 @@ interface Program {
   imageUrl?: string | null;
   price?: number | null;
   schedule?: string | null;
+  curriculum?: Lesson[];
 }
 
 @Component({
@@ -29,7 +38,7 @@ interface Program {
         <p>Загрузка...</p>
       } @else if (program()) {
         @let p = program()!;
-        <a routerLink="/programs" class="back">← Назад к программам</a>
+        <a [routerLink]="backLink()" class="back">{{ backLabel() }}</a>
         @if (p.imageUrl) {
           <div class="program-image"><img [src]="p.imageUrl" [alt]="p.title" /></div>
         }
@@ -48,6 +57,26 @@ interface Program {
           }
         </div>
         <p class="desc">{{ p.description }}</p>
+        @if (p.curriculum && p.curriculum.length > 0) {
+          <div class="curriculum">
+            <h3>Программа занятий</h3>
+            @for (lesson of p.curriculum; track lesson.n) {
+              <div class="lesson-card">
+                <div class="lesson-num">Урок {{ lesson.n }}</div>
+                <h4>{{ lesson.topic }}</h4>
+                @if (lesson.description) {
+                  <p><strong>На уроке:</strong> {{ lesson.description }}</p>
+                }
+                @if (lesson.conclusions) {
+                  <p><strong>Выводы:</strong> {{ lesson.conclusions }}</p>
+                }
+                @if (lesson.result) {
+                  <p><strong>Результат:</strong> {{ lesson.result }}</p>
+                }
+              </div>
+            }
+          </div>
+        }
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
           <button (click)="enroll()" [disabled]="enrolling()">
             {{ enrolling() ? 'Записываю...' : 'Записаться' }}
@@ -81,6 +110,18 @@ interface Program {
       font-size: 0.9rem;
     }
     .desc { margin-bottom: 2rem; }
+    .curriculum { margin-bottom: 2rem; }
+    .curriculum h3 { margin: 0 0 1rem; font-size: 1.15rem; }
+    .lesson-card {
+      background: var(--color-bg-alt);
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius);
+      margin-bottom: 0.75rem;
+      border-left: 4px solid var(--color-primary);
+    }
+    .lesson-num { font-size: 0.85rem; color: var(--color-muted); margin-bottom: 0.25rem; }
+    .lesson-card h4 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .lesson-card p { margin: 0.25rem 0; font-size: 0.9rem; }
     button, .btn-register {
       background: var(--color-primary);
       color: white;
@@ -97,6 +138,16 @@ export class ProgramDetailComponent implements OnInit {
   program = signal<Program | null>(null);
   loading = signal(true);
   enrolling = signal(false);
+
+  backLink() {
+    const from = this.route.snapshot.queryParamMap.get('from');
+    return from ? ['/school-types', from] : ['/programs'];
+  }
+
+  backLabel() {
+    const from = this.route.snapshot.queryParamMap.get('from');
+    return from ? (from === 'art' ? '← Назад к художественной школе' : '← Назад к техническому направлению') : '← Назад к программам';
+  }
 
   constructor(
     private route: ActivatedRoute,

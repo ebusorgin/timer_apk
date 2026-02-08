@@ -9,13 +9,40 @@ if (!DATABASE_URL) {
 
 const SCHEMA = 'school_aiternitas_ru';
 
+const CURRICULUM_SCRATCH = [
+  { n: 1, topic: 'Знакомство со Scratch', description: 'Интерфейс, блоки, спрайты. Первая анимация кота.', conclusions: 'Программа — это последовательность команд.', result: 'Анимированный персонаж' },
+  { n: 2, topic: 'Движение и координаты', description: 'Блоки движения, система координат, циклы.', conclusions: 'Повторение экономит код.', result: 'Персонаж ходит по сцене' },
+  { n: 3, topic: 'События и интерактивность', description: 'Клик мыши, клавиши, сообщения.', conclusions: 'События запускают действия.', result: 'Интерактивная анимация' },
+  { n: 4, topic: 'Условия и переменные', description: 'Если-иначе, счётчики, логика.', conclusions: 'Программа реагирует на условия.', result: 'Простая игра со счётом' },
+  { n: 5, topic: 'Клонирование', description: 'Клоны, создание множества объектов.', conclusions: 'Один код — много объектов.', result: 'Игра с падающими объектами' },
+  { n: 6, topic: 'Итоговый проект', description: 'Создание своей игры от идеи до релиза.', conclusions: 'Планирование — ключ к успеху.', result: 'Готовая игра' },
+];
+
+const CURRICULUM_PYTHON = [
+  { n: 1, topic: 'Установка и первая программа', description: 'Python, среда, print(), input().', conclusions: 'Программа — инструкции для компьютера.', result: 'Привет, мир!' },
+  { n: 2, topic: 'Переменные и типы', description: 'Числа, строки, преобразования.', conclusions: 'Данные имеют тип.', result: 'Калькулятор возраста' },
+  { n: 3, topic: 'Условия', description: 'if, else, elif, сравнения.', conclusions: 'Код может ветвиться.', result: 'Веб-квиз' },
+  { n: 4, topic: 'Циклы', description: 'for, while, range.', conclusions: 'Повторение — основа алгоритмов.', result: 'Таблица умножения' },
+  { n: 5, topic: 'Списки', description: 'Создание, индексы, методы.', conclusions: 'Списки хранят коллекции.', result: 'Список дел' },
+  { n: 6, topic: 'Функции', description: 'def, параметры, return.', conclusions: 'Функции — переиспользуемый код.', result: 'Модульная программа' },
+];
+
+const CURRICULUM_DRAWING = [
+  { n: 1, topic: 'Знакомство с материалами', description: 'Карандаши, краски, кисти. Правильная посадка.', conclusions: 'Инструмент влияет на результат.', result: 'Пробные штрихи' },
+  { n: 2, topic: 'Линия и форма', description: 'Прямые, кривые, геометрические фигуры.', conclusions: 'Всё состоит из линий.', result: 'Геометрический натюрморт' },
+  { n: 3, topic: 'Цвет и смешивание', description: 'Основные цвета, палитра, оттенки.', conclusions: 'Цвет создаёт настроение.', result: 'Цветовой круг' },
+  { n: 4, topic: 'Композиция', description: 'Центр, баланс, ритм.', conclusions: 'Композиция — основа картины.', result: 'Эскиз с композицией' },
+  { n: 5, topic: 'Натюрморт', description: 'Постановка, свет, тень.', conclusions: 'Свет создаёт объём.', result: 'Натюрморт карандашом' },
+  { n: 6, topic: 'Работа цветом', description: 'Акварель или гуашь по выбору.', conclusions: 'Техника приходит с практикой.', result: 'Цветной натюрморт' },
+];
+
 const DEFAULT_PROGRAMS = [
   { title: 'Умняшки: логика и творчество', slug: 'умняшки-логика-творчество', description: 'Игровой курс для дошкольников: развитие логики, творческого мышления, основ счёта. Конструкторы и подготовка к робототехнике.', age_min: 5, age_max: 7, duration_weeks: 12, lessons_per_week: 1, format: 'игровой', school_type: 'tech' },
   { title: 'Собирай-ка: конструкторы', slug: 'собирай-ка-конструкторы', description: 'Работа с конструкторами для подготовки к робототехнике. Развитие мелкой моторики, пространственного мышления.', age_min: 5, age_max: 7, duration_weeks: 8, lessons_per_week: 1, format: 'игровой', school_type: 'tech' },
-  { title: 'Scratch: первые игры', slug: 'scratch-первые-игры', description: 'Визуальное программирование в Scratch. Создание анимаций, простых игр, проектная работа.', age_min: 8, age_max: 10, duration_weeks: 12, lessons_per_week: 1, format: 'модульный', school_type: 'tech' },
+  { title: 'Scratch: первые игры', slug: 'scratch-первые-игры', description: 'Визуальное программирование в Scratch. Создание анимаций, простых игр, проектная работа.', age_min: 8, age_max: 10, duration_weeks: 12, lessons_per_week: 1, format: 'модульный', school_type: 'tech', curriculum: CURRICULUM_SCRATCH },
   { title: 'Математика и проекты', slug: 'математика-и-проекты', description: 'Математика через практические проекты. Решение задач, логика, работа в команде.', age_min: 8, age_max: 10, duration_weeks: 12, lessons_per_week: 1, format: 'модульный', school_type: 'tech' },
   { title: 'Робототехника: Lego', slug: 'робототехника-lego', description: 'Сборка и программирование роботов на Lego. Базовые механизмы, датчики, простые алгоритмы.', age_min: 8, age_max: 10, duration_weeks: 12, lessons_per_week: 1, format: 'модульный', school_type: 'tech' },
-  { title: 'Python: первые шаги', slug: 'python-первые-шаги', description: 'Основы программирования на Python. Переменные, циклы, функции, простые проекты.', age_min: 11, age_max: 13, duration_weeks: 36, lessons_per_week: 1, format: 'годовой', school_type: 'tech' },
+  { title: 'Python: первые шаги', slug: 'python-первые-шаги', description: 'Основы программирования на Python. Переменные, циклы, функции, простые проекты.', age_min: 11, age_max: 13, duration_weeks: 36, lessons_per_week: 1, format: 'годовой', school_type: 'tech', curriculum: CURRICULUM_PYTHON },
   { title: 'Микроконтроллеры: Arduino', slug: 'микроконтроллеры-arduino', description: 'Работа с Arduino: датчики, моторы, светодиоды. Проекты: умный свет, роботы, датчики.', age_min: 11, age_max: 13, duration_weeks: 24, lessons_per_week: 1, format: 'годовой', school_type: 'tech' },
   { title: 'Нейросети: знакомство', slug: 'нейросети-знакомство', description: 'Введение в нейросети. Как работают ИИ, генерация текста и изображений, этика.', age_min: 11, age_max: 13, duration_weeks: 12, lessons_per_week: 1, format: 'модульный', school_type: 'tech' },
   { title: 'Веб-разработка', slug: 'веб-разработка', description: 'HTML, CSS, JavaScript. Создание сайтов, современные фреймворки, деплой.', age_min: 14, age_max: 18, duration_weeks: 36, lessons_per_week: 1, format: 'углублённый', school_type: 'tech' },
@@ -23,7 +50,7 @@ const DEFAULT_PROGRAMS = [
   { title: 'Нейросети: практика', slug: 'нейросети-практика', description: 'Работа с нейросетями: API, fine-tuning, создание приложений с ИИ.', age_min: 14, age_max: 18, duration_weeks: 24, lessons_per_week: 1, format: 'углублённый', school_type: 'tech' },
   { title: 'Микроконтроллеры: ESP32', slug: 'микроконтроллеры-esp32', description: 'Продвинутый уровень: ESP32, WiFi, IoT, проекты умного дома.', age_min: 14, age_max: 18, duration_weeks: 24, lessons_per_week: 1, format: 'углублённый', school_type: 'tech' },
   { title: 'Радиотехника', slug: 'радиотехника', description: 'Основы электроники: пайка, схемы, радиодетали. Проекты: приёмник, передатчик.', age_min: 14, age_max: 18, duration_weeks: 24, lessons_per_week: 1, format: 'углублённый', school_type: 'tech' },
-  { title: 'Рисование для малышей', slug: 'рисование-для-малышей', description: 'Основы рисования: карандаш, краски, кисти. Развитие мелкой моторики и творческого воображения.', age_min: 5, age_max: 7, duration_weeks: 12, lessons_per_week: 1, format: 'игровой', school_type: 'art' },
+  { title: 'Рисование для малышей', slug: 'рисование-для-малышей', description: 'Основы рисования: карандаш, краски, кисти. Развитие мелкой моторики и творческого воображения.', age_min: 5, age_max: 7, duration_weeks: 12, lessons_per_week: 1, format: 'игровой', school_type: 'art', curriculum: CURRICULUM_DRAWING },
   { title: 'Живопись: акварель и гуашь', slug: 'живопись-акварель-гуашь', description: 'Основы живописи: акварель, гуашь. Цвет, композиция, натюрморт и пейзаж.', age_min: 8, age_max: 10, duration_weeks: 24, lessons_per_week: 1, format: 'модульный', school_type: 'art' },
   { title: 'Графика и иллюстрация', slug: 'графика-иллюстрация', description: 'Графические техники: карандаш, тушь, линогравюра. Создание иллюстраций и комиксов.', age_min: 11, age_max: 13, duration_weeks: 24, lessons_per_week: 1, format: 'годовой', school_type: 'art' },
   { title: 'Декоративно-прикладное искусство', slug: 'декоративно-прикладное-искусство', description: 'Роспись, керамика, работа с разными материалами. Создание поделок и сувениров.', age_min: 8, age_max: 10, duration_weeks: 24, lessons_per_week: 1, format: 'модульный', school_type: 'art' },
@@ -34,9 +61,10 @@ const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
 for (const p of DEFAULT_PROGRAMS) {
   const schoolType = p.school_type ?? 'tech';
+  const curriculum = p.curriculum ? JSON.stringify(p.curriculum) : null;
   await pool.query(
-    `INSERT INTO ${SCHEMA}.programs (title, slug, description, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+    `INSERT INTO ${SCHEMA}.programs (title, slug, description, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, curriculum, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $11)
      ON CONFLICT (slug) DO UPDATE SET
        title = EXCLUDED.title,
        description = EXCLUDED.description,
@@ -46,6 +74,7 @@ for (const p of DEFAULT_PROGRAMS) {
        lessons_per_week = EXCLUDED.lessons_per_week,
        format = EXCLUDED.format,
        school_type = EXCLUDED.school_type,
+       curriculum = COALESCE(EXCLUDED.curriculum, ${SCHEMA}.programs.curriculum),
        updated_at = EXCLUDED.updated_at`,
     [
       p.title,
@@ -57,6 +86,7 @@ for (const p of DEFAULT_PROGRAMS) {
       p.lessons_per_week ?? 1,
       p.format || '',
       schoolType,
+      curriculum || '[]',
       Date.now(),
     ]
   );

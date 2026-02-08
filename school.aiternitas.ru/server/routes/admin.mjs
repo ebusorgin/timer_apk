@@ -55,6 +55,7 @@ export function registerAdminRoutes({ app, persistence, logger }) {
         imageUrl: body.imageUrl ?? body.image_url ?? null,
         price: body.price != null ? body.price : null,
         schedule: body.schedule ?? null,
+        curriculum: body.curriculum ?? [],
       });
       res.json({ success: true, program });
     } catch (err) {

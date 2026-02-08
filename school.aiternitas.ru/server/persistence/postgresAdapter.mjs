@@ -46,6 +46,7 @@ export async function ensureSchema(pool, logger) {
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS image_url TEXT`);
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS price INTEGER`);
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS schedule TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS curriculum JSONB`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_age_idx ON ${schema('programs')}(age_min, age_max)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_school_type_idx ON ${schema('programs')}(school_type)`);
 
@@ -105,6 +106,7 @@ function programFromRow(row) {
     imageUrl: row.image_url || null,
     price: row.price != null ? row.price : null,
     schedule: row.schedule || null,
+    curriculum: row.curriculum || [],
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };
@@ -212,9 +214,10 @@ export function createPostgresAdapter(poolConfig, logger) {
       const imageUrl = program.imageUrl ?? program.image_url ?? null;
       const price = program.price != null ? program.price : null;
       const schedule = program.schedule ?? null;
+      const curriculum = program.curriculum ?? [];
       const { rows } = await pool.query(
-        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, curriculum, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $14)
          RETURNING *`,
         [
           program.title,
@@ -229,6 +232,7 @@ export function createPostgresAdapter(poolConfig, logger) {
           imageUrl,
           price,
           schedule,
+          JSON.stringify(curriculum),
           now,
         ]
       );
@@ -247,6 +251,7 @@ export function createPostgresAdapter(poolConfig, logger) {
         format: 'format', schoolType: 'school_type', school_type: 'school_type',
         imageUrl: 'image_url', image_url: 'image_url',
         price: 'price', schedule: 'schedule',
+        curriculum: 'curriculum',
       };
       const setClauses = [];
       const values = [];
@@ -255,8 +260,8 @@ export function createPostgresAdapter(poolConfig, logger) {
         const val = updates[key];
         if (val !== undefined) {
           idx++;
-          setClauses.push(`${col} = $${idx}`);
-          values.push(Array.isArray(val) ? val : val);
+          setClauses.push(col === 'curriculum' ? `${col} = $${idx}::jsonb` : `${col} = $${idx}`);
+          values.push(col === 'curriculum' ? JSON.stringify(val) : (Array.isArray(val) ? val : val));
         }
       }
       if (setClauses.length === 0) return this.getProgramById(id);
@@ -385,6 +390,15 @@ export function createPostgresAdapter(poolConfig, logger) {
         sortOrder: r.sort_order ?? 0,
         description: r.description || '',
       }));
+    },
+
+    async getSchoolTypeById(id) {
+      const { rows } = await pool.query(
+        `SELECT id, title, sort_order, description FROM ${schema('school_types')} WHERE id = $1`,
+        [id]
+      );
+      const r = rows[0];
+      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
     },
 
     async insertSchoolType({ id, title, sortOrder = 0, description = '' }) {

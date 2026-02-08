@@ -27,6 +27,21 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.get('/api/school-types/:id', async (req, res) => {
+    try {
+      const schoolType = await persistence.getSchoolTypeById(req.params.id);
+      if (!schoolType) {
+        res.status(404).json({ success: false, error: 'Тип школы не найден' });
+        return;
+      }
+      const programs = await persistence.getPrograms({ schoolType: req.params.id });
+      res.json({ success: true, schoolType, programs });
+    } catch (err) {
+      log.error?.('Ошибка getSchoolType', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка загрузки' });
+    }
+  });
+
   app.get('/api/programs/:id', async (req, res) => {
     try {
       const program = await persistence.getProgramById(req.params.id);
