@@ -1,6 +1,8 @@
 import { sanitizeDisplayName } from '../utils/subscriberUtils.mjs';
-import { CALL_STATUS_SET } from '../persistence/validators.mjs';
+import { CALL_STATUS_SET, CALL_TYPE_VALUES } from '../persistence/validators.mjs';
 import { createRequestValidator, enumField, stringField } from '../middleware/validation.mjs';
+import { emitToSubscriber } from '../sockets/chat.mjs';
+import { sendIncomingCallPush, sendCallDeclinedPush } from '../services/push.mjs';
 
 function assertPersistence(persistence) {
   if (!persistence) {
@@ -18,7 +20,7 @@ function assertPersistence(persistence) {
   }
 }
 
-export function registerCallRoutes({ app, persistence, io, logger }) {
+export function registerCallRoutes({ app, persistence, io, subscriberAuth, logger, metrics }) {
   if (!app) {
     throw new Error('registerCallRoutes: app instance is required');
   }
@@ -62,11 +64,6 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
 
   const validateCallCreation = createRequestValidator({
     body: {
-      fromId: stringField({
-        required: true,
-        maxLength: 128,
-        label: 'fromId',
-      }),
       toId: stringField({
         required: true,
         maxLength: 128,
@@ -78,12 +75,23 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
         sanitize: sanitizeDisplayName,
         label: 'fromName',
       }),
+      callType: enumField({
+        required: false,
+        values: CALL_TYPE_VALUES,
+        defaultValue: 'audio',
+        label: 'callType',
+        caseInsensitive: true,
+      }),
     },
   });
 
-  app.get('/api/calls/pending/:subscriberId', validatePendingCalls, async (req, res) => {
+  app.get('/api/calls/pending/:subscriberId', subscriberAuth, validatePendingCalls, async (req, res) => {
     try {
+      const myId = req.subscriberId;
       const { subscriberId } = req.validated.params;
+      if (String(subscriberId) !== String(myId)) {
+        return res.status(403).json({ success: false, error: 'Доступ запрещён' });
+      }
       const pending = await persistence.listPendingCalls(subscriberId);
       res.json({
         success: true,
@@ -100,10 +108,15 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
     }
   });
 
-  app.post('/api/calls/:callId/ack', validateCallAcknowledgement, async (req, res) => {
+  app.post('/api/calls/:callId/ack', subscriberAuth, validateCallAcknowledgement, async (req, res) => {
     try {
+      const myId = req.subscriberId;
       const { callId } = req.validated.params;
       const { status = 'acknowledged' } = req.validated.body || {};
+      const call = await persistence.getCallById?.(callId) ?? null;
+      if (!call) return res.status(404).json({ success: false, error: 'Звонок не найден' });
+      const isParticipant = String(call.from?.id) === String(myId) || String(call.to?.id) === String(myId);
+      if (!isParticipant) return res.status(403).json({ success: false, error: 'Доступ запрещён' });
       const nextStatus = CALL_STATUS_SET.has(status) ? status : 'acknowledged';
       const updated = await persistence.updateCallStatus(callId, nextStatus);
       if (!updated) {
@@ -117,12 +130,21 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
       const cleanupThreshold = Date.now() - 1000 * 60 * 60;
       await persistence.cleanupCalls(cleanupThreshold);
 
-      if (io) {
-        io.emit('call:ack', {
+      const callerId = updated?.from?.id;
+      if (io && callerId) {
+        emitToSubscriber(io, callerId, 'call:ack', {
           callId,
           status: nextStatus,
           call: updated,
         });
+      }
+      if (nextStatus === 'declined' && callerId) {
+        const calleeName = updated?.to?.name || 'Кто-то';
+        sendCallDeclinedPush(
+          (id) => persistence.getPushSubscription(id),
+          callerId,
+          { fromName: calleeName }
+        ).catch(() => {});
       }
 
       scopedLogger.info('Статус звонка обновлён', {
@@ -145,21 +167,36 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
     }
   });
 
-  app.post('/api/calls', validateCallCreation, async (req, res) => {
+  app.post('/api/calls', subscriberAuth, validateCallCreation, async (req, res) => {
     try {
+      const callerId = req.subscriberId;
       const {
-        fromId: callerId,
         toId: targetId,
         fromName: providedCallerName,
+        callType: resolvedCallType = 'audio',
       } = req.validated.body;
       const [callerFromStore, targetFromStore] = await Promise.all([
         persistence.getSubscriberById(callerId),
         persistence.getSubscriberById(targetId),
       ]);
 
-      const callerName =
-        callerFromStore?.name || providedCallerName || 'Неизвестный';
-      const targetName = targetFromStore?.name || 'Неизвестный';
+      if (!callerFromStore) {
+        res.status(404).json({
+          success: false,
+          error: 'Инициатор звонка не найден. Сначала зарегистрируйтесь.',
+        });
+        return;
+      }
+      if (!targetFromStore) {
+        res.status(404).json({
+          success: false,
+          error: 'Получатель звонка не найден.',
+        });
+        return;
+      }
+
+      const callerName = callerFromStore.name || providedCallerName || 'Неизвестный';
+      const targetName = targetFromStore.name || 'Неизвестный';
 
       const callRecord = {
         id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -171,6 +208,7 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
           id: targetId,
           name: targetName,
         },
+        callType: resolvedCallType,
         createdAt: Date.now(),
         status: 'pending',
       };
@@ -178,8 +216,13 @@ export function registerCallRoutes({ app, persistence, io, logger }) {
       const storedCall = await persistence.createCall(callRecord);
 
       if (io) {
-        io.emit('call:initiated', storedCall);
+        emitToSubscriber(io, targetId, 'call:initiated', storedCall);
       }
+      sendIncomingCallPush(
+        (id) => persistence.getPushSubscription(id),
+        targetId,
+        { fromName: callerName, callType: resolvedCallType, callId: storedCall.id }
+      ).catch(() => {});
 
       scopedLogger.info('Звонок инициирован', {
         callId: storedCall.id,

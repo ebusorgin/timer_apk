@@ -4,9 +4,10 @@ const App = {
     localStream: null,
     participants: new Map(), // socketId -> { peerConnection, mediaElement, tileElement, pendingCandidates }
     presence: new Map(), // socketId -> { id, media: { cam, mic }, connectedAt }
+    subscriberPresence: new Map(), // subscriberId -> { online: boolean } — для онлайн/оффлайн в контактах
+    presenceWorker: null,
     lastSentMediaStatus: { cam: false, mic: false },
     selfId: null,
-    hangupAllInProgress: false,
     pendingPlaybackElements: new Map(),
     playbackUnlockHandlerInstalled: false,
     playbackUnlockHandler: null,
@@ -48,35 +49,899 @@ const App = {
         this.initElements();
         this.resetPresenceState();
 
-        if (!this.elements.btnConnect) {
-            console.error('❌ Кнопка подключения не найдена!');
+        const displayName = this.getStoredDisplayName();
+        if (!displayName) {
+            this.showLanding();
             return;
         }
-
-        this.setupEventListeners();
-        this.updateVideoButton();
-        this.updateHangupAllButton();
+        this.displayName = displayName;
+        try { this.myAvatarUrl = localStorage.getItem('conference:avatarUrl') || null; } catch(e){}
+        if (this.elements.inputDisplayName) this.elements.inputDisplayName.value = displayName;
+        this.showMainApp();
+        this.setupMainApp();
         console.log('✅ App инициализирован');
+    },
+
+    getStoredDisplayName() {
+        try {
+            const token = localStorage.getItem('conference:token');
+            if (!token) return '';
+            return localStorage.getItem('conference:displayName') || '';
+        } catch (e) { return ''; }
+    },
+
+    showLanding() {
+        this.showScreen('landingScreen');
+        this.setupAuthForms();
+        this.preFillLoginField();
+    },
+
+    preFillLoginField() {
+        try {
+            const savedLogin = localStorage.getItem('conference:login');
+            const input = document.getElementById('inputLogin');
+            if (input && savedLogin) input.value = savedLogin;
+        } catch (e) {}
+    },
+
+    setupAuthForms() {
+        const tabLogin = document.getElementById('authTabLogin');
+        const tabRegister = document.getElementById('authTabRegister');
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+
+        if (tabLogin) tabLogin.onclick = () => {
+            tabLogin.classList.add('active'); tabRegister?.classList.remove('active');
+            if (loginForm) loginForm.style.display = 'flex';
+            if (registerForm) registerForm.style.display = 'none';
+            this.preFillLoginField();
+        };
+        if (tabRegister) tabRegister.onclick = () => {
+            tabRegister.classList.add('active'); tabLogin?.classList.remove('active');
+            if (registerForm) registerForm.style.display = 'flex';
+            if (loginForm) loginForm.style.display = 'none';
+        };
+
+        // Login form
+        const loginInput = document.getElementById('inputLogin');
+        const loginPw = document.getElementById('inputLoginPassword');
+        const btnLogin = document.getElementById('btnLogin');
+        const loginErr = document.getElementById('loginError');
+        const updateLoginBtn = () => { if (btnLogin) btnLogin.disabled = !(loginInput?.value?.trim() && loginPw?.value); };
+        if (loginInput) loginInput.addEventListener('input', updateLoginBtn);
+        if (loginPw) loginPw.addEventListener('input', updateLoginBtn);
+        if (loginInput) loginInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.handleLogin(); });
+        if (btnLogin) btnLogin.addEventListener('click', () => this.handleLogin());
+        if (loginPw) loginPw.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.handleLogin(); });
+
+        // Register form
+        const regLogin = document.getElementById('inputRegLogin');
+        const regName = document.getElementById('inputRegName');
+        const regPw = document.getElementById('inputRegPassword');
+        const btnReg = document.getElementById('btnRegister');
+        const updateRegBtn = () => { if (btnReg) btnReg.disabled = !(regLogin?.value?.trim() && regName?.value?.trim() && regPw?.value?.length >= 4); };
+        if (regLogin) regLogin.addEventListener('input', updateRegBtn);
+        if (regName) regName.addEventListener('input', updateRegBtn);
+        if (regPw) regPw.addEventListener('input', updateRegBtn);
+        [regLogin, regName, regPw].forEach((el) => {
+            if (el) el.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.handleRegister(); });
+        });
+        if (btnReg) btnReg.addEventListener('click', () => this.handleRegister());
+    },
+
+    async handleLogin() {
+        const login = document.getElementById('inputLogin')?.value?.trim();
+        const password = document.getElementById('inputLoginPassword')?.value;
+        const errEl = document.getElementById('loginError');
+        const btnLogin = document.getElementById('btnLogin');
+        if (!login || !password) return;
+        if (btnLogin) { btnLogin.disabled = true; btnLogin.textContent = 'Вход...'; }
+        if (errEl) errEl.textContent = '';
+        try {
+            const res = await fetch(this.SERVER_URL + '/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login, password }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                if (errEl) errEl.textContent = data.error || 'Ошибка входа';
+                if (btnLogin) { btnLogin.disabled = false; btnLogin.textContent = 'Войти'; }
+                return;
+            }
+            this.onAuthSuccess(data.subscriber, data.token);
+        } catch (err) {
+            if (errEl) errEl.textContent = 'Ошибка сети';
+            if (btnLogin) { btnLogin.disabled = false; btnLogin.textContent = 'Войти'; }
+        }
+    },
+
+    async handleRegister() {
+        const login = document.getElementById('inputRegLogin')?.value?.trim();
+        const name = document.getElementById('inputRegName')?.value?.trim();
+        const password = document.getElementById('inputRegPassword')?.value;
+        const errEl = document.getElementById('registerError');
+        const btnReg = document.getElementById('btnRegister');
+        if (!login || !name || !password || password.length < 4) return;
+        if (btnReg) { btnReg.disabled = true; btnReg.textContent = 'Регистрация...'; }
+        if (errEl) errEl.textContent = '';
+        try {
+            const res = await fetch(this.SERVER_URL + '/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login, name, password }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                if (errEl) errEl.textContent = data.error || 'Ошибка регистрации';
+                if (btnReg) { btnReg.disabled = false; btnReg.textContent = 'Зарегистрироваться'; }
+                return;
+            }
+            this.onAuthSuccess(data.subscriber, data.token);
+        } catch (err) {
+            if (errEl) errEl.textContent = 'Ошибка сети';
+            if (btnReg) { btnReg.disabled = false; btnReg.textContent = 'Зарегистрироваться'; }
+        }
+    },
+
+    onAuthSuccess(subscriber, token) {
+        const loginErr = document.getElementById('loginError');
+        const registerErr = document.getElementById('registerError');
+        if (loginErr) loginErr.textContent = '';
+        if (registerErr) registerErr.textContent = '';
+        try {
+            if (token) localStorage.setItem('conference:token', token);
+            localStorage.setItem('conference:subscriberId', subscriber.id);
+            localStorage.setItem('conference:displayName', subscriber.name);
+            if (subscriber.login) localStorage.setItem('conference:login', subscriber.login);
+            if (subscriber.avatarUrl) localStorage.setItem('conference:avatarUrl', subscriber.avatarUrl);
+        } catch (e) {}
+        this.displayName = subscriber.name;
+        this.myAvatarUrl = subscriber.avatarUrl || null;
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        this.showMainApp();
+        this.setupMainApp();
+    },
+
+    updateLandingButton() {
+        // Legacy no-op
+    },
+
+    async handleLandingContinue() {
+        // Legacy no-op — replaced by handleLogin/handleRegister
+    },
+
+    logout() {
+        try {
+            localStorage.removeItem('conference:token');
+            localStorage.removeItem('conference:subscriberId');
+            localStorage.removeItem('conference:displayName');
+            localStorage.removeItem('conference:login');
+            localStorage.removeItem('conference:avatarUrl');
+        } catch (e) {}
+        this.stopPresenceWorker();
+        if (this.socket) { this.socket.disconnect(); this.socket = null; }
+        this.socketChatSetup = false;
+        this.displayName = '';
+        this.myAvatarUrl = null;
+        this.showLanding();
+    },
+
+    showMainApp() {
+        this.showScreen('mainAppScreen');
+        const roomFromUrl = this.getRoomIdFromUrl();
+        if (roomFromUrl && this.elements.inputRoomId) this.elements.inputRoomId.value = roomFromUrl;
+    },
+
+    async setupMainApp() {
+        // Обработка ?declineCall= — отклонение из push при закрытом приложении
+        const params = new URLSearchParams(window.location.search);
+        const declineCallId = params.get('declineCall');
+        if (declineCallId) {
+            try {
+                await this.authFetch(this.SERVER_URL + '/api/calls/' + encodeURIComponent(declineCallId) + '/ack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                    body: JSON.stringify({ status: 'declined' })
+                });
+            } catch (e) {}
+            const url = new URL(window.location.href);
+            url.searchParams.delete('declineCall');
+            window.history.replaceState({}, '', url.pathname + url.search);
+        }
+
+        if (this.elements.inputDisplayName) this.elements.inputDisplayName.value = this.displayName || '';
+        this.setupEventListeners();
+        this.setupTabNavigation();
+        this.updateHeaderUser();
+        this.updateVideoButton();
+        this.loadMyContacts();
+        this.loadContactRequests();
+        this.connectSocketForCalls();
+        this.attachChatSocketListener();
+        this.initPresenceWorker();
+        this.registerServiceWorker();
+        this.setupServiceWorkerMessages();
+        this.registerPushSubscription();
+        this.setupContactsTabSearch();
+        this.setupContactRequestsUI();
+        this.showTab('chats');
+    },
+
+    initPresenceWorker() {
+        if (!('Worker' in window)) return;
+        try {
+            this.presenceWorker = new Worker(this.SERVER_URL + '/js/presence-worker.js');
+            this.presenceWorker.onmessage = (e) => {
+                const { type, status } = e.data || {};
+                if (type === 'presence:bulk' && status && typeof status === 'object') {
+                    Object.entries(status).forEach(([id, online]) => {
+                        this.subscriberPresence.set(id, { online: !!online });
+                    });
+                    if (this.activeTab === 'chats') this.renderChatsList();
+                    if (this.activeTab === 'contacts') this.renderContactsList();
+                    const sel = this.selectedContact;
+                    if (sel && (this.elements.chatContactName?.offsetParent || this.elements.profileName?.offsetParent)) {
+                        if (sel.id) this.updateContactOnlineUI(sel.id);
+                    }
+                }
+            };
+            const contactIds = (this.myContacts || []).map((c) => c.id).filter(Boolean);
+            this.presenceWorker.postMessage({
+                type: 'init',
+                payload: {
+                    serverUrl: this.SERVER_URL,
+                    subscriberId: this.getMySubscriberId(),
+                    contactIds,
+                },
+            });
+        } catch (err) {
+            console.warn('Presence Worker не инициализирован:', err);
+        }
+    },
+
+    stopPresenceWorker() {
+        if (this.presenceWorker) {
+            this.presenceWorker.postMessage({ type: 'stop' });
+            this.presenceWorker.terminate();
+            this.presenceWorker = null;
+        }
+        this.subscriberPresence.clear();
+    },
+
+    updatePresenceWorkerContacts() {
+        if (!this.presenceWorker) return;
+        const contactIds = (this.myContacts || []).map((c) => c.id).filter(Boolean);
+        this.presenceWorker.postMessage({ type: 'updateContacts', payload: contactIds });
+    },
+
+    isContactOnline(subscriberId) {
+        const r = this.subscriberPresence.get(subscriberId);
+        return !!r?.online;
+    },
+
+    getOnlineIndicatorHtml(subscriberId) {
+        const online = this.isContactOnline(subscriberId);
+        const safeId = (subscriberId || '').replace(/"/g, '&quot;');
+        return `<span class="presence-dot ${online ? 'online' : 'offline'}" data-presence-for="${safeId}" title="${online ? 'В сети' : 'Не в сети'}"></span>`;
+    },
+
+    updateContactOnlineUI(contactId) {
+        const online = this.isContactOnline(contactId);
+        const dot = document.querySelector(`[data-presence-for="${contactId}"]`);
+        if (dot) {
+            dot.classList.toggle('online', !!online);
+            dot.classList.toggle('offline', !online);
+        }
+    },
+
+    // --- Tab Navigation ---
+    setupTabNavigation() {
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                if (tab) this.showTab(tab);
+            });
+        });
+    },
+
+    showTab(tabId) {
+        this.activeTab = tabId;
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+        document.querySelectorAll('.tab-panel').forEach((panel) => {
+            panel.classList.toggle('active', panel.id === 'tab' + tabId.charAt(0).toUpperCase() + tabId.slice(1));
+        });
+        if (tabId === 'chats') this.renderChatsList();
+        if (tabId === 'calls') this.renderCallHistory();
+        if (tabId === 'contacts') this.renderContactsList();
+    },
+
+    // --- Chats Tab ---
+    async renderChatsList() {
+        const list = this.elements.chatsList;
+        const empty = this.elements.chatsEmpty;
+        if (!list) return;
+        // Fetch chats with last message
+        let chats = this._cachedChats || [];
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/chats', { headers: this.getSubscriberHeaders() });
+            const data = await res.json();
+            if (data.success) {
+                chats = data.chats || [];
+                this._cachedChats = chats;
+            }
+        } catch (e) {}
+        list.innerHTML = '';
+        if (empty) empty.style.display = chats.length === 0 ? 'block' : 'none';
+        chats.forEach((c) => {
+            const item = document.createElement('div');
+            item.className = 'list-item';
+            const lastBody = c.lastMessage ? this._esc(c.lastMessage.body).slice(0, 40) : 'Нет сообщений';
+            const lastTime = c.lastMessage ? this._formatTime(c.lastMessage.createdAt) : '';
+            item.innerHTML = `
+                <div class="list-item-avatar">${this.getAvatarHtml(c)}</div>
+                <div class="list-item-body">
+                    <div class="list-item-title">${this._esc(c.name || 'Без имени')} ${this.getOnlineIndicatorHtml(c.contactId)}</div>
+                    <div class="list-item-subtitle">${lastBody}</div>
+                </div>
+                <div class="list-item-meta">
+                    <span class="list-item-time">${lastTime}</span>
+                    ${c.lastMessage && c.lastMessage.fromId !== this.getMySubscriberId() && !this._isRead(c.contactId, c.lastMessage.createdAt) ? '<span class="unread-badge"></span>' : ''}
+                </div>`;
+            item.addEventListener('click', () => this.openChat({ id: c.contactId, name: c.name, avatarUrl: c.avatarUrl }));
+            list.appendChild(item);
+        });
+    },
+
+    // --- Calls Tab ---
+    renderCallHistory() {
+        const list = this.elements.callHistory;
+        const empty = this.elements.callsEmpty;
+        if (!list) return;
+        list.innerHTML = '';
+        // Placeholder — call history would come from API in full implementation
+        if (empty) empty.style.display = 'block';
+    },
+
+    // --- Contacts Tab ---
+    renderContactsList() {
+        const list = this.elements.myContactsList;
+        const empty = this.elements.contactsEmpty;
+        if (!list) return;
+        list.innerHTML = '';
+        const contacts = this.myContacts || [];
+        if (empty) empty.style.display = contacts.length === 0 ? 'block' : 'none';
+        contacts.forEach((c) => {
+            const item = document.createElement('div');
+            item.className = 'list-item';
+            item.innerHTML = `
+                <div class="list-item-avatar">${this.getAvatarHtml(c)}</div>
+                <div class="list-item-body">
+                    <div class="list-item-title">${this._esc(c.name || 'Без имени')} ${this.getOnlineIndicatorHtml(c.id)}</div>
+                </div>`;
+            item.addEventListener('click', () => this.showContactProfile(c));
+            list.appendChild(item);
+        });
+    },
+
+    // --- Contact Profile ---
+    showContactProfile(contact) {
+        this.selectedContact = contact;
+        const el = this.elements;
+        if (el.profileAvatar) el.profileAvatar.innerHTML = this.getAvatarHtml(contact, 96);
+        if (el.profileName) el.profileName.textContent = contact.name || 'Без имени';
+        if (el.profilePresence) el.profilePresence.innerHTML = this.getOnlineIndicatorHtml(contact.id);
+        if (el.profileId) el.profileId.textContent = contact.id || '';
+        if (el.btnProfileChat) el.btnProfileChat.onclick = () => { this.hideOverlay('contactProfile'); this.openChat(contact); };
+        if (el.btnProfileAudioCall) el.btnProfileAudioCall.onclick = () => { this.hideOverlay('contactProfile'); this.initiateCall(contact, 'audio'); };
+        if (el.btnProfileVideoCall) el.btnProfileVideoCall.onclick = () => { this.hideOverlay('contactProfile'); this.initiateCall(contact, 'video'); };
+        if (el.btnProfileRemove) el.btnProfileRemove.onclick = () => { this.hideOverlay('contactProfile'); this.removeContact(contact.id); };
+        if (el.btnBackFromProfile) el.btnBackFromProfile.onclick = () => this.hideOverlay('contactProfile');
+        this.showOverlay('contactProfile');
+    },
+
+    // --- Chat Screen ---
+    openChat(contact) {
+        this.selectedContact = contact;
+        this._markRead(contact.id);
+        if (this.elements.chatContactName) this.elements.chatContactName.innerHTML = this._esc(contact.name || 'Без имени') + ' ' + this.getOnlineIndicatorHtml(contact.id);
+        if (this.elements.typingIndicator) this.elements.typingIndicator.style.display = 'none';
+        if (this.elements.btnBackFromChat) this.elements.btnBackFromChat.onclick = () => {
+            this.hideOverlay('chatScreen');
+            this._markRead(contact.id);
+            this._cachedChats = null;
+            if (this.activeTab === 'chats') this.renderChatsList();
+        };
+        if (this.elements.btnAudioCallFromChat) this.elements.btnAudioCallFromChat.onclick = () => { this.hideOverlay('chatScreen'); this.initiateCall(contact, 'audio'); };
+        if (this.elements.btnVideoCallFromChat) this.elements.btnVideoCallFromChat.onclick = () => { this.hideOverlay('chatScreen'); this.initiateCall(contact, 'video'); };
+        this.showOverlay('chatScreen');
+        this.loadChatMessages();
+    },
+
+    showOverlay(id) {
+        const el = this.elements[id];
+        if (el) el.style.display = 'flex';
+    },
+
+    hideOverlay(id) {
+        const el = this.elements[id];
+        if (el) el.style.display = 'none';
+    },
+
+    _esc(str) {
+        return (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    },
+
+    _isRead(contactId, msgTimestamp) {
+        try {
+            const key = 'conference:read:' + contactId;
+            const ts = parseInt(localStorage.getItem(key) || '0', 10);
+            return ts >= msgTimestamp;
+        } catch (e) { return false; }
+    },
+
+    _markRead(contactId) {
+        try {
+            localStorage.setItem('conference:read:' + contactId, String(Date.now()));
+        } catch (e) {}
+    },
+
+    updateHeaderUser() {
+        const el = this.elements;
+        if (!el.headerAvatar || !el.headerUserName) return;
+        const url = this.myAvatarUrl;
+        if (url) el.headerAvatar.innerHTML = `<img src="${url}" alt="">`;
+        else el.headerAvatar.textContent = (this.displayName || '?').charAt(0).toUpperCase();
+        el.headerUserName.textContent = this.displayName || 'Вы';
+    },
+
+    // --- Settings ---
+    async showSettings() {
+        const el = this.elements;
+        if (el.settingsAvatar) {
+            const url = this.myAvatarUrl;
+            if (url) el.settingsAvatar.innerHTML = `<img src="${url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+            else el.settingsAvatar.textContent = (this.displayName || '?').charAt(0).toUpperCase();
+        }
+        if (el.inputSettingsName) el.inputSettingsName.value = this.displayName || '';
+        if (el.settingsUserId) el.settingsUserId.textContent = this.getMySubscriberId();
+        if (el.adminLinkSection) {
+            try {
+                const res = await this.authFetch(this.SERVER_URL + '/api/me/is-admin', { headers: this.getSubscriberHeaders() });
+                const data = await res.json();
+                el.adminLinkSection.style.display = (data.isAdmin === true) ? 'block' : 'none';
+            } catch (e) {
+                el.adminLinkSection.style.display = 'none';
+            }
+        }
+        this.showOverlay('settingsOverlay');
+    },
+
+    async saveProfile() {
+        const name = this.elements.inputSettingsName?.value?.trim();
+        if (!name) { this.showMessage('Введите имя', 'error'); return; }
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/profile', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                body: JSON.stringify({ name }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.displayName = data.profile.name;
+                try { localStorage.setItem('conference:displayName', data.profile.name); } catch(e){}
+                this.updateHeaderUser();
+                this.showMessage('Профиль обновлён', 'success');
+            } else { this.showMessage(data.error || 'Ошибка', 'error'); }
+        } catch (err) { this.showMessage('Ошибка сети', 'error'); }
+    },
+
+    async uploadAvatar(file) {
+        const formData = new FormData();
+        formData.append('avatar', file);
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/avatar', {
+                method: 'POST',
+                headers: this.getSubscriberHeaders(),
+                body: formData,
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.myAvatarUrl = data.avatarUrl;
+                try { localStorage.setItem('conference:avatarUrl', data.avatarUrl); } catch(e){}
+                if (this.elements.settingsAvatar && this.isSafeAvatarUrl(data.avatarUrl)) {
+                    this.elements.settingsAvatar.innerHTML = `<img src="${String(data.avatarUrl).replace(/"/g, '&quot;')}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                }
+                this.updateHeaderUser();
+                this.showMessage('Аватарка обновлена', 'success');
+            } else { this.showMessage(data.error || 'Ошибка', 'error'); }
+        } catch (err) { this.showMessage('Ошибка сети', 'error'); }
+    },
+
+    isSafeAvatarUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        const s = url.trim().toLowerCase();
+        if (s.startsWith('https://') || s.startsWith('http://')) return true;
+        if (s.startsWith('data:image/')) return true;
+        return false;
+    },
+
+    getAvatarHtml(subscriber, size = 48) {
+        const url = subscriber?.avatarUrl;
+        if (url && this.isSafeAvatarUrl(url)) {
+            const safeSize = Math.min(Math.max(Number(size) || 48, 16), 256);
+            return `<img src="${url.replace(/"/g, '&quot;')}" style="width:${safeSize}px;height:${safeSize}px;border-radius:50%;object-fit:cover;">`;
+        }
+        return (subscriber?.name || '?').charAt(0).toUpperCase();
+    },
+
+    registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+            console.warn('Service Worker registration failed:', err);
+        });
+    },
+
+    setupServiceWorkerMessages() {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            const { type, action, payload } = event.data || {};
+            if (type === 'incoming-call' && payload) {
+                this.showMainApp();
+                const call = payload.call || {
+                    id: payload.callId,
+                    callType: payload.callType || 'audio',
+                    from: { name: payload.fromName || 'Кто-то' },
+                };
+                if (action === 'accept') {
+                    this.pendingIncomingCall = call;
+                    this.acceptIncomingCall();
+                } else {
+                    this.showIncomingCallModal(call);
+                }
+            }
+            if (type === 'contact-request' && payload) {
+                this.showMainApp();
+                this.showTab('contacts');
+                this.loadContactRequests();
+                this.showMessage((payload.fromName || 'Кто-то') + ' хочет добавить вас в контакты', 'info');
+            }
+            if (type === 'new-message' && payload) {
+                this.showMainApp();
+                this.showTab('chats');
+                if (payload.fromName) this.showMessage('Сообщение от ' + payload.fromName, 'info');
+            }
+        });
+    },
+
+    async registerPushSubscription() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (!('Notification' in window) || Notification.permission === 'denied') return;
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            const res = await fetch(this.SERVER_URL + '/api/me/push-public-key');
+            const { publicKey, available } = await res.json();
+            if (!available || !publicKey) return;
+            if (Notification.permission === 'default') {
+                const perm = await Notification.requestPermission();
+                if (perm !== 'granted') return;
+            }
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: this._urlBase64ToUint8Array(publicKey),
+            });
+            const pushRes = await fetch(this.SERVER_URL + '/api/me/push-subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                body: JSON.stringify({ subscription: sub.toJSON ? sub.toJSON() : sub }),
+            });
+            if (pushRes.status === 401) return;
+        } catch (e) {
+            console.warn('[App] Push subscription failed:', e);
+        }
+    },
+
+    _urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = atob(base64);
+        const output = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) output[i] = rawData.charCodeAt(i);
+        return output;
+    },
+
+    connectSocketForCalls() {
+        if (typeof io === 'undefined') return;
+        if (this.socket) return;
+        const subscriberId = this.getMySubscriberId();
+        this.socket = io(this.SERVER_URL, {
+            path: '/socket.io/',
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5,
+            auth: { subscriberId },
+        });
+        this.socket.on('connect', () => {
+            this.selfId = this.socket.id;
+            if (this.conferenceJoinPending) {
+                this.conferenceJoinPending = false;
+                this.connectionInProgress = false;
+                this.emitRoomJoinAndShowConference();
+            }
+        });
+        this.socket.on('call:initiated', (data) => {
+            const myId = this.getMySubscriberId();
+            if (data?.to?.id === myId) {
+                this.showIncomingCallModal(data);
+            }
+        });
+        this.socket.on('call:ack', (data) => {
+            const myId = this.getMySubscriberId();
+            if (data?.status === 'declined' && data?.call?.from?.id === myId) {
+                this.showMessage('Звонок отклонён', 'info');
+                this.disconnect();
+            }
+        });
+        this.socket.on('connect_error', (error) => {
+            if (this.connectionInProgress) {
+                this.connectionInProgress = false;
+                this.showMessage('Ошибка подключения к серверу', 'error');
+                this.elements.btnConnect.disabled = false;
+                this.setConnectStatusMessage('Ошибка подключения к серверу', 'error');
+            }
+        });
+        this.socket.on('disconnect', (reason) => {
+            this.selfId = null;
+            if (this.connectionInProgress) {
+                this.handleSocketDisconnect(reason);
+            }
+        });
+        if (!this.socketEventsSetup) {
+            this.socketEventsSetup = true;
+            this.setupSocketEvents();
+        }
+    },
+
+    emitRoomJoinAndShowConference() {
+        if (!this.socket?.connected) return;
+        this.socket.emit('room:join', {
+            roomId: this.currentRoomId,
+            displayName: this.displayName
+        });
+        this.ensurePresenceRecord(this.socket.id, {
+            media: this.getLocalMediaState(),
+            connectedAt: Date.now(),
+            displayName: this.displayName
+        });
+        const main = document.getElementById('mainAppScreen');
+        if (main && main.classList.contains('active')) {
+            this.showScreen('conferenceScreen');
+        }
+        setTimeout(() => this.clearConnectStatusMessage(), 1000);
+        if (this.elements.conferenceRoomTitle) {
+            this.elements.conferenceRoomTitle.textContent = 'Комната: ' + this.currentRoomId;
+        }
+        if (this.elements.inviteLink) {
+            this.elements.inviteLink.value = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(this.currentRoomId);
+        }
+        this.updateConferenceStatus();
+        this.updateParticipantsList();
+        this.updateVideoGridLayout();
+        this.updateMuteButton();
+        this.updateVideoButton();
+        this.syncLocalMediaStatus({ force: true });
+        this.updateLocalVideoStatusIcons();
     },
 
     initElements() {
         this.elements = {
-            connectScreen: document.getElementById('connectScreen'),
+            // Screens
+            landingScreen: document.getElementById('landingScreen'),
+            mainAppScreen: document.getElementById('mainAppScreen'),
             conferenceScreen: document.getElementById('conferenceScreen'),
+            callScreen: document.getElementById('callScreen'),
+            // Landing
+            inputNameLanding: document.getElementById('inputNameLanding'),
+            btnContinue: document.getElementById('btnContinue'),
+            // Tabs
+            tabChats: document.getElementById('tabChats'),
+            tabCalls: document.getElementById('tabCalls'),
+            tabContacts: document.getElementById('tabContacts'),
+            chatsList: document.getElementById('chatsList'),
+            chatsEmpty: document.getElementById('chatsEmpty'),
+            callHistory: document.getElementById('callHistory'),
+            callsEmpty: document.getElementById('callsEmpty'),
+            // Contacts tab
+            inputSearch: document.getElementById('inputSearch'),
+            searchResults: document.getElementById('searchResults'),
+            myContactsList: document.getElementById('myContactsList'),
+            contactsEmpty: document.getElementById('contactsEmpty'),
+            contactRequestsBanner: document.getElementById('contactRequestsBanner'),
+            contactRequestsList: document.getElementById('contactRequestsList'),
+            btnShowRequests: document.getElementById('btnShowRequests'),
+            requestsCount: document.getElementById('requestsCount'),
+            // Global search
+            globalSearchOverlay: document.getElementById('globalSearchOverlay'),
+            btnGlobalSearch: document.getElementById('btnGlobalSearch'),
+            btnCloseGlobalSearch: document.getElementById('btnCloseGlobalSearch'),
+            inputGlobalSearch: document.getElementById('inputGlobalSearch'),
+            globalSearchResults: document.getElementById('globalSearchResults'),
+            // Chat overlay
+            chatScreen: document.getElementById('chatScreen'),
+            btnBackFromChat: document.getElementById('btnBackFromChat'),
+            chatContactName: document.getElementById('chatContactName'),
+            chatMessages: document.getElementById('chatMessages'),
+            inputChatMessage: document.getElementById('inputChatMessage'),
+            btnSendMessage: document.getElementById('btnSendMessage'),
+            typingIndicator: document.getElementById('typingIndicator'),
+            btnAudioCallFromChat: document.getElementById('btnAudioCallFromChat'),
+            btnVideoCallFromChat: document.getElementById('btnVideoCallFromChat'),
+            // Profile overlay
+            contactProfile: document.getElementById('contactProfile'),
+            btnBackFromProfile: document.getElementById('btnBackFromProfile'),
+            profileAvatar: document.getElementById('profileAvatar'),
+            profileName: document.getElementById('profileName'),
+            profilePresence: document.getElementById('profilePresence'),
+            profileId: document.getElementById('profileId'),
+            btnProfileChat: document.getElementById('btnProfileChat'),
+            btnProfileAudioCall: document.getElementById('btnProfileAudioCall'),
+            btnProfileVideoCall: document.getElementById('btnProfileVideoCall'),
+            btnProfileRemove: document.getElementById('btnProfileRemove'),
+            // Join room overlay
+            joinRoomOverlay: document.getElementById('joinRoomOverlay'),
+            btnBackFromJoinRoom: document.getElementById('btnBackFromJoinRoom'),
+            btnJoinRoom: document.getElementById('btnJoinRoom'),
+            btnCreateRoom: document.getElementById('btnCreateRoom'),
+            inputRoomId: document.getElementById('inputRoomId'),
+            inputDisplayName: document.getElementById('inputDisplayName'),
             btnConnect: document.getElementById('btnConnect'),
+            connectStatusMessage: document.getElementById('connectStatusMessage'),
+            // P2P Call screen
+            callAvatar: document.getElementById('callAvatar'),
+            callContactName: document.getElementById('callContactName'),
+            callStatus: document.getElementById('callStatus'),
+            callTimer: document.getElementById('callTimer'),
+            callVideoContainer: document.getElementById('callVideoContainer'),
+            remoteVideo: document.getElementById('remoteVideo'),
+            localVideoSmall: document.getElementById('localVideoSmall'),
+            btnCallMute: document.getElementById('btnCallMute'),
+            btnCallVideo: document.getElementById('btnCallVideo'),
+            btnCallHangup: document.getElementById('btnCallHangup'),
+            // Conference screen
             btnDisconnect: document.getElementById('btnDisconnect'),
             btnMute: document.getElementById('btnMute'),
-            btnHangupAll: document.getElementById('btnHangupAll'),
             participantsList: document.getElementById('participantsList'),
             statusMessage: document.getElementById('statusMessage'),
-            connectStatusMessage: document.getElementById('connectStatusMessage'),
             conferenceStatus: document.getElementById('conferenceStatus'),
             videoGrid: document.getElementById('videoGrid'),
             localVideo: document.getElementById('localVideo'),
             localVideoTile: document.querySelector('#videoGrid .video-tile.self'),
             localVideoLabel: document.querySelector('#videoGrid .video-tile.self .video-label'),
-            btnVideo: document.getElementById('btnVideo') // Добавляем кнопку видео
+            btnVideo: document.getElementById('btnVideo'),
+            inviteLink: document.getElementById('inviteLink'),
+            btnCopyInvite: document.getElementById('btnCopyInvite'),
+            conferenceRoomTitle: document.getElementById('conferenceRoomTitle'),
+            btnChangeRoom: document.getElementById('btnChangeRoom'),
+            // Incoming call modal
+            incomingCallModal: document.getElementById('incomingCallModal'),
+            incomingCallTitle: document.getElementById('incomingCallTitle'),
+            incomingCallFrom: document.getElementById('incomingCallFrom'),
+            incomingCallType: document.getElementById('incomingCallType'),
+            incomingCallAvatar: document.getElementById('incomingCallAvatar'),
+            btnAcceptCall: document.getElementById('btnAcceptCall'),
+            btnRejectCall: document.getElementById('btnRejectCall'),
+            // Settings
+            btnOpenSettings: document.getElementById('btnOpenSettings'),
+            settingsOverlay: document.getElementById('settingsOverlay'),
+            btnBackFromSettings: document.getElementById('btnBackFromSettings'),
+            settingsAvatar: document.getElementById('settingsAvatar'),
+            inputAvatarFile: document.getElementById('inputAvatarFile'),
+            inputSettingsName: document.getElementById('inputSettingsName'),
+            btnSaveProfile: document.getElementById('btnSaveProfile'),
+            settingsUserId: document.getElementById('settingsUserId'),
+            btnLogout: document.getElementById('btnLogout'),
+            adminLinkSection: document.getElementById('adminLinkSection'),
+            headerUser: document.getElementById('headerUser'),
+            headerAvatar: document.getElementById('headerAvatar'),
+            headerUserName: document.getElementById('headerUserName'),
+            // Toast
+            toastContainer: document.getElementById('toastContainer'),
         };
+        this.currentRoomId = 'general';
+        this.currentCallType = 'audio';
+        this.displayName = '';
+        this.myAvatarUrl = null;
+        this.myContacts = [];
+        this.contactRequests = [];
+        this.selectedContact = null;
+        this.chatMessages = [];
+        this.pendingIncomingCall = null;
+        this.activeTab = 'chats';
+    },
+
+    getSubscriberHeaders() {
+        try {
+            const token = localStorage.getItem('conference:token');
+            if (token) return { 'Authorization': 'Bearer ' + token };
+        } catch (e) {}
+        return {};
+    },
+
+    async authFetch(url, options = {}) {
+        const opts = { ...options, headers: { ...this.getSubscriberHeaders(), ...(options.headers || {}) } };
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+            this.logout();
+            throw new Error('Session expired');
+        }
+        return res;
+    },
+
+    getMySubscriberId() {
+        const key = 'conference:subscriberId';
+        let id = null;
+        try {
+            id = localStorage.getItem(key);
+        } catch (e) {}
+        if (!id) {
+            id = typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : 'user_' + Math.random().toString(36).slice(2, 15);
+            try {
+                localStorage.setItem(key, id);
+            } catch (e) {}
+        }
+        return id;
+    },
+
+    getMyDisplayNameForCalls() {
+        if (this.displayName) return this.displayName;
+        try {
+            const v = localStorage.getItem('conference:displayName');
+            if (v) return v;
+        } catch (e) {}
+        return 'Участник';
+    },
+
+    getRoomIdFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('room') || '';
+    },
+
+    updateConnectButton() {
+        const input = this.elements.inputDisplayName;
+        const btn = this.elements.btnConnect;
+        const hint = this.elements.displayNameHint;
+        if (!input || !btn) return;
+        const name = (input.value || '').trim();
+        const valid = name.length > 0;
+        btn.disabled = !valid;
+        if (hint) {
+            hint.style.display = valid ? 'none' : 'block';
+        }
+    },
+
+    getDisplayName() {
+        if (this.displayName) return this.displayName;
+        const input = this.elements.inputDisplayName;
+        return input ? (input.value || '').trim() : this.getMyDisplayNameForCalls();
+    },
+
+    getRoomId() {
+        const fromUrl = this.getRoomIdFromUrl();
+        if (fromUrl) return fromUrl;
+        const input = this.elements.inputRoomId;
+        const val = input ? (input.value || '').trim() : '';
+        return val || 'general';
+    },
+
+    generateRoomId() {
+        return 'room_' + Math.random().toString(36).slice(2, 12);
     },
 
     setConnectStatusMessage(message, level = 'info') {
@@ -99,32 +964,631 @@ const App = {
     },
 
     setupEventListeners() {
-        this.elements.btnConnect.addEventListener('click', () => {
-            this.ensureAudioContextUnlocked('connect-button');
-            this.connect();
+        // Conference controls
+        if (this.elements.btnConnect) {
+            this.elements.btnConnect.addEventListener('click', () => {
+                this.ensureAudioContextUnlocked('connect-button');
+                this.connect();
+            });
+        }
+        if (this.elements.btnDisconnect) this.elements.btnDisconnect.addEventListener('click', () => this.disconnect());
+        if (this.elements.btnMute) this.elements.btnMute.addEventListener('click', () => this.toggleMute());
+        if (this.elements.btnVideo) this.elements.btnVideo.addEventListener('click', () => this.toggleVideo());
+        // Room actions
+        if (this.elements.btnCreateRoom) {
+            this.elements.btnCreateRoom.addEventListener('click', () => {
+                const id = this.generateRoomId();
+                if (this.elements.inputRoomId) this.elements.inputRoomId.value = id;
+                if (this.elements.inputDisplayName) this.elements.inputDisplayName.value = this.displayName || this.getMyDisplayNameForCalls();
+                this.showOverlay('joinRoomOverlay');
+            });
+        }
+        if (this.elements.btnJoinRoom) {
+            this.elements.btnJoinRoom.addEventListener('click', () => {
+                if (this.elements.inputDisplayName) this.elements.inputDisplayName.value = this.displayName || this.getMyDisplayNameForCalls();
+                this.showOverlay('joinRoomOverlay');
+            });
+        }
+        if (this.elements.btnBackFromJoinRoom) {
+            this.elements.btnBackFromJoinRoom.addEventListener('click', () => this.hideOverlay('joinRoomOverlay'));
+        }
+        // Invite & room
+        if (this.elements.btnCopyInvite) {
+            this.elements.btnCopyInvite.addEventListener('click', async () => {
+                const el = this.elements.inviteLink;
+                const text = el?.value;
+                if (!text) return;
+                try {
+                    if (navigator.clipboard) await navigator.clipboard.writeText(text);
+                    else if (document.execCommand) { el.select(); document.execCommand('copy'); }
+                    this.showMessage('Ссылка скопирована', 'success');
+                } catch (err) { try { this.elements.inviteLink.select(); document.execCommand('copy'); this.showMessage('Скопировано', 'success'); } catch(e){} }
+            });
+        }
+        if (this.elements.btnChangeRoom) this.elements.btnChangeRoom.addEventListener('click', () => this.disconnect());
+        // Incoming call modal
+        if (this.elements.btnAcceptCall) this.elements.btnAcceptCall.addEventListener('click', () => this.acceptIncomingCall());
+        if (this.elements.btnRejectCall) this.elements.btnRejectCall.addEventListener('click', () => this.rejectIncomingCall());
+        // Global search
+        if (this.elements.btnGlobalSearch) {
+            this.elements.btnGlobalSearch.addEventListener('click', () => {
+                this.showOverlay('globalSearchOverlay');
+                if (this.elements.inputGlobalSearch) this.elements.inputGlobalSearch.focus();
+            });
+        }
+        if (this.elements.btnCloseGlobalSearch) {
+            this.elements.btnCloseGlobalSearch.addEventListener('click', () => this.hideOverlay('globalSearchOverlay'));
+        }
+        if (this.elements.inputGlobalSearch) {
+            let timeout;
+            this.elements.inputGlobalSearch.addEventListener('input', () => {
+                clearTimeout(timeout);
+                const q = (this.elements.inputGlobalSearch.value || '').trim();
+                if (q.length < 2) { if (this.elements.globalSearchResults) this.elements.globalSearchResults.innerHTML = ''; return; }
+                timeout = setTimeout(() => this.globalSearch(q), 300);
+            });
+        }
+        // Chat input
+        if (this.elements.btnSendMessage) this.elements.btnSendMessage.addEventListener('click', () => this.sendChatMessage());
+        if (this.elements.inputChatMessage) {
+            this.elements.inputChatMessage.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.sendChatMessage();
+                }
+            });
+            let typingTimeout;
+            this.elements.inputChatMessage.addEventListener('input', () => {
+                if (!this.selectedContact || !this.socket) return;
+                this.socket.emit('chat:typing', { toId: this.selectedContact.id, typing: true });
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    if (this.selectedContact && this.socket) this.socket.emit('chat:typing', { toId: this.selectedContact.id, typing: false });
+                }, 2000);
+            });
+        }
+        // P2P call controls
+        if (this.elements.btnCallHangup) this.elements.btnCallHangup.addEventListener('click', () => this.hangupP2PCall());
+        if (this.elements.btnCallMute) this.elements.btnCallMute.addEventListener('click', () => this.toggleMute());
+        if (this.elements.btnCallVideo) this.elements.btnCallVideo.addEventListener('click', () => this.toggleVideo());
+        // Settings
+        if (this.elements.btnOpenSettings) this.elements.btnOpenSettings.addEventListener('click', () => this.showSettings());
+        if (this.elements.headerUser) this.elements.headerUser.addEventListener('click', () => this.showSettings());
+        if (this.elements.btnBackFromSettings) this.elements.btnBackFromSettings.addEventListener('click', () => this.hideOverlay('settingsOverlay'));
+        if (this.elements.btnLogout) this.elements.btnLogout.addEventListener('click', () => this.logout());
+        if (this.elements.btnSaveProfile) this.elements.btnSaveProfile.addEventListener('click', () => this.saveProfile());
+        if (this.elements.inputAvatarFile) this.elements.inputAvatarFile.addEventListener('change', (e) => { if (e.target.files?.[0]) this.uploadAvatar(e.target.files[0]); });
+    },
+
+    async loadMyContacts() {
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/contacts', {
+                headers: this.getSubscriberHeaders(),
+            });
+            const data = await res.json();
+            if (data.success && Array.isArray(data.contacts)) {
+                this.myContacts = data.contacts;
+                this.updatePresenceWorkerContacts();
+                this.renderMyContacts();
+            }
+        } catch (err) {
+            console.warn('Не удалось загрузить контакты:', err);
+            if (err?.message !== 'Session expired') {
+                this.showMessage('Не удалось загрузить контакты. Проверьте подключение.', 'error');
+            }
+        }
+    },
+
+    renderMyContacts() {
+        this.renderContactsList();
+        this.renderChatsList();
+    },
+
+    setupContactsTabSearch() {
+        let searchTimeout;
+        if (this.elements.inputSearch) {
+            this.elements.inputSearch.addEventListener('input', () => {
+                clearTimeout(searchTimeout);
+                const q = (this.elements.inputSearch.value || '').trim();
+                if (q.length < 2) {
+                    if (this.elements.searchResults) this.elements.searchResults.style.display = 'none';
+                    return;
+                }
+                searchTimeout = setTimeout(() => this.searchSubscribers(q), 300);
+            });
+            this.elements.inputSearch.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (this.elements.searchResults) this.elements.searchResults.style.display = 'none';
+                }, 200);
+            });
+        }
+        this.attachChatSocketListener();
+    },
+
+    attachChatSocketListener() {
+        if (!this.socket || this.socketChatSetup) return;
+        this.socketChatSetup = true;
+        this.socket.on('presence:subscriber:online', (data) => {
+            if (data?.subscriberId) {
+                this.subscriberPresence.set(data.subscriberId, { online: true });
+                if (this.activeTab === 'chats') this.renderChatsList();
+                if (this.activeTab === 'contacts') this.renderContactsList();
+                if (this.selectedContact?.id === data.subscriberId) this.updateContactOnlineUI(data.subscriberId);
+            }
         });
-        this.elements.btnDisconnect.addEventListener('click', () => this.disconnect());
-        if (this.elements.btnMute) {
-            this.elements.btnMute.addEventListener('click', () => this.toggleMute());
+        this.socket.on('presence:subscriber:offline', (data) => {
+            if (data?.subscriberId) {
+                this.subscriberPresence.set(data.subscriberId, { online: false });
+                if (this.activeTab === 'chats') this.renderChatsList();
+                if (this.activeTab === 'contacts') this.renderContactsList();
+                if (this.selectedContact?.id === data.subscriberId) this.updateContactOnlineUI(data.subscriberId);
+            }
+        });
+        this.socket.on('contact:request', (data) => {
+            if (!data?.fromId) return;
+            const fromName = data.fromName || data.fromId;
+            this.showMessage(fromName + ' хочет добавить вас в контакты', 'info');
+            this.loadContactRequests();
+        });
+        this.socket.on('contact:request:accepted', (data) => {
+            if (!data?.contactName) return;
+            this.showMessage(data.contactName + ' принял(а) ваш запрос', 'success');
+            this.loadMyContacts();
+        });
+        // contact:request:declined не отправляется — отправитель не узнаёт об отклонении
+        this.socket.on('chat:typing', (data) => {
+            if (!data?.fromId) return;
+            const indicator = this.elements.typingIndicator;
+            if (!indicator) return;
+            if (this.selectedContact && data.fromId === this.selectedContact.id && data.typing) {
+                indicator.style.display = 'block';
+                clearTimeout(this._typingHideTimeout);
+                this._typingHideTimeout = setTimeout(() => { indicator.style.display = 'none'; }, 3000);
+            } else {
+                indicator.style.display = 'none';
+            }
+        });
+        this.socket.on('chat:message:new', (msg) => {
+            if (!msg) return;
+            const myId = this.getMySubscriberId();
+            if (msg.toId !== myId && msg.fromId !== myId) return;
+            // Update open chat if it matches
+            if (this.selectedContact && (msg.fromId === this.selectedContact.id || msg.toId === this.selectedContact.id)) {
+                this.chatMessages.push(msg);
+                this.renderChatMessages();
+            }
+            // Always refresh chats list for last message preview
+            if (this.activeTab === 'chats') {
+                this.renderChatsList();
+            }
+        });
+    },
+
+    async searchSubscribers(q) {
+        try {
+            const res = await fetch(this.SERVER_URL + '/api/subscribers/search?q=' + encodeURIComponent(q));
+            const data = await res.json();
+            const results = (data.subscribers || []).filter((s) => s.id !== this.getMySubscriberId());
+            const myIds = new Set((this.myContacts || []).map((c) => c.id));
+            const list = this.elements.searchResults;
+            if (!list) return;
+            list.innerHTML = '';
+            list.style.display = 'block';
+            if (results.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'search-empty';
+                empty.textContent = 'Ничего не найдено';
+                list.appendChild(empty);
+                return;
+            }
+            results.slice(0, 10).forEach((s) => {
+                const row = document.createElement('div');
+                row.className = 'search-result-row';
+                row.innerHTML = `<span class="search-result-name">${this._esc(s.name || 'Без имени')}</span>`;
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-small';
+                const inContacts = myIds.has(s.id);
+                btn.textContent = inContacts ? 'В контактах' : 'Добавить';
+                btn.disabled = inContacts;
+                btn.addEventListener('click', () => {
+                    if (!inContacts) { this.addContactById(s.id); btn.textContent = 'Отправлено'; btn.disabled = true; }
+                });
+                row.appendChild(btn);
+                list.appendChild(row);
+            });
+        } catch (err) {
+            console.warn('Поиск не удался:', err);
+            const list = this.elements.searchResults;
+            if (list) {
+                list.innerHTML = '<div class="search-empty">Ошибка поиска</div>';
+                list.style.display = 'block';
+            }
         }
-        if (this.elements.btnVideo) {
-            this.elements.btnVideo.addEventListener('click', () => this.toggleVideo());
+    },
+
+    async globalSearch(q) {
+        try {
+            const res = await fetch(this.SERVER_URL + '/api/subscribers/search?q=' + encodeURIComponent(q));
+            const data = await res.json();
+            const results = (data.subscribers || []).filter((s) => s.id !== this.getMySubscriberId());
+            const list = this.elements.globalSearchResults;
+            if (!list) return;
+            list.innerHTML = '';
+            if (results.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'search-empty';
+                empty.textContent = 'Ничего не найдено';
+                list.appendChild(empty);
+                return;
+            }
+            const myIds = new Set((this.myContacts || []).map((c) => c.id));
+            results.slice(0, 20).forEach((s) => {
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                const inContacts = myIds.has(s.id);
+                item.innerHTML = `
+                    <div class="list-item-avatar">${(s.name || '?').charAt(0).toUpperCase()}</div>
+                    <div class="list-item-body">
+                        <div class="list-item-title">${this._esc(s.name || 'Без имени')}</div>
+                        <div class="list-item-subtitle">${inContacts ? 'В контактах' : ''}</div>
+                    </div>`;
+                if (inContacts) {
+                    item.addEventListener('click', () => { this.hideOverlay('globalSearchOverlay'); this.openChat(s); });
+                } else {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-small btn-primary';
+                    btn.textContent = 'Добавить';
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); this.addContactById(s.id); btn.textContent = 'Отправлено'; btn.disabled = true; });
+                    item.appendChild(btn);
+                }
+                list.appendChild(item);
+            });
+        } catch (err) {
+            console.warn('Глобальный поиск не удался:', err);
+            const list = this.elements.globalSearchResults;
+            if (list) {
+                list.innerHTML = '<div class="search-empty">Ошибка поиска</div>';
+            }
         }
-        if (this.elements.btnHangupAll) {
-            this.elements.btnHangupAll.addEventListener('click', () => this.hangupAll());
+    },
+
+    async addContactById(contactId) {
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/contacts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                body: JSON.stringify({ contactId: String(contactId) }),
+                credentials: 'include',
+            });
+            let data;
+            try { data = await res.json(); } catch (_) { data = {}; }
+            if (res.ok && data.success) {
+                if (this.elements.searchResults) this.elements.searchResults.style.display = 'none';
+                this.showMessage('Запрос на добавление отправлен', 'success');
+                if (typeof this.loadMyContacts === 'function') this.loadMyContacts();
+                if (typeof this.loadContactRequests === 'function') this.loadContactRequests();
+            } else {
+                this.showMessage(data.error || (res.status === 401 ? 'Требуется авторизация' : 'Не удалось отправить запрос'), 'error');
+            }
+        } catch (err) {
+            this.showMessage('Ошибка сети. Проверьте подключение.', 'error');
         }
+    },
+
+    async removeContact(contactId) {
+        try {
+            await this.authFetch(this.SERVER_URL + '/api/me/contacts/' + encodeURIComponent(contactId), {
+                method: 'DELETE',
+                headers: this.getSubscriberHeaders(),
+            });
+            await this.loadMyContacts();
+            if (this.selectedContact?.id === contactId) {
+                this.selectedContact = null;
+            }
+            this.showMessage('Контакт удалён', 'info');
+        } catch (err) {
+            this.showMessage('Ошибка удаления', 'error');
+        }
+    },
+
+    // --- Contact Requests ---
+    setupContactRequestsUI() {
+        if (this.elements.btnShowRequests) {
+            this.elements.btnShowRequests.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const list = this.elements.contactRequestsList;
+                if (!list) return;
+                const isHidden = list.style.display === 'none' || !list.style.display;
+                list.style.display = isHidden ? 'block' : 'none';
+            });
+        }
+    },
+
+    async loadContactRequests() {
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/contacts/requests', {
+                headers: this.getSubscriberHeaders(),
+            });
+            const data = await res.json();
+            if (data.success && Array.isArray(data.requests)) {
+                this.contactRequests = data.requests;
+                this.renderContactRequests();
+            }
+        } catch (err) {
+            console.warn('Не удалось загрузить запросы:', err);
+            if (err?.message !== 'Session expired') {
+                this.showMessage('Не удалось загрузить запросы', 'error');
+            }
+        }
+    },
+
+    renderContactRequests() {
+        const banner = this.elements.contactRequestsBanner;
+        const list = this.elements.contactRequestsList;
+        const count = this.elements.requestsCount;
+        const requests = this.contactRequests || [];
+        if (banner) banner.style.display = requests.length > 0 ? 'block' : 'none';
+        if (count) count.textContent = requests.length;
+        if (!list) return;
+        list.innerHTML = '';
+        if (requests.length === 0) {
+            list.style.display = 'none';
+            return;
+        }
+        // Auto-show when there are pending requests
+        list.style.display = 'block';
+        requests.forEach((r) => {
+            const row = document.createElement('div');
+            row.className = 'contact-request-row';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'contact-request-name';
+            nameSpan.textContent = r.fromName || r.fromId;
+            const actions = document.createElement('div');
+            actions.className = 'contact-request-actions';
+            const btnAccept = document.createElement('button');
+            btnAccept.className = 'btn btn-small btn-primary';
+            btnAccept.textContent = 'Принять';
+            btnAccept.addEventListener('click', () => this.respondContactRequest(r.id, 'accept'));
+            const btnDecline = document.createElement('button');
+            btnDecline.className = 'btn btn-small btn-ghost';
+            btnDecline.textContent = 'Отклонить';
+            btnDecline.addEventListener('click', () => this.respondContactRequest(r.id, 'decline'));
+            actions.appendChild(btnAccept);
+            actions.appendChild(btnDecline);
+            row.appendChild(nameSpan);
+            row.appendChild(actions);
+            list.appendChild(row);
+        });
+    },
+
+    async respondContactRequest(requestId, action) {
+        try {
+            const res = await this.authFetch(
+                this.SERVER_URL + '/api/me/contacts/requests/' + encodeURIComponent(requestId) + '/' + action,
+                { method: 'POST', headers: this.getSubscriberHeaders() }
+            );
+            const data = await res.json();
+            if (data.success) {
+                this.showMessage(action === 'accept' ? 'Контакт добавлен' : 'Запрос отклонён', action === 'accept' ? 'success' : 'info');
+                await this.loadContactRequests();
+                if (action === 'accept') {
+                    await this.loadMyContacts();
+                }
+            } else {
+                this.showMessage(data.error || 'Ошибка', 'error');
+            }
+        } catch (err) {
+            this.showMessage('Ошибка сети', 'error');
+        }
+    },
+
+    selectContact(contact) {
+        this.openChat(contact);
+    },
+
+    async loadChatMessages() {
+        if (!this.selectedContact) return;
+        try {
+            const res = await this.authFetch(
+                this.SERVER_URL + '/api/me/messages?contactId=' + encodeURIComponent(this.selectedContact.id),
+                { headers: this.getSubscriberHeaders() }
+            );
+            const data = await res.json();
+            this.chatMessages = data.messages || [];
+            this.renderChatMessages();
+        } catch (err) {
+            this.chatMessages = [];
+            this.renderChatMessages();
+        }
+    },
+
+    renderChatMessages() {
+        const list = this.elements.chatMessages;
+        if (!list) return;
+        const myId = this.getMySubscriberId();
+        list.innerHTML = '';
+        let lastDate = '';
+        (this.chatMessages || []).forEach((m) => {
+            // Date separator
+            const msgDate = this._formatDate(m.createdAt);
+            if (msgDate !== lastDate) {
+                lastDate = msgDate;
+                const sep = document.createElement('div');
+                sep.className = 'chat-date-sep';
+                sep.textContent = msgDate;
+                list.appendChild(sep);
+            }
+            const div = document.createElement('div');
+            div.className = 'chat-msg ' + (m.fromId === myId ? 'out' : 'in');
+            const body = document.createElement('div');
+            body.className = 'chat-msg-body';
+            body.textContent = m.body || '';
+            div.appendChild(body);
+            const time = document.createElement('div');
+            time.className = 'chat-msg-time';
+            time.textContent = this._formatTime(m.createdAt);
+            div.appendChild(time);
+            list.appendChild(div);
+        });
+        list.scrollTop = list.scrollHeight;
+    },
+
+    _formatTime(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+    },
+
+    _formatDate(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const diff = (today - msgDay) / 86400000;
+        if (diff === 0) return 'Сегодня';
+        if (diff === 1) return 'Вчера';
+        return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+    },
+
+    async sendChatMessage() {
+        const input = this.elements.inputChatMessage;
+        const btnSend = this.elements.btnSendMessage;
+        if (!this.selectedContact || !input) return;
+        const body = (input.value || '').trim();
+        if (!body) return;
+        if (this._sendingMessage) return;
+        this._sendingMessage = true;
+        if (btnSend) btnSend.disabled = true;
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/me/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                body: JSON.stringify({ toId: this.selectedContact.id, body }),
+            });
+            const data = await res.json();
+            if (data.success && data.message) {
+                this.chatMessages.push(data.message);
+                this.renderChatMessages();
+                input.value = '';
+                // Refresh chats list for last message preview
+                this._cachedChats = null;
+                this.renderChatsList();
+            } else {
+                this.showMessage(data.error || 'Ошибка отправки', 'error');
+            }
+        } catch (err) {
+            if (err?.message !== 'Session expired') {
+                this.showMessage('Ошибка отправки', 'error');
+            }
+        } finally {
+            this._sendingMessage = false;
+            if (btnSend) btnSend.disabled = false;
+        }
+    },
+
+    async initiateCall(contact, callType = 'audio') {
+        const myId = this.getMySubscriberId();
+        const myName = this.getMyDisplayNameForCalls();
+        this.currentCallType = callType;
+        try {
+            const res = await this.authFetch(this.SERVER_URL + '/api/calls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                body: JSON.stringify({
+                    toId: contact.id,
+                    fromName: myName,
+                    callType,
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.pendingOutgoingCall = data.call;
+                if (data.call?.id) {
+                    this.joinCallRoom(data.call.id, callType);
+                }
+            } else {
+                this.showMessage(data.error || 'Ошибка', 'error');
+            }
+        } catch (err) {
+            this.showMessage('Ошибка звонка', 'error');
+        }
+    },
+
+    hangupP2PCall() {
+        this.disconnect();
+    },
+
+    joinCallRoom(callId, callType) {
+        const roomId = callId.startsWith('call_') ? callId : 'call_' + callId;
+        this.currentRoomId = roomId;
+        if (callType) this.currentCallType = callType;
+        const name = this.displayName || this.getMyDisplayNameForCalls();
+        this.displayName = name;
+        if (this.elements.inputDisplayName) this.elements.inputDisplayName.value = name;
+        if (this.elements.inputRoomId) this.elements.inputRoomId.value = roomId;
+        this.connect();
+    },
+
+    showIncomingCallModal(call) {
+        this.pendingIncomingCall = call;
+        const callType = call?.callType || 'audio';
+        if (this.elements.incomingCallTitle) this.elements.incomingCallTitle.textContent = callType === 'video' ? 'Видео-звонок' : 'Аудио-звонок';
+        if (this.elements.incomingCallFrom) this.elements.incomingCallFrom.textContent = call?.from?.name || 'Неизвестный';
+        if (this.elements.incomingCallType) this.elements.incomingCallType.textContent = callType === 'video' ? 'Входящий видео-звонок' : 'Входящий аудио-звонок';
+        if (this.elements.incomingCallAvatar) this.elements.incomingCallAvatar.textContent = (call?.from?.name || '?').charAt(0).toUpperCase();
+        if (this.elements.incomingCallModal) this.elements.incomingCallModal.style.display = 'flex';
+    },
+
+    hideIncomingCallModal() {
+        this.pendingIncomingCall = null;
+        if (this.elements.incomingCallModal) {
+            this.elements.incomingCallModal.style.display = 'none';
+        }
+    },
+
+    async acceptIncomingCall() {
+        const call = this.pendingIncomingCall;
+        if (!call?.id) {
+            this.hideIncomingCallModal();
+            return;
+        }
+        try {
+            await this.authFetch(this.SERVER_URL + '/api/calls/' + encodeURIComponent(call.id) + '/ack', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                body: JSON.stringify({ status: 'acknowledged' })
+            });
+            this.hideIncomingCallModal();
+            this.joinCallRoom(call.id, call.callType || 'audio');
+        } catch (err) {
+            this.showMessage('Ошибка при приёме звонка', 'error');
+        }
+    },
+
+    async rejectIncomingCall() {
+        const call = this.pendingIncomingCall;
+        if (call?.id) {
+            try {
+                await this.authFetch(this.SERVER_URL + '/api/calls/' + encodeURIComponent(call.id) + '/ack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
+                    body: JSON.stringify({ status: 'declined' })
+                });
+            } catch (e) {}
+        }
+        this.hideIncomingCallModal();
     },
 
     resetPresenceState() {
         this.presence = new Map();
         this.lastSentMediaStatus = { cam: false, mic: false };
         this.selfId = null;
-        this.hangupAllInProgress = false;
         if (this.pendingPlaybackElements) {
             this.pendingPlaybackElements.clear();
         }
         this.removeSelfParticipantEntry();
-        this.updateHangupAllButton();
     },
 
     removeSelfParticipantEntry() {
@@ -164,7 +1628,8 @@ const App = {
         const existing = this.presence.get(socketId) || {
             id: socketId,
             media: { cam: false, mic: false },
-            connectedAt: Date.now()
+            connectedAt: Date.now(),
+            displayName: ''
         };
 
         if (data.media) {
@@ -177,6 +1642,10 @@ const App = {
 
         if (data.connectedAt) {
             existing.connectedAt = data.connectedAt;
+        }
+
+        if (typeof data.displayName === 'string') {
+            existing.displayName = data.displayName;
         }
 
         this.presence.set(socketId, existing);
@@ -405,62 +1874,11 @@ const App = {
         }
     },
 
-    updateHangupAllButton() {
-        const btn = this.elements?.btnHangupAll;
-        if (!btn) {
-            return;
-        }
-
-        if (!this.socket) {
-            btn.style.display = 'none';
-            btn.disabled = true;
-            return;
-        }
-
-        if (this.hangupAllInProgress) {
-            btn.style.display = 'none';
-            btn.disabled = true;
-            return;
-        }
-
-        btn.style.display = '';
-        btn.disabled = false;
-    },
-
-    hangupAll() {
-        if (!this.socket) {
-            return;
-        }
-        if (this.hangupAllInProgress) {
-            return;
-        }
-
-        this.hangupAllInProgress = true;
-        this.updateHangupAllButton();
-        this.showMessage('Завершаем конференцию для всех участников...', 'info');
-
-        try {
-            this.socket.emit('conference:hangup-all');
-        } catch (error) {
-            console.error('❌ Ошибка отправки глобального завершения конференции:', error);
-            this.showMessage('Не удалось завершить конференцию для всех', 'error');
-            this.hangupAllInProgress = false;
-            this.updateHangupAllButton();
-        }
-    },
-
     handleForceDisconnect(payload = {}) {
-        const { reason, initiatedBy } = payload;
-        console.log('⚠️ Получена команда завершить конференцию для всех:', {
-            reason,
-            initiatedBy
-        });
-
-        const message = reason || 'Конференция завершена организатором';
-        this.hangupAllInProgress = false;
+        const { reason } = payload;
+        const message = reason || 'Конференция завершена';
         this.disconnect();
         this.showMessage(message, 'info');
-        this.updateHangupAllButton();
     },
 
     handleSocketDisconnect(reason) {
@@ -486,11 +1904,9 @@ const App = {
         this.presence = new Map();
         this.selfId = null;
         this.lastSentMediaStatus = this.getLocalMediaState();
-        this.hangupAllInProgress = false;
 
         this.updateParticipantsList();
         this.updateConferenceStatus();
-        this.updateHangupAllButton();
     },
 
     async handlePresenceSync(data = {}) {
@@ -519,7 +1935,8 @@ const App = {
 
             this.ensurePresenceRecord(participant.id, {
                 media,
-                connectedAt: participant.connectedAt
+                connectedAt: participant.connectedAt,
+                displayName: participant.displayName || ''
             });
 
             if (participant.id !== this.selfId) {
@@ -531,7 +1948,8 @@ const App = {
         if (selfId && !this.presence.has(selfId)) {
             this.ensurePresenceRecord(selfId, {
                 media: this.getLocalMediaState(),
-                connectedAt: Date.now()
+                connectedAt: Date.now(),
+                displayName: this.displayName || ''
             });
         }
 
@@ -553,7 +1971,6 @@ const App = {
             }
         }
 
-        this.updateHangupAllButton();
     },
 
     async handlePresenceUpdate(data = {}) {
@@ -572,7 +1989,8 @@ const App = {
 
             this.ensurePresenceRecord(participant.id, {
                 media,
-                connectedAt: participant.connectedAt
+                connectedAt: participant.connectedAt,
+                displayName: participant.displayName || ''
             });
 
             this.showMessage('Новый участник присоединился', 'info');
@@ -598,7 +2016,6 @@ const App = {
             this.showMessage('Участник покинул конференцию', 'info');
         }
 
-        this.updateHangupAllButton();
     },
 
     handleStatusUpdate(data = {}) {
@@ -644,30 +2061,49 @@ const App = {
         }
 
         this.updateParticipantUI(id);
-        this.updateHangupAllButton();
     },
 
     showMessage(message, type = 'info') {
+        // Toast notification
+        const container = this.elements.toastContainer || document.getElementById('toastContainer');
+        if (container) {
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+            return;
+        }
+        // Fallback for conference screen
         const statusEl = this.elements.statusMessage;
         if (!statusEl) return;
         statusEl.textContent = message;
         statusEl.className = `status-message ${type} show`;
-        setTimeout(() => {
-            statusEl.classList.remove('show');
-        }, 3000);
+        setTimeout(() => { statusEl.classList.remove('show'); }, 3000);
     },
 
     async connect() {
-        if (this.socket && this.socket.connected) {
+        const displayName = this.getDisplayName();
+        if (!displayName) {
+            this.setConnectStatusMessage('Введите имя', 'error');
+            this.showMessage('Введите ник или имя перед входом', 'error');
+            return;
+        }
+
+        if (this.socket && this.socket.connected && this.localStream) {
             console.log('ℹ️ Уже подключены к конференции');
-            if (this.elements.conferenceScreen && !this.elements.conferenceScreen.classList.contains('active')) {
-                this.showScreen('conferenceScreen');
-            }
+            this.currentRoomId = this.getRoomId();
+            this.emitRoomJoinAndShowConference();
             return;
         }
         if (this.connectionInProgress) {
             console.log('⏳ Подключение уже выполняется, ожидаем завершения');
             return;
+        }
+
+        this.displayName = displayName;
+        if (!this.currentRoomId || !this.currentRoomId.startsWith('call_')) {
+            this.currentRoomId = this.getRoomId();
         }
 
         this.connectionInProgress = true;
@@ -677,75 +2113,11 @@ const App = {
         this.showMessage('Подключение...', 'info');
 
         try {
-            // Подключение к Socket.IO
             if (typeof io === 'undefined') {
                 throw new Error('Socket.IO не загружен');
             }
 
-            console.log('Создание Socket.IO соединения...');
-            console.log('🌐 SERVER_URL:', this.SERVER_URL);
-
-            // Устанавливаем обработчики ДО создания соединения
-            this.socket = io(this.SERVER_URL, {
-                path: '/socket.io/',
-                transports: ['websocket', 'polling'],
-                reconnection: true,
-                reconnectionDelay: 1000,
-                reconnectionAttempts: 5,
-                timeout: 20000,
-                forceNew: false,
-                upgrade: true,
-                rememberUpgrade: false
-            });
-
-            // Обработчики подключения Socket.IO
-            this.socket.on('connect', () => {
-                this.connectionInProgress = false;
-                console.log('✅ Socket.IO подключен:', this.socket.id);
-                // Убираем навязчивое сообщение - статус уже виден на видео тайлах через индикаторы
-                // this.showMessage('Подключено к серверу', 'success');
-                // Очищаем сообщение о подключении после перехода на экран конференции
-                setTimeout(() => {
-                    this.clearConnectStatusMessage();
-                }, 1000);
-
-                this.selfId = this.socket.id;
-                this.hangupAllInProgress = false;
-
-                this.ensurePresenceRecord(this.socket.id, {
-                    media: this.getLocalMediaState(),
-                    connectedAt: Date.now()
-                });
-
-                if (document.getElementById('connectScreen').classList.contains('active')) {
-                    this.showScreen('conferenceScreen');
-                }
-                this.clearConnectStatusMessage();
-
-                this.updateConferenceStatus();
-                this.updateParticipantsList();
-                this.updateVideoGridLayout();
-                this.updateMuteButton();
-                this.updateVideoButton();
-                this.updateHangupAllButton();
-                this.syncLocalMediaStatus({ force: true });
-                this.updateLocalVideoStatusIcons();
-            });
-
-            this.socket.on('connect_error', (error) => {
-                this.connectionInProgress = false;
-                console.error('❌ Ошибка подключения Socket.IO:', error);
-                this.showMessage('Ошибка подключения к серверу', 'error');
-                this.elements.btnConnect.disabled = false;
-                this.setConnectStatusMessage('Ошибка подключения к серверу', 'error');
-            });
-
-            this.socket.on('disconnect', (reason) => {
-                this.connectionInProgress = false;
-                this.handleSocketDisconnect(reason);
-            });
-
-            this.setupSocketEvents();
+            this.connectSocketForCalls();
 
             // Получаем медиа поток
             console.log('Запрос доступа к микрофону...');
@@ -764,6 +2136,13 @@ const App = {
                 const audioAttached = await this.attachAudioTracksToAllParticipants();
                 if (audioAttached) {
                     await this.renegotiateAllPeers('initial-audio', { forceLocalInitiator: true });
+                }
+
+                if (this.socket?.connected) {
+                    this.connectionInProgress = false;
+                    this.emitRoomJoinAndShowConference();
+                } else {
+                    this.conferenceJoinPending = true;
                 }
             } catch (error) {
                 console.error('❌ Ошибка доступа к микрофону:', error);
@@ -833,6 +2212,17 @@ const App = {
         try {
             const peerConnection = new RTCPeerConnection({ iceServers: this.ICE_SERVERS });
 
+            // ВАЖНО: Добавляем АУДИО первым — порядок m= в SDP должен совпадать у обеих сторон.
+            // Аудио критично для звонков; добавление первым устраняет асимметрию направления (кто кого слышит).
+            let audioSender = null;
+            const audioTracks = this.localStream?.getAudioTracks() || [];
+            if (audioTracks.length > 0) {
+                audioSender = peerConnection.addTrack(audioTracks[0], this.localStream);
+                console.log('✅ Аудио-трек добавлен первым для', targetSocketId);
+            } else {
+                console.warn('⚠️ Нет аудио-трека в localStream для', targetSocketId);
+            }
+
             let videoTransceiver = null;
             let videoSender = null;
 
@@ -850,13 +2240,6 @@ const App = {
                 }
             } else {
                 videoTransceiver = peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-                if (this.localStream && videoTransceiver?.sender?.setStreams) {
-                    try {
-                        videoTransceiver.sender.setStreams(this.localStream);
-                    } catch (err) {
-                        console.warn('⚠️ Не удалось привязать локальный поток к sender для', targetSocketId, err);
-                    }
-                }
                 videoSender = videoTransceiver.sender;
             }
 
@@ -873,7 +2256,7 @@ const App = {
                 videoEnabled: false,
                 videoSender: videoSender,
                 videoTransceiver,
-                audioSender: null,
+                audioSender,
                 audioSourceNode: null,
                 audioSourceStreamId: null,
                 renegotiating: false,
@@ -882,8 +2265,6 @@ const App = {
             };
 
             this.participants.set(targetSocketId, participantRecord);
-
-            await this.attachAudioTrackToParticipant(targetSocketId, participantRecord);
 
             peerConnection.ontrack = (event) => {
                 const trackKind = event.track ? event.track.kind : 'unknown';
@@ -941,10 +2322,12 @@ const App = {
                 this.forcePlayMediaElement(participantRecord.mediaElement, targetSocketId);
 
                 if (event.track && event.track.kind === 'audio') {
-                    // Проверяем, что источник еще не создан для этого потока
+                    // Маршрутируем удалённый звук через AudioContext (качество и контроль)
                     const currentStreamId = remoteStream.id;
                     if (!participantRecord.audioSourceNode || participantRecord.audioSourceStreamId !== currentStreamId) {
                         this.attachStreamToAudioContext(participantRecord, remoteStream, targetSocketId);
+                        // Отключаем звук у mediaElement — воспроизведение идёт через AudioContext, иначе дублирование/эхо
+                        participantRecord.mediaElement.muted = true;
                     }
                     event.track.addEventListener('ended', () => {
                         this.detachAudioSourceFromParticipant(participantRecord);
@@ -2147,22 +3530,26 @@ const App = {
         }
 
         this.resetPresenceState();
-        this.showScreen('connectScreen');
-        this.elements.btnConnect.disabled = false;
-        this.hangupAllInProgress = false;
-        this.updateHangupAllButton();
+        this.showScreen('mainAppScreen');
+        if (this.elements.btnConnect) this.elements.btnConnect.disabled = false;
+        this.socketChatSetup = false;
+        this.socketEventsSetup = false;
+        // Reconnect socket for notifications
+        this.connectSocketForCalls();
+        this.attachChatSocketListener();
     },
 
     showScreen(screenName) {
-        Object.values(this.elements).forEach(el => {
-            if (el && el.classList && el.classList.contains('screen')) {
-                el.classList.remove('active');
-            }
+        ['landingScreen', 'mainAppScreen', 'conferenceScreen', 'callScreen'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('active');
         });
+        const target = document.getElementById(screenName);
+        if (target) target.classList.add('active');
+    },
 
-        if (this.elements[screenName]) {
-            this.elements[screenName].classList.add('active');
-        }
+    showPanel(panelId) {
+        // Legacy: panels removed in WhatsApp redesign. No-op.
     },
 
     createParticipantMedia(socketId) {
@@ -2203,7 +3590,9 @@ const App = {
 
         const labelElement = document.createElement('div');
         labelElement.className = 'video-label';
-        labelElement.textContent = `Участник ${socketId.substring(0, 8)}`;
+        const pr = this.presence?.get(socketId);
+        const dn = pr?.displayName?.trim();
+        labelElement.textContent = dn || `Участник ${socketId.substring(0, 8)}`;
 
         // Status icons container
         const statusIconsElement = document.createElement('div');
@@ -2259,16 +3648,12 @@ const App = {
 
         if (participant.labelElement) {
             const presenceRecord = this.presence.get(socketId);
+            const displayName = presenceRecord?.displayName?.trim();
+            const baseLabel = displayName || `Участник ${socketId.substring(0, 8)}`;
             const expectedCam = !!presenceRecord?.media?.cam;
-            const baseLabel = `Участник ${socketId.substring(0, 8)}`;
-            let labelText = baseLabel;
-
-            // Убираем избыточный текст - информация о камере уже в иконках
-            if (expectedCam && !participant.videoEnabled) {
-                labelText = `${baseLabel} (ожидание видео)`;
-            } else {
-                labelText = baseLabel;
-            }
+            const labelText = (expectedCam && !participant.videoEnabled)
+                ? `${baseLabel} (ожидание видео)`
+                : baseLabel;
 
             participant.labelElement.textContent = labelText;
         }
@@ -2310,8 +3695,7 @@ const App = {
         }
 
         if (label) {
-            // Убираем избыточный текст - информация о камере уже в иконках
-            label.textContent = 'Вы';
+            label.textContent = this.displayName || 'Вы';
         }
 
         // Update local video status icons
