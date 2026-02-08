@@ -29,12 +29,13 @@ function initVapid() {
 /**
  * @param {object} subscription - PushSubscription-like { endpoint, keys: { auth, p256dh } }
  * @param {object} payload - { title, body, data: { type, url, ... } }
+ * @param {object} [webpushOptions] - { TTL, urgency, ... } passed to webpush.sendNotification
  */
-export async function sendPushNotification(subscription, payload) {
+export async function sendPushNotification(subscription, payload, webpushOptions = {}) {
   if (!initVapid()) return false;
   if (!subscription?.endpoint) return false;
   try {
-    await webpush.sendNotification(subscription, JSON.stringify(payload));
+    await webpush.sendNotification(subscription, JSON.stringify(payload), webpushOptions);
     return true;
   } catch (err) {
     if (err.statusCode === 410 || err.statusCode === 404) {
@@ -85,7 +86,7 @@ export async function sendIncomingCallPush(getSubscription, toSubscriberId, { fr
         { action: 'decline', title: 'Отклонить' },
       ],
     },
-  });
+  }, { TTL: 60, urgency: 'high' });
 }
 
 /**

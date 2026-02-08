@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { existsSync } from 'fs';
@@ -18,7 +19,7 @@ import {
   createHttpMetricsMiddleware,
   createMetricsHandler,
 } from './services/metrics.mjs';
-import { initRedis } from './services/redis.mjs';
+import { initRedis, subscribePresenceEvents } from './services/redis.mjs';
 
 const toArray = (value) => {
   if (!value) {
@@ -68,6 +69,7 @@ export function createServerApp(options = {}) {
   const app = expressAppFactory();
   const resolvedBodyLimit = bodyLimit || guardrails.bodyLimit || '1mb';
   app.disable('x-powered-by');
+  app.use(cors({ origin: config.corsOrigin, credentials: true }));
   app.use(express.json({ limit: resolvedBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: resolvedBodyLimit }));
   if (config.http && config.http.trustProxy !== undefined) {
@@ -150,7 +152,12 @@ export function createServerApp(options = {}) {
   if (process.env.REDIS_URL) {
     initRedis({ url: process.env.REDIS_URL })
       .then((client) => {
-        if (client) logger.info('Redis connected');
+        if (client) {
+          logger.info('Redis connected');
+          subscribePresenceEvents((event, subscriberId) => {
+            io.emit(event === 'online' ? 'presence:subscriber:online' : 'presence:subscriber:offline', { subscriberId });
+          });
+        }
       })
       .catch((err) => {
         logger.warn({ err: err.message }, 'Redis init failed');

@@ -1,9 +1,7 @@
 /**
- * Presence Worker — фоновый сервис для проверки онлайн-статуса контактов.
- * Постоянно опрашивает сервер, чтобы показывать, доступен ли пользователь для звонка.
+ * Presence Worker — разовая загрузка статуса контактов из Redis.
+ * Реал-тайм обновления — через Socket.IO (presence:subscriber:online/offline), без polling.
  */
-const INTERVAL_MS = 45000; // 45 сек
-let timerId = null;
 let config = null;
 
 function fetchStatus() {
@@ -27,37 +25,21 @@ function fetchStatus() {
     .catch(() => {});
 }
 
-function startPolling() {
-  if (timerId) clearInterval(timerId);
-  fetchStatus();
-  timerId = setInterval(fetchStatus, INTERVAL_MS);
-}
-
-function stopPolling() {
-  if (timerId) {
-    clearInterval(timerId);
-    timerId = null;
-  }
-}
-
 self.onmessage = (e) => {
   const { type, payload } = e.data || {};
   if (type === 'init') {
     config = payload || {};
     if (config.subscriberId && config.serverUrl) {
-      startPolling();
-    } else {
-      stopPolling();
+      fetchStatus(); // разовая загрузка при инициализации
     }
   } else if (type === 'updateContacts') {
     if (config) {
       config.contactIds = Array.isArray(payload) ? payload : [];
       if (config.subscriberId && config.serverUrl) {
-        fetchStatus(); // немедленно обновить
+        fetchStatus(); // разовая загрузка при смене списка контактов
       }
     }
   } else if (type === 'stop') {
-    stopPolling();
     config = null;
   }
 };

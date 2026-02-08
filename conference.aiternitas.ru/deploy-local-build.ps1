@@ -21,15 +21,27 @@ scp -i $SSH_KEY -o StrictHostKeyChecking=no -r scripts/* "${SERVER}:${REMOTE_DIR
 
 # 2. Install & Seed Admin & Restart
 Write-Host "[2/3] Installing dependencies and seeding admin..." -ForegroundColor Yellow
-$VAPID_PUBLIC = $env:VAPID_PUBLIC_KEY
-$VAPID_PRIVATE = $env:VAPID_PRIVATE_KEY
-$vapidBlock = if ($VAPID_PUBLIC -and $VAPID_PRIVATE) { "VAPID_PUBLIC_KEY=$VAPID_PUBLIC\nVAPID_PRIVATE_KEY=$VAPID_PRIVATE\nVAPID_MAILTO=mailto:conference@aiternitas.ru\n" } else { "" }
-$remoteCmd = (@"
-cd /opt/conference && npm install --production
-printf 'PORT=3002\nHOST=0.0.0.0\nNODE_ENV=production\nCORS_ORIGIN=https://conference.aiternitas.ru\nPERSISTENCE_DRIVER=file\nADMIN_SECRET=SevAdminSecret2026Prod\n$vapidBlock' > .env
-node scripts/seed-admin.mjs 2>/dev/null || :
-echo 'Admin seeded: login=admin password=SevAdmin2026!'
-"@) -replace "`r`n","`n"
+# Default VAPID keys (same as deploy-local-build.sh) — для push-уведомлений
+$DEFAULT_VAPID_PUBLIC = "BBBkgqKqGV3RSTUacZd5T0TS1Y-7CDIAo2zzNfUMrs4gj83b4n7Q2I2lF6cFOOMbKiEjU3N4Rt8mi74-t0LDa7Y"
+$DEFAULT_VAPID_PRIVATE = "yidI8R79AEgpSyRplEo1O10dIxSX98nQRUYgNCyX6qw"
+$VAPID_PUBLIC = if ($env:VAPID_PUBLIC_KEY) { $env:VAPID_PUBLIC_KEY } else { $DEFAULT_VAPID_PUBLIC }
+$VAPID_PRIVATE = if ($env:VAPID_PRIVATE_KEY) { $env:VAPID_PRIVATE_KEY } else { $DEFAULT_VAPID_PRIVATE }
+# Формируем .env и передаём через base64 (избегаем проблем с кавычками в ssh)
+$envContent = @"
+PORT=3002
+HOST=0.0.0.0
+NODE_ENV=production
+CORS_ORIGIN=https://conference.aiternitas.ru
+PERSISTENCE_DRIVER=file
+ADMIN_SECRET=SevAdminSecret2026Prod
+REDIS_URL=redis://localhost:6379
+VAPID_PUBLIC_KEY=$VAPID_PUBLIC
+VAPID_PRIVATE_KEY=$VAPID_PRIVATE
+VAPID_MAILTO=mailto:conference@aiternitas.ru
+"@
+# Сначала сохраняем существующий .env на сервере, чтобы не затереть VAPID при отсутствии keys
+$envB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($envContent))
+$remoteCmd = "cd /opt/conference && npm install --production && echo '$envB64' | base64 -d > .env && node scripts/seed-admin.mjs 2>/dev/null || true && echo 'Admin seeded: login=admin password=SevAdmin2026!'"
 ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SERVER $remoteCmd
 
 Write-Host "[3/3] Restarting service..." -ForegroundColor Yellow

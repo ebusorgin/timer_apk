@@ -1,0 +1,22 @@
+{
+  "name": "conference-app",
+  "version": "1.0.0",
+  "private": true,
+  "capacitor": {
+    "platforms": ["android"]
+  },
+  "scripts": {
+    "build": "echo 'No build step - loads remote URL'",
+    "cap:sync": "npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0"
+  },
+  "capabilities": {
+    "webDir": "web"
+  }
+}

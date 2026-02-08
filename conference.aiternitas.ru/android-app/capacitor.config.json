@@ -1,0 +1,11 @@
+{
+  "appId": "ru.aiternitas.conference",
+  "appName": "Conference",
+  "webDir": "web",
+  "server": {
+    "url": "https://conference.aiternitas.ru"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

@@ -1,7 +1,11 @@
 // participantsByRoom: Map<roomId, Map<socketId, participant>>
 // socketToRoom: Map<socketId, roomId>
+// roomCreator: Map<roomId, socketId> — первый вошедший = создатель
+// closedRooms: Set<roomId> — комнаты, закрытые создателем (повторный вход запрещён)
 const participantsByRoom = new Map();
 const socketToRoom = new Map();
+const roomCreator = new Map();
+const closedRooms = new Set();
 
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const DEFAULT_ROOM = 'general';
@@ -71,6 +75,12 @@ export function registerPresenceHandlers({ io, logger, metrics }) {
       const roomId = sanitizeRoomId(payload.roomId);
       const displayName = sanitizeDisplayName(payload.displayName);
 
+      if (closedRooms.has(roomId)) {
+        socket.emit('room:closed', { roomId, reason: 'creator_left' });
+        scopedLogger.info('Попытка входа в закрытую комнату', { socketId: socket.id, roomId });
+        return;
+      }
+
       socket.join(roomId);
       socketToRoom.set(socket.id, roomId);
 
@@ -78,6 +88,7 @@ export function registerPresenceHandlers({ io, logger, metrics }) {
       if (!roomMap) {
         roomMap = new Map();
         participantsByRoom.set(roomId, roomMap);
+        roomCreator.set(roomId, socket.id);
       }
 
       const participantRecord = {
@@ -179,10 +190,18 @@ export function registerPresenceHandlers({ io, logger, metrics }) {
 
       if (roomId) {
         const roomParticipants = participantsByRoom.get(roomId);
+        const creatorId = roomCreator.get(roomId);
         if (roomParticipants) {
           roomParticipants.delete(socket.id);
-          if (roomParticipants.size === 0) {
+          if (creatorId === socket.id) {
+            closedRooms.add(roomId);
+            roomCreator.delete(roomId);
             participantsByRoom.delete(roomId);
+            io.to(roomId).emit('room:closed', { roomId, reason: 'creator_left' });
+            scopedLogger.info('Создатель вышел — комната закрыта', { roomId });
+          } else if (roomParticipants.size === 0) {
+            participantsByRoom.delete(roomId);
+            roomCreator.delete(roomId);
           } else {
             socket.to(roomId).emit('presence:update', {
               action: 'leave',

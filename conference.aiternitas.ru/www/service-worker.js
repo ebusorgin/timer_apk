@@ -58,7 +58,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // Звонок: «Принять» или клик по уведомлению — focus/open + postMessage
+  // Звонок: «Принять» или клик по уведомлению — focus + postMessage, или open с ?acceptCall=
   if (msgType === 'incoming-call' && (action === 'accept' || action === '')) {
     event.waitUntil(
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
@@ -68,7 +68,12 @@ self.addEventListener('notificationclick', (event) => {
             return client.focus();
           }
         }
-        return self.clients.openWindow(targetUrl);
+        // Приложение закрыто — открываем с acceptCall в URL, чтобы принять звонок при загрузке
+        const base = new URL(targetUrl, self.registration.scope).href;
+        const acceptUrl = data.callId
+          ? base + (base.includes('?') ? '&' : '?') + 'acceptCall=' + encodeURIComponent(data.callId) + (data.callType ? '&callType=' + encodeURIComponent(data.callType) : '')
+          : base;
+        return self.clients.openWindow(acceptUrl);
       })
     );
     return;

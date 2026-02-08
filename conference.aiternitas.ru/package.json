@@ -22,6 +22,7 @@
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
     "express": "^4.19.2",
     "ioredis": "^5.9.2",
     "jsonwebtoken": "^9.0.3",

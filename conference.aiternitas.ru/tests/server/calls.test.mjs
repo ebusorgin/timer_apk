@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import os from 'os';
 import supertest from 'supertest';
+import { io as ioClient } from 'socket.io-client';
 import { createServerApp } from '../../server/app.mjs';
 
 const dataDir = path.join(os.tmpdir(), 'conf-calls-' + Date.now() + '-' + Math.random().toString(36).slice(2));
@@ -11,6 +12,7 @@ describe('calls API', () => {
   let server;
   let io;
   let request;
+  let serverUrl;
 
   beforeAll(async () => {
     ({ app, server, io } = createServerApp({
@@ -18,7 +20,11 @@ describe('calls API', () => {
       guardrails: { rateLimit: false, auth: false },
       logLevel: 'error',
     }));
-    await new Promise((resolve) => server.listen(0, resolve));
+    await new Promise((resolve) => server.listen(0, () => {
+      const addr = server.address();
+      serverUrl = `http://127.0.0.1:${addr.port}`;
+      resolve();
+    }));
     request = supertest(app);
   });
 
@@ -188,5 +194,43 @@ describe('calls API', () => {
       .send({ status: 'declined' });
     expect(res.status).toBe(200);
     expect(res.body.call.status).toBe('declined');
+  });
+
+  it('call:ack with acknowledged is emitted to caller when callee accepts (push Accept flow)', async () => {
+    await request.post('/api/subscribers').send({ id: 'caller1', name: 'Caller' });
+    await request.post('/api/subscribers').send({ id: 'callee-push', name: 'CalleePush' });
+    const caller = ioClient(serverUrl, {
+      path: '/socket.io/',
+      transports: ['websocket'],
+      reconnection: false,
+      auth: { subscriberId: 'caller1' },
+    });
+    const ackPromise = new Promise((resolve) => {
+      caller.once('call:ack', (data) => resolve(data));
+    });
+    await new Promise((r, e) => {
+      caller.once('connect', r);
+      caller.once('connect_error', e);
+    });
+
+    const createRes = await request
+      .post('/api/calls')
+      .set('X-Subscriber-Id', 'caller1')
+      .send({ toId: 'callee-push', fromName: 'Caller' });
+    const callId = createRes.body.call.id;
+
+    await request
+      .post(`/api/calls/${callId}/ack`)
+      .set('X-Subscriber-Id', 'callee-push')
+      .send({ status: 'acknowledged' });
+
+    const ack = await Promise.race([
+      ackPromise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('call:ack timeout')), 2000)),
+    ]);
+    caller.disconnect();
+    expect(ack.status).toBe('acknowledged');
+    expect(ack.callId).toBe(callId);
+    expect(ack.call?.status).toBe('acknowledged');
   });
 });

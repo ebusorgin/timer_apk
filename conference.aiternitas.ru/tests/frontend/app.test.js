@@ -128,6 +128,8 @@ describe('conference App UI', () => {
       getTracks: () => [videoTrack],
     };
 
+    App.videoTrack = null;
+    App.isVideoEnabled = false;
     App.localStream = {
       getAudioTracks: vi.fn(() => []),
       addTrack: vi.fn(),
@@ -171,10 +173,9 @@ describe('conference App UI', () => {
 
     await App.toggleVideo();
 
-    expect(App.localStream.removeTrack).toHaveBeenCalledWith(videoTrack);
-    expect(videoTrack.stop).toHaveBeenCalled();
+    expect(videoTrack.enabled).toBe(false);
     expect(App.isVideoEnabled).toBe(false);
-    expect(App.videoTrack).toBeNull();
+    expect(App.videoTrack).toBe(videoTrack);
     expect(App.elements.localVideoTile.classList.contains('video-off')).toBe(true);
     expect(App.elements.btnVideo.classList.contains('active')).toBe(false);
     expect(App.elements.btnVideo.classList.contains('muted')).toBe(true);
@@ -221,6 +222,8 @@ describe('conference App UI', () => {
     };
 
     App.socket = { emit: vi.fn() };
+    App.videoTrack = null;
+    App.isVideoEnabled = false;
     App.localStream = {
       getAudioTracks: vi.fn(() => []),
       addTrack: vi.fn(),
@@ -299,6 +302,8 @@ describe('conference App UI', () => {
     };
 
     App.socket = { emit: vi.fn() };
+    App.videoTrack = null;
+    App.isVideoEnabled = false;
     App.localStream = {
       getAudioTracks: vi.fn(() => []),
       addTrack: vi.fn(),
@@ -344,6 +349,46 @@ describe('conference App UI', () => {
     expect(html).toContain('<img');
     expect(html).toContain('src="https://example.com/a.png"');
     expect(html).toContain('width:48px');
+  });
+
+  it('connect requests both audio and video to fix guest audio in room', async () => {
+    const audioTrack = { kind: 'audio', stop: vi.fn(), enabled: true, readyState: 'live' };
+    const videoTrack = { kind: 'video', stop: vi.fn(), enabled: true, readyState: 'live' };
+    const mockStream = {
+      getAudioTracks: () => [audioTrack],
+      getVideoTracks: () => [videoTrack],
+      getTracks: () => [audioTrack, videoTrack],
+      addTrack: vi.fn(),
+      removeTrack: vi.fn(),
+    };
+
+    const mockSocket = { connected: true, id: 'sock-1', emit: vi.fn(), on: vi.fn(), disconnect: vi.fn() };
+    window.io = vi.fn(() => mockSocket);
+    App.socket = mockSocket;
+    App.connectSocketForCalls = vi.fn(() => { App.socket = mockSocket; });
+    App.selfId = 'sock-1';
+    App.displayName = 'Guest';
+    App.currentRoomId = 'room_xxx';
+    App.participants = new Map();
+    App.elements.btnConnect = document.createElement('button');
+    App.elements.conferenceRoomTitle = document.createElement('span');
+    App.elements.inviteLink = document.createElement('input');
+    App.socketEventsSetup = true;
+    App.setConnectStatusMessage = vi.fn();
+    App.clearConnectStatusMessage = vi.fn();
+    App.showMessage = vi.fn();
+
+    navigator.mediaDevices.getUserMedia.mockResolvedValueOnce(mockStream);
+
+    await App.connect();
+
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: true, video: true })
+    );
+    expect(App.localStream).toBe(mockStream);
+    expect(App.videoTrack).toBe(videoTrack);
+    expect(App.videoTrack.enabled).toBe(false);
+    expect(App.isVideoEnabled).toBe(false);
   });
 
 });

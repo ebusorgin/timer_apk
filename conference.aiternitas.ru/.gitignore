@@ -20,3 +20,6 @@ tests/e2e/artifacts/*.json
 # Secrets
 SSH_KEY_FOR_GITHUB.txt
 
+# Android APK (build artifact)
+www/conference-app.apk
+

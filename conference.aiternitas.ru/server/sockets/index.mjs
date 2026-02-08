@@ -1,6 +1,6 @@
 import registerPresenceHandlers from './presence.mjs';
-import { registerSubscriberSocket, unregisterSocket, emitToSubscriber } from './chat.mjs';
-import { addOnline, removeOnline } from '../services/redis.mjs';
+import { registerSubscriberSocket, unregisterSocket, emitToSubscriber, getSubscriberOnlineStatus } from './chat.mjs';
+import { addOnline, removeOnline, isRedisAvailable } from '../services/redis.mjs';
 
 export function registerSockets({ io, logger, metrics }) {
   if (!io) {
@@ -16,8 +16,13 @@ export function registerSockets({ io, logger, metrics }) {
       null;
     if (subscriberId) {
       registerSubscriberSocket(socket, subscriberId);
-      addOnline(subscriberId.trim()).catch(() => {});
-      io.emit('presence:subscriber:online', { subscriberId: subscriberId.trim() });
+      const sid = subscriberId.trim();
+      if (isRedisAvailable()) {
+        addOnline(sid).catch(() => {}); // Redis publish → sub эмитит presence:subscriber:online
+      } else {
+        addOnline(sid).catch(() => {});
+        io.emit('presence:subscriber:online', { subscriberId: sid });
+      }
     }
 
     // Typing indicator
@@ -32,9 +37,9 @@ export function registerSockets({ io, logger, metrics }) {
     socket.on('disconnect', () => {
       const sid = socket.data?.subscriberId;
       unregisterSocket(socket.id);
-      if (sid) {
-        removeOnline(sid).catch(() => {});
-        io.emit('presence:subscriber:offline', { subscriberId: sid });
+      if (sid && !getSubscriberOnlineStatus(sid)) {
+        removeOnline(sid).catch(() => {}); // Redis SREM + publish (для multi-instance)
+        io.emit('presence:subscriber:offline', { subscriberId: sid }); // всегда эмитим сразу — не полагаемся на Redis pub
       }
     });
   });

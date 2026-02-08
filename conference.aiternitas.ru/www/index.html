@@ -40,6 +40,19 @@
             </div>
         </div>
 
+        <!-- Экран входа в публичную комнату (без авторизации) -->
+        <div id="publicRoomJoinScreen" class="screen">
+            <div class="container container-narrow">
+                <h1>Войти в комнату</h1>
+                <p class="subtitle">Введите имя для участия в конференции</p>
+                <div class="landing-form">
+                    <input id="inputPublicDisplayName" type="text" placeholder="Ваше имя" maxlength="64" autocomplete="name">
+                    <button id="btnPublicRoomJoin" class="btn btn-primary btn-block" disabled>Войти</button>
+                    <p id="publicRoomJoinError" class="auth-error" role="alert" aria-live="polite"></p>
+                </div>
+            </div>
+        </div>
+
         <!-- Главное приложение (WhatsApp-стиль) -->
         <div id="mainAppScreen" class="screen">
             <!-- Верхняя шапка -->
@@ -49,48 +62,21 @@
                     <span id="headerUserName" class="header-user-name"></span>
                 </div>
                 <div class="app-header-actions">
+                    <button id="btnCreateRoom" class="icon-btn icon-btn-accent" title="Создать конференцию" aria-label="Создать конференцию"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
                     <button id="btnGlobalSearch" class="icon-btn" title="Поиск" aria-label="Поиск"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
                     <button id="btnOpenSettings" class="icon-btn" title="Настройки" aria-label="Настройки"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
                 </div>
             </header>
 
-            <!-- Табы -->
-            <nav class="tab-bar">
-                <button class="tab-btn active" data-tab="chats">Чаты</button>
-                <button class="tab-btn" data-tab="calls">Звонки</button>
-                <button class="tab-btn" data-tab="contacts">Контакты</button>
-            </nav>
-
-            <!-- Содержимое табов -->
+            <!-- Единый список: контакты, чаты, звонки -->
             <div class="tab-content">
-                <!-- Таб: Чаты -->
-                <div id="tabChats" class="tab-panel active">
-                    <div id="chatsList" class="list-view"></div>
-                    <div id="chatsEmpty" class="empty-state">Нет чатов. Добавьте контакты и начните общение.</div>
-                </div>
-
-                <!-- Таб: Звонки -->
-                <div id="tabCalls" class="tab-panel">
-                    <div class="calls-header-actions">
-                        <button id="btnCreateRoom" class="btn btn-small btn-secondary">Создать комнату</button>
-                        <button id="btnJoinRoom" class="btn btn-small btn-primary">Войти в комнату</button>
-                    </div>
-                    <div id="callHistory" class="list-view"></div>
-                    <div id="callsEmpty" class="empty-state">Нет звонков.</div>
-                </div>
-
-                <!-- Таб: Контакты -->
-                <div id="tabContacts" class="tab-panel">
-                    <div class="search-wrap">
-                        <input id="inputSearch" type="text" placeholder="Поиск по базе..." maxlength="64">
-                        <div id="searchResults" class="search-results" style="display:none;"></div>
-                    </div>
+                <div id="tabChats" class="tab-panel active" style="display:block;">
                     <div id="contactRequestsBanner" class="contact-requests-banner" style="display:none;">
-                        <button id="btnShowRequests" class="btn btn-small btn-accent btn-block">Запросы (<span id="requestsCount">0</span>)</button>
+                        <button id="btnShowRequests" class="btn btn-small btn-accent btn-block">Запросы в контакты (<span id="requestsCount">0</span>)</button>
                     </div>
                     <div id="contactRequestsList" class="contact-requests-list" style="display:none;"></div>
-                    <div id="myContactsList" class="list-view"></div>
-                    <div id="contactsEmpty" class="empty-state">Нет контактов. Используйте поиск.</div>
+                    <div id="chatsList" class="list-view"></div>
+                    <div id="chatsEmpty" class="empty-state">Нет контактов. Используйте поиск.</div>
                 </div>
             </div>
 
@@ -178,6 +164,9 @@
                     <div class="settings-info">
                         <p>Ваш ID: <span id="settingsUserId" class="settings-user-id"></span></p>
                     </div>
+                    <div class="profile-section">
+                        <a href="/conference-app.apk" download="conference-app.apk" class="btn btn-ghost btn-block" style="text-decoration:none;text-align:center;">Скачать приложение для Android</a>
+                    </div>
                     <div id="adminLinkSection" class="profile-section" style="display:none;">
                         <a href="/admin.html" class="btn btn-ghost btn-block" style="text-decoration:none;text-align:center;">Админка</a>
                     </div>
@@ -212,7 +201,7 @@
         <!-- Экран конференции (видео) -->
         <div id="conferenceScreen" class="screen">
             <div class="conference-container">
-                <div class="conference-header">
+                <div id="conferenceHeader" class="conference-header">
                     <span id="conferenceRoomTitle" class="conference-room-title">Комната</span>
                     <div class="conference-header-actions">
                         <div class="invite-link-wrap">
