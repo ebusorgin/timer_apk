@@ -16,8 +16,6 @@ interface Program {
   description: string;
   ageMin: number;
   ageMax: number;
-  direction: string;
-  directions?: string[];
   durationWeeks: number;
   lessonsPerWeek?: number;
   format?: string;
@@ -25,12 +23,6 @@ interface Program {
   imageUrl?: string | null;
   price?: number | null;
   schedule?: string | null;
-}
-
-interface Direction {
-  id: number;
-  name: string;
-  sortOrder: number;
 }
 
 interface SchoolType {
@@ -56,9 +48,8 @@ interface Student {
       <h1>Админ-панель</h1>
       <div class="tabs">
         <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">Дашборд</button>
-        <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadDirections()">Программы</button>
+        <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadSchoolTypes()">Программы</button>
         <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">Типы школ</button>
-        <button [class.active]="tab() === 'directions'" (click)="tab.set('directions'); directionError.set(null); loadDirections()">Направления</button>
         <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">Ученики</button>
       </div>
 
@@ -81,7 +72,7 @@ interface Student {
       @if (tab() === 'programs') {
         <div class="programs-toolbar">
           <select (change)="onProgramFilter($event)">
-            <option value="">Все направления</option>
+            <option value="">Все типы школ</option>
             @for (st of schoolTypes(); track st.id) {
               <option [value]="st.id">{{ st.title }}</option>
             }
@@ -94,8 +85,7 @@ interface Student {
               <div class="row-content">
                 <strong>{{ p.title }}</strong>
                 <span class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</span>
-                <span>{{ p.direction }}</span>
-                <span>{{ p.schoolType || 'tech' }}</span>
+                <span>{{ getSchoolTypeTitle(p.schoolType || '') }}</span>
               </div>
               <div class="row-actions">
                 <button (click)="editProgram(p)">Изменить</button>
@@ -120,17 +110,6 @@ interface Student {
                 <label>Описание <textarea [(ngModel)]="programForm.description" name="desc" rows="3"></textarea></label>
                 <label>Возраст от <input type="number" [(ngModel)]="programForm.ageMin" name="ageMin" min="5" max="18" /></label>
                 <label>Возраст до <input type="number" [(ngModel)]="programForm.ageMax" name="ageMax" min="5" max="18" /></label>
-                <label>Направления
-                  <div class="directions-checkboxes">
-                    @for (d of adminDirections(); track d.id) {
-                      <label class="checkbox-label">
-                        <input type="checkbox" [checked]="isDirectionSelected(d.name)" (change)="toggleDirection(d.name)" />
-                        {{ d.name }}
-                      </label>
-                    }
-                  </div>
-                  <input [(ngModel)]="programForm.directionsExtra" name="dirsExtra" placeholder="Дополнительно (через запятую)" class="mt-1" />
-                </label>
                 <label>Тип школы
                   <select [(ngModel)]="programForm.schoolType" name="schoolType">
                     @for (st of schoolTypes(); track st.id) {
@@ -185,45 +164,6 @@ interface Student {
                 <label>Описание <textarea [(ngModel)]="schoolTypeForm.description" name="desc" rows="2" placeholder="Краткое описание для карточки"></textarea></label>
                 <div class="modal-actions">
                   <button type="button" (click)="closeSchoolTypeForm()">Отмена</button>
-                  <button type="submit">Сохранить</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        }
-      }
-
-      @if (tab() === 'directions') {
-        <div class="programs-toolbar">
-          <button (click)="openDirectionForm()" class="btn-add">+ Добавить направление</button>
-        </div>
-        @if (directionError()) {
-          <div class="form-error mb-1">{{ directionError() }}</div>
-        }
-        <div class="list">
-          @for (d of adminDirections(); track d.id) {
-            <div class="row">
-              <div class="row-content">
-                <strong>{{ d.name }}</strong>
-              </div>
-              <div class="row-actions">
-                <button (click)="editDirection(d)">Изменить</button>
-                <button (click)="deleteDirection(d)" class="btn-danger">Удалить</button>
-              </div>
-            </div>
-          }
-        </div>
-        @if (showDirectionForm()) {
-          <div class="modal-overlay" (click)="closeDirectionForm()">
-            <div class="modal" (click)="$event.stopPropagation()">
-              <h3>{{ editingDirection() ? 'Редактировать направление' : 'Новое направление' }}</h3>
-              @if (directionError()) {
-                <div class="form-error">{{ directionError() }}</div>
-              }
-              <form (ngSubmit)="saveDirection()">
-                <label>Название <input [(ngModel)]="directionForm.name" name="name" required /></label>
-                <div class="modal-actions">
-                  <button type="button" (click)="closeDirectionForm()">Отмена</button>
                   <button type="submit">Сохранить</button>
                 </div>
               </form>
@@ -312,42 +252,31 @@ interface Student {
     .modal input, .modal textarea, .modal select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
     .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
     .form-error { color: var(--color-error); margin-bottom: 1rem; }
-    .mb-1 { margin-bottom: 1rem; }
     .form-success { color: var(--color-primary); margin-bottom: 1rem; }
-    .directions-checkboxes { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.25rem 0; }
-    .checkbox-label { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0; font-weight: normal; cursor: pointer; }
-    .checkbox-label input { width: auto; margin: 0; }
-    .mt-1 { margin-top: 0.25rem; }
   `],
 })
 export class AdminComponent implements OnInit {
-  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'directions' | 'students'>('stats');
+  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'students'>('stats');
   stats = signal<Stats | null>(null);
   adminPrograms = signal<Program[]>([]);
   programFilter = signal<string>('');
-  adminDirections = signal<Direction[]>([]);
   schoolTypes = signal<SchoolType[]>([]);
   adminSchoolTypes = signal<SchoolType[]>([]);
   adminStudents = signal<Student[]>([]);
   showProgramForm = signal(false);
-  showDirectionForm = signal(false);
   showSchoolTypeForm = signal(false);
   editingProgram = signal<Program | null>(null);
-  editingDirection = signal<Direction | null>(null);
   editingSchoolType = signal<SchoolType | null>(null);
   schoolTypeError = signal<string | null>(null);
   schoolTypeSuccess = signal<string | null>(null);
-  directionError = signal<string | null>(null);
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
-  selectedDirections = signal<Set<string>>(new Set());
   programForm = {
     title: '',
     slug: '',
     description: '',
     ageMin: 5,
     ageMax: 18,
-    directionsExtra: '',
     schoolType: 'tech',
     durationWeeks: 12,
     lessonsPerWeek: 1,
@@ -356,7 +285,6 @@ export class AdminComponent implements OnInit {
     price: null as number | string | null,
     schedule: '',
   };
-  directionForm = { name: '' };
   schoolTypeForm = { title: '', description: '' };
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -404,10 +332,9 @@ export class AdminComponent implements OnInit {
     this.programFilter.set(v);
   }
 
-  loadDirections() {
-    this.api.get<{ success: boolean; directions: Direction[] }>('/admin/directions').subscribe({
-      next: (res) => { if (res.success) this.adminDirections.set(res.directions); },
-    });
+  getSchoolTypeTitle(id: string): string {
+    const st = this.schoolTypes().find((s) => s.id === id);
+    return st?.title || id || '';
   }
 
   loadStudents(search?: string) {
@@ -422,14 +349,12 @@ export class AdminComponent implements OnInit {
     this.editingProgram.set(null);
     this.errorMessage.set(null);
     this.successMessage.set(null);
-    this.selectedDirections.set(new Set());
     this.programForm = {
       title: '',
       slug: '',
       description: '',
       ageMin: 5,
       ageMax: 18,
-      directionsExtra: '',
       schoolType: 'tech',
       durationWeeks: 12,
       lessonsPerWeek: 1,
@@ -445,22 +370,12 @@ export class AdminComponent implements OnInit {
     this.editingProgram.set(p);
     this.errorMessage.set(null);
     this.successMessage.set(null);
-    const dirs = p.directions || [p.direction];
-    const known = new Set(this.adminDirections().map((d) => d.name));
-    const selected = new Set<string>();
-    const extra: string[] = [];
-    for (const d of dirs) {
-      if (known.has(d)) selected.add(d);
-      else if (d.trim()) extra.push(d.trim());
-    }
-    this.selectedDirections.set(selected);
     this.programForm = {
       title: p.title,
       slug: p.slug,
       description: p.description,
       ageMin: p.ageMin,
       ageMax: p.ageMax,
-      directionsExtra: extra.join(', '),
       schoolType: p.schoolType || 'tech',
       durationWeeks: p.durationWeeks,
       lessonsPerWeek: p.lessonsPerWeek ?? 1,
@@ -470,17 +385,6 @@ export class AdminComponent implements OnInit {
       schedule: p.schedule ?? '',
     };
     this.showProgramForm.set(true);
-  }
-
-  isDirectionSelected(name: string): boolean {
-    return this.selectedDirections().has(name);
-  }
-
-  toggleDirection(name: string) {
-    const next = new Set(this.selectedDirections());
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    this.selectedDirections.set(next);
   }
 
   closeProgramForm() {
@@ -500,17 +404,12 @@ export class AdminComponent implements OnInit {
       this.errorMessage.set('Возраст «от» не может быть больше «до»');
       return;
     }
-    const fromCheckboxes = Array.from(this.selectedDirections());
-    const fromExtra = this.programForm.directionsExtra.split(',').map((s) => s.trim()).filter(Boolean);
-    const dirs = fromCheckboxes.length || fromExtra.length ? [...fromCheckboxes, ...fromExtra] : ['программирование'];
-
     const body = {
       title: this.programForm.title.trim(),
       slug: this.programForm.slug?.trim() || this.programForm.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, ''),
       description: this.programForm.description || '',
       ageMin: this.programForm.ageMin,
       ageMax: this.programForm.ageMax,
-      directions: dirs,
       schoolType: this.programForm.schoolType,
       durationWeeks: this.programForm.durationWeeks,
       lessonsPerWeek: this.programForm.lessonsPerWeek ?? 1,
@@ -553,56 +452,6 @@ export class AdminComponent implements OnInit {
     if (!confirm('Удалить программу «' + p.title + '»?')) return;
     this.api.delete<{ success: boolean }>(`/admin/programs/${p.id}`).subscribe({
       next: () => this.loadPrograms(),
-    });
-  }
-
-  openDirectionForm() {
-    this.editingDirection.set(null);
-    this.directionError.set(null);
-    this.directionForm = { name: '' };
-    this.showDirectionForm.set(true);
-  }
-
-  editDirection(d: Direction) {
-    this.editingDirection.set(d);
-    this.directionError.set(null);
-    this.directionForm = { name: d.name };
-    this.showDirectionForm.set(true);
-  }
-
-  closeDirectionForm() {
-    this.showDirectionForm.set(false);
-    this.editingDirection.set(null);
-    this.directionError.set(null);
-  }
-
-  saveDirection() {
-    this.directionError.set(null);
-    const name = this.directionForm.name?.trim();
-    if (!name) {
-      this.directionError.set('Название обязательно');
-      return;
-    }
-    const ed = this.editingDirection();
-    if (ed) {
-      this.api.put<{ success: boolean }>(`/admin/directions/${ed.id}`, { name }).subscribe({
-        next: () => { this.closeDirectionForm(); this.loadDirections(); },
-        error: (err) => this.directionError.set(err.error?.error || 'Ошибка сохранения'),
-      });
-    } else {
-      this.api.post<{ success: boolean }>('/admin/directions', { name }).subscribe({
-        next: () => { this.closeDirectionForm(); this.loadDirections(); },
-        error: (err) => this.directionError.set(err.error?.error || 'Ошибка создания'),
-      });
-    }
-  }
-
-  deleteDirection(d: Direction) {
-    if (!confirm('Удалить направление «' + d.name + '»?')) return;
-    this.directionError.set(null);
-    this.api.delete<{ success: boolean; error?: string }>(`/admin/directions/${d.id}`).subscribe({
-      next: () => { this.directionError.set(null); this.loadDirections(); },
-      error: (err) => this.directionError.set(err.error?.error || 'Не удалось удалить'),
     });
   }
 

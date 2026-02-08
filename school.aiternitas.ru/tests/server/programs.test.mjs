@@ -23,13 +23,6 @@ describe('Programs routes', () => {
     assert.ok(res.body.schoolTypes.length >= 2);
   });
 
-  it('GET /api/programs/meta/directions returns directions', async () => {
-    const res = await request(app).get('/api/programs/meta/directions');
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.success, true);
-    assert.ok(Array.isArray(res.body.directions));
-  });
-
   it('GET /api/programs/:id returns program', async () => {
     const res = await request(app).get('/api/programs/1');
     assert.strictEqual(res.status, 200);

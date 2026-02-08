@@ -1,13 +1,12 @@
 export function createMockPersistence() {
   const users = new Map();
   const programs = [
-    { id: '1', title: 'Test Program', slug: 'test', description: 'Desc', ageMin: 5, ageMax: 18, direction: 'tech', durationWeeks: 12, schoolType: 'tech' },
+    { id: '1', title: 'Test Program', slug: 'test', description: 'Desc', ageMin: 5, ageMax: 18, durationWeeks: 12, schoolType: 'tech' },
   ];
   const schoolTypes = [
     { id: 'tech', title: 'Техническое направление', sortOrder: 0, description: '' },
     { id: 'art', title: 'Художественная школа', sortOrder: 1, description: '' },
   ];
-  const directions = ['программирование', 'робототехника'];
   let idCounter = 100;
 
   return {
@@ -33,6 +32,5 @@ export function createMockPersistence() {
     getPrograms: async () => programs,
     getProgramById: async (id) => programs.find((p) => String(p.id) === String(id)) || null,
     getSchoolTypes: async () => schoolTypes,
-    getDirections: async () => directions,
   };
 }

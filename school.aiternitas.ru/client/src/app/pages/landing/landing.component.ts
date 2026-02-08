@@ -38,7 +38,7 @@ import { ApiService } from '../../services/api.service';
     </section>
     <section class="directions">
       <div class="container">
-        <h2 class="section-title" schoolScrollReveal>Выберите направление</h2>
+        <h2 class="section-title" schoolScrollReveal>Тип школы</h2>
         <div class="school-types">
           @for (st of schoolTypes(); track st.id) {
             <a [routerLink]="['/programs']" [queryParams]="{school_type: st.id}" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>

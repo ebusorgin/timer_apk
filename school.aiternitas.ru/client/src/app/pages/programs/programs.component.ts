@@ -9,7 +9,6 @@ export interface Program {
   description: string;
   ageMin: number;
   ageMax: number;
-  direction: string;
   durationWeeks: number;
   format?: string;
   schoolType?: string;
@@ -44,12 +43,6 @@ interface SchoolType {
           <option value="11-13">11–13 лет</option>
           <option value="14-18">14+ лет</option>
         </select>
-        <select (change)="onDirectionChange($event)">
-          <option value="">Все направления</option>
-          @for (d of directions(); track d) {
-            <option [value]="d">{{ d }}</option>
-          }
-        </select>
       </div>
       @if (loading()) {
         <p>Загрузка...</p>
@@ -65,7 +58,6 @@ interface SchoolType {
                 <p class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</p>
                 <p class="desc">{{ p.description }}</p>
                 <div class="card-meta">
-                  <span class="badge">{{ p.direction }}</span>
                   @if (p.price != null) {
                     <span class="price">{{ p.price }} ₽</span>
                   }
@@ -155,7 +147,6 @@ export class ProgramsComponent implements OnInit {
   loading = signal(true);
   schoolTypes = signal<SchoolType[]>([]);
   schoolType = signal<string | null>(null);
-  directions = signal<string[]>([]);
 
   constructor(private api: ApiService, private route: ActivatedRoute) {}
 
@@ -163,23 +154,19 @@ export class ProgramsComponent implements OnInit {
     this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
       next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
     });
-    this.api.get<{ success: boolean; directions: string[] }>('/programs/meta/directions').subscribe({
-      next: (r) => { if (r.success) this.directions.set(r.directions); },
-    });
     this.route.queryParams.subscribe((qp) => {
       const st = qp['school_type'] || null;
       this.schoolType.set(st);
-      this.load(undefined, undefined, undefined, st);
+      this.load(undefined, undefined, st);
     });
   }
 
-  load(ageMin?: number, ageMax?: number, direction?: string, schoolType?: string | null) {
+  load(ageMin?: number, ageMax?: number, schoolType?: string | null) {
     this.loading.set(true);
     let path = '/programs';
     const params: string[] = [];
     if (ageMin != null) params.push(`age_min=${ageMin}`);
     if (ageMax != null) params.push(`age_max=${ageMax}`);
-    if (direction) params.push(`direction=${encodeURIComponent(direction)}`);
     if (schoolType) params.push(`school_type=${encodeURIComponent(schoolType)}`);
     if (params.length) path += '?' + params.join('&');
 
@@ -195,19 +182,10 @@ export class ProgramsComponent implements OnInit {
   onAgeChange(e: Event) {
     const v = (e.target as HTMLSelectElement).value;
     if (!v) {
-      this.load(undefined, undefined, undefined, this.schoolType());
+      this.load(undefined, undefined, this.schoolType());
       return;
     }
     const [min, max] = v.split('-').map(Number);
-    this.load(min, max, undefined, this.schoolType());
-  }
-
-  onDirectionChange(e: Event) {
-    const v = (e.target as HTMLSelectElement).value;
-    if (!v) {
-      this.load(undefined, undefined, undefined, this.schoolType());
-      return;
-    }
-    this.load(undefined, undefined, v, this.schoolType());
+    this.load(min, max, this.schoolType());
   }
 }

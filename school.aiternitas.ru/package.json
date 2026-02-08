@@ -11,7 +11,6 @@
     "migrate-db": "node scripts/migrate-db.mjs",
     "migrate-to-schema": "node scripts/migrate-to-schema.mjs",
     "seed-school-types": "node scripts/seed-school-types.mjs",
-    "seed-directions": "node scripts/seed-directions.mjs",
     "seed-programs": "node scripts/seed-programs.mjs",
     "seed-admin": "node scripts/seed-admin.mjs",
     "build": "cd client && npm run build",

@@ -3,11 +3,10 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
 
   app.get('/api/programs', async (req, res) => {
     try {
-      const { age_min, age_max, direction, school_type } = req.query || {};
+      const { age_min, age_max, school_type } = req.query || {};
       const filters = {};
       if (age_min != null) filters.ageMin = parseInt(age_min, 10);
       if (age_max != null) filters.ageMax = parseInt(age_max, 10);
-      if (direction) filters.direction = String(direction).trim();
       if (school_type) filters.schoolType = String(school_type).trim();
 
       const programs = await persistence.getPrograms(filters);
@@ -24,16 +23,6 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
       res.json({ success: true, schoolTypes });
     } catch (err) {
       log.error?.('Ошибка getSchoolTypes', { error: err?.message });
-      res.status(500).json({ success: false, error: 'Ошибка загрузки' });
-    }
-  });
-
-  app.get('/api/programs/meta/directions', async (req, res) => {
-    try {
-      const directions = await persistence.getDirections();
-      res.json({ success: true, directions });
-    } catch (err) {
-      log.error?.('Ошибка getDirections', { error: err?.message });
       res.status(500).json({ success: false, error: 'Ошибка загрузки' });
     }
   });

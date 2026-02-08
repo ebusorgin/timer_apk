@@ -42,15 +42,12 @@ export function registerAdminRoutes({ app, persistence, logger }) {
   app.post('/api/admin/programs', adminAuth, async (req, res) => {
     try {
       const body = req.body || {};
-      const dirs = body.directions || (body.direction ? [body.direction] : ['программирование']);
       const program = await persistence.insertProgram({
         title: body.title,
         slug: body.slug || body.title?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, ''),
         description: body.description || '',
         ageMin: body.ageMin ?? body.age_min ?? 5,
         ageMax: body.ageMax ?? body.age_max ?? 18,
-        direction: dirs[0] || 'программирование',
-        directions: dirs,
         durationWeeks: body.durationWeeks ?? body.duration_weeks ?? 12,
         lessonsPerWeek: body.lessonsPerWeek ?? body.lessons_per_week ?? 1,
         format: body.format || '',
@@ -131,54 +128,6 @@ export function registerAdminRoutes({ app, persistence, logger }) {
     } catch (err) {
       log.error?.('Ошибка updateSchoolType', { error: err?.message });
       res.status(500).json({ success: false, error: 'Ошибка обновления' });
-    }
-  });
-
-  app.get('/api/admin/directions', adminAuth, async (req, res) => {
-    try {
-      const directions = await persistence.getDirectionsAdmin();
-      res.json({ success: true, directions });
-    } catch (err) {
-      log.error?.('Ошибка getDirections', { error: err?.message });
-      res.status(500).json({ success: false, error: 'Ошибка' });
-    }
-  });
-
-  app.post('/api/admin/directions', adminAuth, async (req, res) => {
-    try {
-      const d = await persistence.insertDirection(req.body || {});
-      res.json({ success: true, direction: d });
-    } catch (err) {
-      log.error?.('Ошибка createDirection', { error: err?.message });
-      res.status(500).json({ success: false, error: 'Ошибка создания' });
-    }
-  });
-
-  app.put('/api/admin/directions/:id', adminAuth, async (req, res) => {
-    try {
-      const d = await persistence.updateDirection(req.params.id, req.body || {});
-      if (!d) {
-        res.status(404).json({ success: false, error: 'Направление не найдено' });
-        return;
-      }
-      res.json({ success: true, direction: d });
-    } catch (err) {
-      log.error?.('Ошибка updateDirection', { error: err?.message });
-      res.status(500).json({ success: false, error: 'Ошибка обновления' });
-    }
-  });
-
-  app.delete('/api/admin/directions/:id', adminAuth, async (req, res) => {
-    try {
-      const result = await persistence.deleteDirection(req.params.id);
-      if (!result.ok) {
-        res.status(400).json({ success: false, error: result.error || 'Направление не найдено' });
-        return;
-      }
-      res.json({ success: true });
-    } catch (err) {
-      log.error?.('Ошибка deleteDirection', { error: err?.message });
-      res.status(500).json({ success: false, error: 'Ошибка удаления' });
     }
   });
 }

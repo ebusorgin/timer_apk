@@ -10,7 +10,7 @@ interface Program {
   description: string;
   ageMin: number;
   ageMax: number;
-  direction: string;
+  schoolType?: string;
   durationWeeks: number;
   lessonsPerWeek?: number;
   format?: string;
@@ -36,7 +36,9 @@ interface Program {
         <h1>{{ p.title }}</h1>
         <div class="meta">
           <span class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</span>
-          <span class="badge">{{ p.direction }}</span>
+          @if (p.schoolType) {
+            <span class="badge">{{ p.schoolType === 'art' ? 'Художественная школа' : 'Техническое направление' }}</span>
+          }
           <span>{{ p.durationWeeks }} недель</span>
           @if (p.price != null) {
             <span class="price">{{ p.price }} ₽</span>

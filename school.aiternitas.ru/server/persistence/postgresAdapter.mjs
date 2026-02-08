@@ -34,8 +34,6 @@ export async function ensureSchema(pool, logger) {
       description TEXT NOT NULL,
       age_min INT NOT NULL,
       age_max INT NOT NULL,
-      direction TEXT NOT NULL,
-      directions TEXT[],
       duration_weeks INT NOT NULL,
       lessons_per_week INT DEFAULT 1,
       format TEXT,
@@ -49,7 +47,6 @@ export async function ensureSchema(pool, logger) {
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS price INTEGER`);
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS schedule TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_age_idx ON ${schema('programs')}(age_min, age_max)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS programs_direction_idx ON ${schema('programs')}(direction)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_school_type_idx ON ${schema('programs')}(school_type)`);
 
   await pool.query(`
@@ -77,15 +74,6 @@ export async function ensureSchema(pool, logger) {
   await pool.query(`ALTER TABLE ${schema('school_types')} ADD COLUMN IF NOT EXISTS description TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS school_types_sort_idx ON ${schema('school_types')}(sort_order)`);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schema('directions')} (
-      id SERIAL PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
-      sort_order INT DEFAULT 0
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS directions_sort_idx ON ${schema('directions')}(sort_order)`);
-
   logger?.info?.('PostgreSQL schema school_aiternitas_ru ensured');
 }
 
@@ -110,8 +98,6 @@ function programFromRow(row) {
     description: row.description,
     ageMin: row.age_min,
     ageMax: row.age_max,
-    direction: row.direction,
-    directions: row.directions || [row.direction],
     durationWeeks: row.duration_weeks,
     lessonsPerWeek: row.lessons_per_week ?? 1,
     format: row.format,
@@ -183,7 +169,7 @@ export function createPostgresAdapter(poolConfig, logger) {
     },
 
     async getPrograms(filters = {}) {
-      const { ageMin, ageMax, direction, schoolType } = filters;
+      const { ageMin, ageMax, schoolType } = filters;
       let query = `SELECT * FROM ${schema('programs')} ORDER BY age_min, title`;
       const params = [];
       const conditions = [];
@@ -195,10 +181,6 @@ export function createPostgresAdapter(poolConfig, logger) {
       if (ageMax != null) {
         params.push(ageMax);
         conditions.push(`age_min <= $${params.length}`);
-      }
-      if (direction) {
-        params.push(direction);
-        conditions.push(`(direction = $${params.length} OR $${params.length} = ANY(directions))`);
       }
       if (schoolType) {
         params.push(schoolType);
@@ -231,8 +213,8 @@ export function createPostgresAdapter(poolConfig, logger) {
       const price = program.price != null ? program.price : null;
       const schedule = program.schedule ?? null;
       const { rows } = await pool.query(
-        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, direction, directions, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
          RETURNING *`,
         [
           program.title,
@@ -240,8 +222,6 @@ export function createPostgresAdapter(poolConfig, logger) {
           program.description,
           program.ageMin ?? program.age_min,
           program.ageMax ?? program.age_max,
-          program.direction ?? (Array.isArray(program.directions) ? program.directions[0] : 'программирование'),
-          program.directions || [program.direction],
           program.durationWeeks ?? program.duration_weeks,
           program.lessonsPerWeek ?? program.lessons_per_week ?? 1,
           program.format || '',
@@ -262,7 +242,6 @@ export function createPostgresAdapter(poolConfig, logger) {
       const fieldMap = {
         title: 'title', slug: 'slug', description: 'description',
         ageMin: 'age_min', age_min: 'age_min', ageMax: 'age_max', age_max: 'age_max',
-        direction: 'direction', directions: 'directions',
         durationWeeks: 'duration_weeks', duration_weeks: 'duration_weeks',
         lessonsPerWeek: 'lessons_per_week', lessons_per_week: 'lessons_per_week',
         format: 'format', schoolType: 'school_type', school_type: 'school_type',
@@ -302,7 +281,7 @@ export function createPostgresAdapter(poolConfig, logger) {
       const nid = normalizeId(userId);
       if (nid == null) return [];
       const { rows } = await pool.query(
-        `SELECT e.*, p.title as program_title, p.slug as program_slug, p.direction as program_direction
+        `SELECT e.*, p.title as program_title, p.slug as program_slug, p.school_type as program_school_type
          FROM ${schema('enrollments')} e
          JOIN ${schema('programs')} p ON p.id = e.program_id
          WHERE e.user_id = $1
@@ -313,7 +292,7 @@ export function createPostgresAdapter(poolConfig, logger) {
         ...enrollmentFromRow(r),
         programTitle: r.program_title,
         programSlug: r.program_slug,
-        programDirection: r.program_direction,
+        programSchoolType: r.program_school_type,
       }));
     },
 
@@ -448,75 +427,6 @@ export function createPostgresAdapter(poolConfig, logger) {
       );
       const r = rows[0];
       return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
-    },
-
-    async getDirections() {
-      const { rows } = await pool.query(
-        `SELECT name FROM ${schema('directions')} ORDER BY sort_order, name`
-      );
-      if (rows.length > 0) return rows.map((r) => r.name);
-      const { rows: fromProg } = await pool.query(
-        `SELECT DISTINCT unnest(COALESCE(directions, ARRAY[direction])) as name FROM ${schema('programs')} ORDER BY name`
-      );
-      return fromProg.map((r) => r.name).filter(Boolean);
-    },
-
-    async getDirectionsAdmin() {
-      const { rows } = await pool.query(
-        `SELECT id, name, sort_order FROM ${schema('directions')} ORDER BY sort_order, name`
-      );
-      return rows.map((r) => ({ id: r.id, name: r.name, sortOrder: r.sort_order ?? 0 }));
-    },
-
-    async insertDirection({ name, sortOrder = 0 }) {
-      const { rows } = await pool.query(
-        `INSERT INTO ${schema('directions')} (name, sort_order) VALUES ($1, $2)
-         ON CONFLICT (name) DO UPDATE SET sort_order = EXCLUDED.sort_order
-         RETURNING id, name, sort_order`,
-        [name, sortOrder]
-      );
-      const r = rows[0];
-      return r ? { id: r.id, name: r.name, sortOrder: r.sort_order ?? 0 } : null;
-    },
-
-    async updateDirection(id, { name, sortOrder }) {
-      const nid = normalizeId(id);
-      if (nid == null) return null;
-      const updates = [];
-      const values = [];
-      let idx = 0;
-      if (name !== undefined) { idx++; updates.push(`name = $${idx}`); values.push(name); }
-      if (sortOrder !== undefined) { idx++; updates.push(`sort_order = $${idx}`); values.push(sortOrder); }
-      if (updates.length === 0) return null;
-      values.push(nid);
-      const { rows } = await pool.query(
-        `UPDATE ${schema('directions')} SET ${updates.join(', ')} WHERE id = $${idx + 1} RETURNING id, name, sort_order`,
-        values
-      );
-      const r = rows[0];
-      return r ? { id: r.id, name: r.name, sortOrder: r.sort_order ?? 0 } : null;
-    },
-
-    async deleteDirection(id) {
-      const nid = normalizeId(id);
-      if (nid == null) return { ok: false, error: 'Invalid id' };
-      const { rows: dirRows } = await pool.query(
-        `SELECT name FROM ${schema('directions')} WHERE id = $1`,
-        [nid]
-      );
-      if (dirRows.length === 0) return { ok: false, error: 'Направление не найдено' };
-      const dirName = dirRows[0].name;
-      const { rows: progRows } = await pool.query(
-        `SELECT id FROM ${schema('programs')}
-         WHERE direction = $1 OR $1 = ANY(COALESCE(directions, ARRAY[direction]))
-         LIMIT 1`,
-        [dirName]
-      );
-      if (progRows.length > 0) {
-        return { ok: false, error: 'Нельзя удалить: направление используется в программах' };
-      }
-      const { rowCount } = await pool.query(`DELETE FROM ${schema('directions')} WHERE id = $1`, [nid]);
-      return rowCount > 0 ? { ok: true } : { ok: false, error: 'Направление не найдено' };
     },
 
     async close() {
