@@ -45,6 +45,9 @@ export async function ensureSchema(pool, logger) {
     )
   `);
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS school_type TEXT DEFAULT 'tech'`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS price INTEGER`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS schedule TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_age_idx ON ${schema('programs')}(age_min, age_max)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_direction_idx ON ${schema('programs')}(direction)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_school_type_idx ON ${schema('programs')}(school_type)`);
@@ -112,6 +115,9 @@ function programFromRow(row) {
     lessonsPerWeek: row.lessons_per_week ?? 1,
     format: row.format,
     schoolType: row.school_type || 'tech',
+    imageUrl: row.image_url || null,
+    price: row.price != null ? row.price : null,
+    schedule: row.schedule || null,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };
@@ -220,10 +226,13 @@ export function createPostgresAdapter(poolConfig, logger) {
     async insertProgram(program) {
       const now = Date.now();
       const schoolType = program.schoolType ?? program.school_type ?? 'tech';
+      const imageUrl = program.imageUrl ?? program.image_url ?? null;
+      const price = program.price != null ? program.price : null;
+      const schedule = program.schedule ?? null;
       const { rows } = await pool.query(
-        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, direction, directions, duration_weeks, lessons_per_week, format, school_type, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
-         RETURNING id, title, slug, description, age_min, age_max, direction, directions, duration_weeks, lessons_per_week, format, school_type, created_at, updated_at`,
+        `INSERT INTO ${schema('programs')} (title, slug, description, age_min, age_max, direction, directions, duration_weeks, lessons_per_week, format, school_type, image_url, price, schedule, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+         RETURNING *`,
         [
           program.title,
           program.slug,
@@ -236,6 +245,9 @@ export function createPostgresAdapter(poolConfig, logger) {
           program.lessonsPerWeek ?? program.lessons_per_week ?? 1,
           program.format || '',
           schoolType,
+          imageUrl,
+          price,
+          schedule,
           now,
         ]
       );
@@ -253,6 +265,8 @@ export function createPostgresAdapter(poolConfig, logger) {
         durationWeeks: 'duration_weeks', duration_weeks: 'duration_weeks',
         lessonsPerWeek: 'lessons_per_week', lessons_per_week: 'lessons_per_week',
         format: 'format', schoolType: 'school_type', school_type: 'school_type',
+        imageUrl: 'image_url', image_url: 'image_url',
+        price: 'price', schedule: 'schedule',
       };
       const setClauses = [];
       const values = [];

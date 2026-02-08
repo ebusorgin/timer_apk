@@ -13,6 +13,9 @@ export interface Program {
   durationWeeks: number;
   format?: string;
   schoolType?: string;
+  imageUrl?: string | null;
+  price?: number | null;
+  schedule?: string | null;
 }
 
 interface SchoolType {
@@ -54,10 +57,20 @@ interface SchoolType {
         <div class="grid">
           @for (p of programs(); track p.id) {
             <a [routerLink]="['/programs', p.id]" class="card">
-              <h3>{{ p.title }}</h3>
-              <p class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</p>
-              <p class="desc">{{ p.description }}</p>
-              <span class="badge">{{ p.direction }}</span>
+              @if (p.imageUrl) {
+                <div class="card-image"><img [src]="p.imageUrl" [alt]="p.title" /></div>
+              }
+              <div class="card-body">
+                <h3>{{ p.title }}</h3>
+                <p class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</p>
+                <p class="desc">{{ p.description }}</p>
+                <div class="card-meta">
+                  <span class="badge">{{ p.direction }}</span>
+                  @if (p.price != null) {
+                    <span class="price">{{ p.price }} ₽</span>
+                  }
+                </div>
+              </div>
             </a>
           }
         </div>
@@ -93,15 +106,27 @@ interface SchoolType {
       gap: 1.5rem;
     }
     .card {
-      display: block;
-      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
       background: var(--color-bg-alt);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       text-decoration: none;
       color: inherit;
       transition: transform var(--transition), box-shadow var(--transition);
+      overflow: hidden;
     }
+    .card-image {
+      aspect-ratio: 16/9;
+      overflow: hidden;
+    }
+    .card-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .card-body { padding: 1.5rem; }
     .card:hover {
       transform: translateY(-4px);
       box-shadow: var(--shadow-lg);
@@ -113,6 +138,8 @@ interface SchoolType {
     .card h3 { margin: 0 0 0.5rem; }
     .age { color: var(--color-muted); font-size: 0.9rem; margin: 0 0 0.5rem; }
     .desc { margin: 0 0 1rem; font-size: 0.95rem; }
+    .card-meta { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .price { color: var(--color-accent); font-weight: 600; }
     .badge {
       display: inline-block;
       background: var(--color-primary);

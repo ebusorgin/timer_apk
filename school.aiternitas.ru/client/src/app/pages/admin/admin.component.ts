@@ -19,8 +19,12 @@ interface Program {
   direction: string;
   directions?: string[];
   durationWeeks: number;
+  lessonsPerWeek?: number;
   format?: string;
   schoolType?: string;
+  imageUrl?: string | null;
+  price?: number | null;
+  schedule?: string | null;
 }
 
 interface Direction {
@@ -50,7 +54,7 @@ interface Student {
       <h1>Админ-панель</h1>
       <div class="tabs">
         <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">Дашборд</button>
-        <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms()">Программы</button>
+        <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadDirections()">Программы</button>
         <button [class.active]="tab() === 'directions'" (click)="tab.set('directions'); loadDirections()">Направления</button>
         <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">Ученики</button>
       </div>
@@ -93,13 +97,29 @@ interface Student {
           <div class="modal-overlay" (click)="closeProgramForm()">
             <div class="modal" (click)="$event.stopPropagation()">
               <h3>{{ editingProgram() ? 'Редактировать программу' : 'Новая программа' }}</h3>
+              @if (errorMessage()) {
+                <div class="form-error">{{ errorMessage() }}</div>
+              }
+              @if (successMessage()) {
+                <div class="form-success">{{ successMessage() }}</div>
+              }
               <form (ngSubmit)="saveProgram()">
                 <label>Название <input [(ngModel)]="programForm.title" name="title" required /></label>
                 <label>Slug <input [(ngModel)]="programForm.slug" name="slug" /></label>
                 <label>Описание <textarea [(ngModel)]="programForm.description" name="desc" rows="3"></textarea></label>
                 <label>Возраст от <input type="number" [(ngModel)]="programForm.ageMin" name="ageMin" min="5" max="18" /></label>
                 <label>Возраст до <input type="number" [(ngModel)]="programForm.ageMax" name="ageMax" min="5" max="18" /></label>
-                <label>Направления (через запятую) <input [(ngModel)]="programForm.directionsStr" name="dirs" placeholder="программирование, робототехника" /></label>
+                <label>Направления
+                  <div class="directions-checkboxes">
+                    @for (d of adminDirections(); track d.id) {
+                      <label class="checkbox-label">
+                        <input type="checkbox" [checked]="isDirectionSelected(d.name)" (change)="toggleDirection(d.name)" />
+                        {{ d.name }}
+                      </label>
+                    }
+                  </div>
+                  <input [(ngModel)]="programForm.directionsExtra" name="dirsExtra" placeholder="Дополнительно (через запятую)" class="mt-1" />
+                </label>
                 <label>Тип школы
                   <select [(ngModel)]="programForm.schoolType" name="schoolType">
                     @for (st of schoolTypes(); track st.id) {
@@ -108,7 +128,11 @@ interface Student {
                   </select>
                 </label>
                 <label>Недель <input type="number" [(ngModel)]="programForm.durationWeeks" name="weeks" min="1" /></label>
+                <label>Занятий в неделю <input type="number" [(ngModel)]="programForm.lessonsPerWeek" name="lessonsPerWeek" min="1" max="7" /></label>
                 <label>Формат <input [(ngModel)]="programForm.format" name="format" placeholder="модульный, годовой" /></label>
+                <label>Изображение (URL) <input [(ngModel)]="programForm.imageUrl" name="imageUrl" placeholder="https://..." /></label>
+                <label>Цена (руб) <input type="number" [(ngModel)]="programForm.price" name="price" placeholder="пусто = бесплатно" /></label>
+                <label>Расписание <input [(ngModel)]="programForm.schedule" name="schedule" placeholder="Вт, Чт 16:00" /></label>
                 <div class="modal-actions">
                   <button type="button" (click)="closeProgramForm()">Отмена</button>
                   <button type="submit">Сохранить</button>
@@ -225,6 +249,12 @@ interface Student {
     .modal label { display: block; margin-bottom: 1rem; }
     .modal input, .modal textarea, .modal select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
     .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
+    .form-error { color: var(--color-error); margin-bottom: 1rem; }
+    .form-success { color: var(--color-primary); margin-bottom: 1rem; }
+    .directions-checkboxes { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.25rem 0; }
+    .checkbox-label { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0; font-weight: normal; cursor: pointer; }
+    .checkbox-label input { width: auto; margin: 0; }
+    .mt-1 { margin-top: 0.25rem; }
   `],
 })
 export class AdminComponent implements OnInit {
@@ -238,16 +268,23 @@ export class AdminComponent implements OnInit {
   showDirectionForm = signal(false);
   editingProgram = signal<Program | null>(null);
   editingDirection = signal<Direction | null>(null);
+  errorMessage = signal<string | null>(null);
+  successMessage = signal<string | null>(null);
+  selectedDirections = signal<Set<string>>(new Set());
   programForm = {
     title: '',
     slug: '',
     description: '',
     ageMin: 5,
     ageMax: 18,
-    directionsStr: '',
+    directionsExtra: '',
     schoolType: 'tech',
     durationWeeks: 12,
+    lessonsPerWeek: 1,
     format: '',
+    imageUrl: '' as string | null,
+    price: null as number | string | null,
+    schedule: '',
   };
   directionForm = { name: '' };
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -289,52 +326,131 @@ export class AdminComponent implements OnInit {
 
   openProgramForm() {
     this.editingProgram.set(null);
-    this.programForm = { title: '', slug: '', description: '', ageMin: 5, ageMax: 18, directionsStr: '', schoolType: 'tech', durationWeeks: 12, format: '' };
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    this.selectedDirections.set(new Set());
+    this.programForm = {
+      title: '',
+      slug: '',
+      description: '',
+      ageMin: 5,
+      ageMax: 18,
+      directionsExtra: '',
+      schoolType: 'tech',
+      durationWeeks: 12,
+      lessonsPerWeek: 1,
+      format: '',
+      imageUrl: null,
+      price: null,
+      schedule: '',
+    };
     this.showProgramForm.set(true);
   }
 
   editProgram(p: Program) {
     this.editingProgram.set(p);
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    const dirs = p.directions || [p.direction];
+    const known = new Set(this.adminDirections().map((d) => d.name));
+    const selected = new Set<string>();
+    const extra: string[] = [];
+    for (const d of dirs) {
+      if (known.has(d)) selected.add(d);
+      else if (d.trim()) extra.push(d.trim());
+    }
+    this.selectedDirections.set(selected);
     this.programForm = {
       title: p.title,
       slug: p.slug,
       description: p.description,
       ageMin: p.ageMin,
       ageMax: p.ageMax,
-      directionsStr: (p.directions || [p.direction]).join(', '),
+      directionsExtra: extra.join(', '),
       schoolType: p.schoolType || 'tech',
       durationWeeks: p.durationWeeks,
+      lessonsPerWeek: p.lessonsPerWeek ?? 1,
       format: p.format || '',
+      imageUrl: p.imageUrl ?? null,
+      price: p.price ?? null,
+      schedule: p.schedule ?? '',
     };
     this.showProgramForm.set(true);
+  }
+
+  isDirectionSelected(name: string): boolean {
+    return this.selectedDirections().has(name);
+  }
+
+  toggleDirection(name: string) {
+    const next = new Set(this.selectedDirections());
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    this.selectedDirections.set(next);
   }
 
   closeProgramForm() {
     this.showProgramForm.set(false);
     this.editingProgram.set(null);
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
   }
 
   saveProgram() {
-    const dirs = this.programForm.directionsStr.split(',').map((s) => s.trim()).filter(Boolean);
+    this.errorMessage.set(null);
+    if (!this.programForm.title?.trim()) {
+      this.errorMessage.set('Название обязательно');
+      return;
+    }
+    if (this.programForm.ageMin > this.programForm.ageMax) {
+      this.errorMessage.set('Возраст «от» не может быть больше «до»');
+      return;
+    }
+    const fromCheckboxes = Array.from(this.selectedDirections());
+    const fromExtra = this.programForm.directionsExtra.split(',').map((s) => s.trim()).filter(Boolean);
+    const dirs = fromCheckboxes.length || fromExtra.length ? [...fromCheckboxes, ...fromExtra] : ['программирование'];
+
     const body = {
-      title: this.programForm.title,
-      slug: this.programForm.slug || this.programForm.title.toLowerCase().replace(/\s+/g, '-'),
-      description: this.programForm.description,
+      title: this.programForm.title.trim(),
+      slug: this.programForm.slug?.trim() || this.programForm.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, ''),
+      description: this.programForm.description || '',
       ageMin: this.programForm.ageMin,
       ageMax: this.programForm.ageMax,
-      directions: dirs.length ? dirs : ['программирование'],
+      directions: dirs,
       schoolType: this.programForm.schoolType,
       durationWeeks: this.programForm.durationWeeks,
-      format: this.programForm.format,
+      lessonsPerWeek: this.programForm.lessonsPerWeek ?? 1,
+      format: this.programForm.format || '',
+      imageUrl: this.programForm.imageUrl?.trim() || null,
+      price: (this.programForm.price != null && String(this.programForm.price).trim() !== '' && !Number.isNaN(Number(this.programForm.price))) ? Number(this.programForm.price) : null,
+      schedule: this.programForm.schedule?.trim() || null,
     };
     const ed = this.editingProgram();
     if (ed) {
       this.api.put<{ success: boolean }>(`/admin/programs/${ed.id}`, body).subscribe({
-        next: () => { this.closeProgramForm(); this.loadPrograms(); },
+        next: () => {
+          this.successMessage.set('Сохранено');
+          setTimeout(() => {
+            this.closeProgramForm();
+            this.loadPrograms();
+          }, 500);
+        },
+        error: (err) => {
+          this.errorMessage.set(err.error?.error || 'Ошибка сохранения');
+        },
       });
     } else {
       this.api.post<{ success: boolean }>('/admin/programs', body).subscribe({
-        next: () => { this.closeProgramForm(); this.loadPrograms(); },
+        next: () => {
+          this.successMessage.set('Сохранено');
+          setTimeout(() => {
+            this.closeProgramForm();
+            this.loadPrograms();
+          }, 500);
+        },
+        error: (err) => {
+          this.errorMessage.set(err.error?.error || 'Ошибка сохранения');
+        },
       });
     }
   }

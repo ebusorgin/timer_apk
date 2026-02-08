@@ -55,6 +55,9 @@ export function registerAdminRoutes({ app, persistence, logger }) {
         lessonsPerWeek: body.lessonsPerWeek ?? body.lessons_per_week ?? 1,
         format: body.format || '',
         schoolType: body.schoolType ?? body.school_type ?? 'tech',
+        imageUrl: body.imageUrl ?? body.image_url ?? null,
+        price: body.price != null ? body.price : null,
+        schedule: body.schedule ?? null,
       });
       res.json({ success: true, program });
     } catch (err) {

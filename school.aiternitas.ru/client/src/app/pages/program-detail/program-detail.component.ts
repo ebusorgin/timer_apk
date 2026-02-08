@@ -14,6 +14,9 @@ interface Program {
   durationWeeks: number;
   lessonsPerWeek?: number;
   format?: string;
+  imageUrl?: string | null;
+  price?: number | null;
+  schedule?: string | null;
 }
 
 @Component({
@@ -27,11 +30,20 @@ interface Program {
       } @else if (program()) {
         @let p = program()!;
         <a routerLink="/programs" class="back">← Назад к программам</a>
+        @if (p.imageUrl) {
+          <div class="program-image"><img [src]="p.imageUrl" [alt]="p.title" /></div>
+        }
         <h1>{{ p.title }}</h1>
         <div class="meta">
           <span class="age">{{ p.ageMin }}–{{ p.ageMax }} лет</span>
           <span class="badge">{{ p.direction }}</span>
           <span>{{ p.durationWeeks }} недель</span>
+          @if (p.price != null) {
+            <span class="price">{{ p.price }} ₽</span>
+          }
+          @if (p.schedule) {
+            <span class="schedule">{{ p.schedule }}</span>
+          }
         </div>
         <p class="desc">{{ p.description }}</p>
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
@@ -49,7 +61,16 @@ interface Program {
   styles: [`
     .page { padding: 2rem 0; }
     .back { display: inline-block; margin-bottom: 1rem; color: var(--color-muted); text-decoration: none; }
+    .program-image {
+      max-width: 500px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .program-image img { width: 100%; height: auto; object-fit: cover; }
     .meta { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .price { color: var(--color-accent); font-weight: 600; }
+    .schedule { color: var(--color-muted); }
     .badge {
       background: var(--color-primary);
       color: white;
