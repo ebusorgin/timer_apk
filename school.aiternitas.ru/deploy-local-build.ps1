@@ -35,6 +35,15 @@ if (-not $env:DATABASE_URL) {
     exit 1
 }
 
+# Preserve JWT_SECRET from server to avoid invalidating sessions on deploy
+if (-not $env:JWT_SECRET) {
+    $remoteJwt = ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SERVER "grep -h '^JWT_SECRET=' ${REMOTE_DIR}/.env 2>/dev/null | cut -d= -f2-" 2>$null
+    if ($remoteJwt) {
+        $env:JWT_SECRET = $remoteJwt.Trim()
+        Write-Host "JWT_SECRET сохранён с сервера (сессии не сбросятся)." -ForegroundColor Green
+    }
+}
+
 Write-Host "=== Deploying School.aiternitas.ru ===" -ForegroundColor Cyan
 
 # 1. Build Angular
