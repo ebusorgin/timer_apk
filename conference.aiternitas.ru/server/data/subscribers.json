@@ -1,4 +1,22 @@
 {
-  "subscribers": []
+  "subscribers": [
+    {
+      "id": "search-alpha",
+      "name": "Alpha User",
+      "createdAt": 1770404703185,
+      "updatedAt": 1770404703185
+    },
+    {
+      "id": "search-beta",
+      "name": "Beta User",
+      "createdAt": 1770404703215,
+      "updatedAt": 1770404703215
+    },
+    {
+      "id": "callee2",
+      "name": "Callee2",
+      "createdAt": 1770404703197,
+      "updatedAt": 1770404703197
+    }
+  ]
 }
-

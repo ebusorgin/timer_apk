@@ -1,0 +1,10 @@
+{
+  "subscribers": [
+    {
+      "id": "caller1",
+      "name": "Caller",
+      "createdAt": 1770401372575,
+      "updatedAt": 1770401372575
+    }
+  ]
+}

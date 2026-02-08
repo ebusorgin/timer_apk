@@ -10,7 +10,7 @@ const createLoggerStub = () => ({
   debug: () => {},
 });
 
-describe('PostgreSQL persistence adapter', () => {
+describe('PostgreSQL persistence adapter (new schema)', () => {
   let db;
   let pool;
   let persistence;
@@ -34,212 +34,124 @@ describe('PostgreSQL persistence adapter', () => {
     await pool.end();
   });
 
-  it('writes and reads subscribers preserving timestamps', async () => {
-    const subscribers = [
-      { id: 'a', name: 'Alice', createdAt: 1_000, updatedAt: 1_500 },
-      { id: 'b', name: 'Bob', createdAt: 2_000, updatedAt: 2_500 },
-    ];
-
-    await persistence.writeSubscribers(subscribers);
-    const stored = await persistence.readSubscribers();
-
-    expect(stored).toEqual(subscribers);
-  });
-
-  it('sorts subscribers by name when stored in mixed order', async () => {
-    await persistence.writeSubscribers([
-      { id: 'b', name: 'Борис', createdAt: 20, updatedAt: 21 },
-      { id: 'a', name: 'Алексей', createdAt: 10, updatedAt: 15 },
-    ]);
-
-    const stored = await persistence.readSubscribers();
-    expect(stored).toEqual([
-      { id: 'a', name: 'Алексей', createdAt: 10, updatedAt: 15 },
-      { id: 'b', name: 'Борис', createdAt: 20, updatedAt: 21 },
-    ]);
-  });
-
-  it('writes and reads users independent from subscribers', async () => {
-    const users = [{ id: 'u1', name: 'User 1', createdAt: 10, updatedAt: 20 }];
-
-    await persistence.writeUsers(users);
-    const stored = await persistence.readUsers();
-
-    expect(stored).toEqual(users);
-  });
-
-  it('writes and reads calls preserving nested participants', async () => {
-    const calls = [
-      {
-        id: 'call-1',
-        from: { id: 'caller-1', name: 'Caller One' },
-        to: { id: 'target-1', name: 'Target One' },
-        createdAt: 10_000,
-        updatedAt: 10_500,
-        status: 'pending',
-      },
-      {
-        id: 'call-2',
-        from: { id: 'caller-2', name: 'Caller Two' },
-        to: { id: 'target-2', name: 'Target Two' },
-        createdAt: 11_000,
-        updatedAt: 11_500,
-        status: 'accepted',
-      },
-    ];
-
-    await persistence.writeCalls(calls);
-    const stored = await persistence.readCalls();
-
-    expect(stored).toEqual(calls);
-  });
-
-  it('upserts subscribers preserving original createdAt', async () => {
-    const created = await persistence.upsertSubscriber({
-      id: 's-1',
-      name: 'Первый',
+  it('insertSubscriber creates subscriber with auto-increment id', async () => {
+    const sub = await persistence.insertSubscriber({
+      login: 'alice',
+      name: 'Alice',
+      passwordHash: 'hash1',
     });
+    expect(sub.id).toBeDefined();
+    expect(Number(sub.id)).toBeGreaterThan(0);
+    expect(sub.name).toBe('Alice');
+    expect(sub.login).toBe('alice');
+  });
 
-    expect(created.id).toBe('s-1');
-    expect(created.name).toBe('Первый');
-    expect(typeof created.createdAt).toBe('number');
+  it('getSubscriberByLogin finds subscriber', async () => {
+    await persistence.insertSubscriber({
+      login: 'bob',
+      name: 'Bob',
+      passwordHash: 'hash2',
+    });
+    const found = await persistence.getSubscriberById((await persistence.listSubscribers())[0].id);
+    expect(found).not.toBeNull();
+    expect(found.name).toBe('Bob');
 
-    const initialCreatedAt = created.createdAt;
+    const byLogin = await persistence.getSubscriberByLogin('bob');
+    expect(byLogin).not.toBeNull();
+    expect(byLogin.name).toBe('Bob');
+  });
+
+  it('upsertSubscriber updates by id', async () => {
+    const created = await persistence.insertSubscriber({
+      login: 'carol',
+      name: 'Carol',
+      passwordHash: 'hash3',
+    });
+    const id = created.id;
 
     const updated = await persistence.upsertSubscriber({
-      id: 's-1',
-      name: 'Первый Обновлён',
+      id,
+      name: 'Carol Updated',
     });
+    expect(updated.name).toBe('Carol Updated');
+    expect(updated.id).toBe(id);
 
-    expect(updated.name).toBe('Первый Обновлён');
-    expect(updated.createdAt).toBe(initialCreatedAt);
-
-    const subscribers = await persistence.listSubscribers();
-    expect(subscribers).toHaveLength(1);
-    expect(subscribers[0].name).toBe('Первый Обновлён');
+    const found = await persistence.getSubscriberById(id);
+    expect(found.name).toBe('Carol Updated');
   });
 
-  it('handles call lifecycle helpers', async () => {
-    const call = await persistence.createCall({
-      id: 'call-life',
-      from: { id: 'caller-life', name: 'Caller Helper' },
-      to: { id: 'target-life', name: 'Target Helper' },
-      status: 'pending',
-      createdAt: 1_000,
-      updatedAt: 1_000,
+  it('isAdmin returns true for admin role', async () => {
+    const admin = await persistence.insertSubscriber({
+      login: 'admin',
+      name: 'Admin',
+      passwordHash: 'hash',
+      role: 'admin',
     });
+    const ok = await persistence.isAdmin(admin.id);
+    expect(ok).toBe(true);
 
+    const user = await persistence.insertSubscriber({
+      login: 'user1',
+      name: 'User',
+      passwordHash: 'hash',
+    });
+    const notAdmin = await persistence.isAdmin(user.id);
+    expect(notAdmin).toBe(false);
+  });
+
+  it('createCall and listPendingCalls work with numeric ids', async () => {
+    const alice = await persistence.insertSubscriber({ login: 'caller', name: 'Caller', passwordHash: 'x' });
+    const bob = await persistence.insertSubscriber({ login: 'callee', name: 'Callee', passwordHash: 'x' });
+
+    const call = await persistence.createCall({
+      id: 'call-test-' + Date.now(),
+      from: { id: alice.id, name: alice.name },
+      to: { id: bob.id, name: bob.name },
+      status: 'pending',
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+    expect(call).not.toBeNull();
     expect(call.status).toBe('pending');
 
-    const pendingBefore = await persistence.listPendingCalls('target-life');
-    expect(pendingBefore).toHaveLength(1);
+    const pending = await persistence.listPendingCalls(bob.id);
+    expect(pending).toHaveLength(1);
 
-    const updated = await persistence.updateCallStatus(call.id, 'accepted');
-    expect(updated).not.toBeNull();
-    expect(updated.status).toBe('accepted');
+    await persistence.updateCallStatus(call.id, 'accepted');
+    const after = await persistence.listPendingCalls(bob.id);
+    expect(after).toHaveLength(0);
+  });
 
-    const pendingAfter = await persistence.listPendingCalls('target-life');
-    expect(pendingAfter).toHaveLength(0);
+  it('contacts, messages, contact_requests work with numeric ids', async () => {
+    const a = await persistence.insertSubscriber({ login: 'ct1', name: 'A', passwordHash: 'x' });
+    const b = await persistence.insertSubscriber({ login: 'ct2', name: 'B', passwordHash: 'x' });
 
-    await persistence.cleanupCalls(Date.now() + 1);
-    const remainingCalls = await persistence.readCalls();
-    expect(remainingCalls).toEqual([]);
+    await persistence.addContact(a.id, b.id);
+    const contacts = await persistence.listContacts(a.id);
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0].contactId).toBe(b.id);
+
+    await persistence.insertMessage({
+      id: 'msg-' + Date.now(),
+      fromId: a.id,
+      toId: b.id,
+      body: 'Hello',
+      createdAt: Date.now(),
+    });
+    const msgs = await persistence.listMessages(a.id, b.id);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].body).toBe('Hello');
+
+    const req = await persistence.createContactRequest({
+      fromId: a.id,
+      fromName: 'A',
+      toId: b.id,
+      toName: 'B',
+      status: 'pending',
+      createdAt: Date.now(),
+    });
+    expect(req).not.toBeNull();
+    const requests = await persistence.listContactRequests(b.id);
+    expect(requests).toHaveLength(1);
   });
 });
-
-describe('createPostgresAdapter factory', () => {
-  let db;
-  let pool;
-  let adapter;
-
-  beforeEach(() => {
-    db = newDb();
-    const pg = db.adapters.createPg();
-    pool = new pg.Pool();
-
-    adapter = createPostgresAdapter({
-      poolInstance: pool,
-      logger: createLoggerStub(),
-      statementTimeout: 1000,
-    });
-  });
-
-  afterEach(async () => {
-    await adapter.close?.();
-    await pool.end();
-  });
-
-  it('persists subscriber payload in dedicated table', async () => {
-    const payload = [
-      { id: '1', name: 'Первый', createdAt: 1, updatedAt: 2 },
-      { id: '2', name: 'Второй', createdAt: 3, updatedAt: 4 },
-    ];
-
-    await adapter.write('subscribers', payload);
-
-    const stored = await adapter.read('subscribers');
-    expect(stored).toEqual(payload);
-  });
-
-  it('persists calls data with participant structure', async () => {
-    const call = {
-      id: 'call-123',
-      from: { id: 'caller', name: 'Звонящий' },
-      to: { id: 'target', name: 'Получатель' },
-      status: 'pending',
-      createdAt: 100,
-      updatedAt: 150,
-    };
-
-    await adapter.write('calls', [call]);
-    const stored = await adapter.read('calls');
-
-    expect(stored).toEqual([call]);
-  });
-
-  it('supports targeted upsert helpers', async () => {
-    const subscriber = await adapter.upsertSubscriber({
-      id: 'sub-1',
-      name: 'Собр',
-      createdAt: 10,
-      updatedAt: 10,
-    });
-    expect(subscriber).toMatchObject({
-      id: 'sub-1',
-      name: 'Собр',
-    });
-
-    const user = await adapter.upsertUser({
-      id: 'sub-1',
-      name: 'Собр',
-      createdAt: 10,
-      updatedAt: 10,
-    });
-    expect(user).toMatchObject({
-      id: 'sub-1',
-      name: 'Собр',
-    });
-
-    const insertedCall = await adapter.insertCall({
-      id: 'call-upsert',
-      from: { id: 'caller', name: 'Caller' },
-      to: { id: 'target', name: 'Target' },
-      status: 'pending',
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    expect(insertedCall.status).toBe('pending');
-
-    const pendingCalls = await adapter.listPendingCalls('target');
-    expect(pendingCalls).toHaveLength(1);
-
-    const acknowledged = await adapter.updateCallStatus('call-upsert', 'acknowledged', 5);
-    expect(acknowledged.status).toBe('acknowledged');
-
-    await adapter.deleteOldNonPendingCalls(10);
-    const calls = await adapter.read('calls');
-    expect(calls).toHaveLength(0);
-  });
-});
-
-

@@ -1,0 +1,139 @@
+/* Landing page */
+.landing-page {
+  overflow-y: auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.landing-header .logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.landing-header nav {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.landing-header a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.landing-header a:hover {
+  color: var(--text);
+}
+
+.btn-primary {
+  padding: 8px 16px !important;
+  background: var(--accent) !important;
+  color: white !important;
+  border-radius: var(--radius-sm);
+}
+
+.landing-main {
+  flex: 1;
+  padding: 48px 24px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.hero h1 {
+  font-size: 2rem;
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+
+.hero-desc {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.cta-btn {
+  display: inline-block;
+  padding: 14px 28px;
+  background: var(--accent);
+  color: white;
+  text-decoration: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.cta-btn:hover {
+  background: var(--accent-hover);
+}
+
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 48px;
+}
+
+.feature {
+  padding: 20px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.feature h3 {
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+}
+
+.feature p {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.cta {
+  text-align: center;
+  padding: 24px;
+}
+
+.cta p {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.btn-secondary {
+  display: inline-block;
+  padding: 10px 20px;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.landing-footer {
+  padding: 16px;
+  text-align: center;
+}
+
+.landing-footer a {
+  color: var(--text-muted);
+  font-size: 13px;
+}

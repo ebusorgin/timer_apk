@@ -46,4 +46,11 @@ describe('server HTTP endpoints', () => {
     expect(typeof response.body.uptimeSeconds).toBe('number');
     expect(typeof response.body.connections).toBe('number');
   });
+
+  it('returns 404 for unknown API route', async () => {
+    const response = await request.get('/api/nonexistent-route');
+    expect(response.status).toBe(404);
+    expect(response.body.success).toBe(false);
+    expect(response.body.code).toBe('API_NOT_FOUND');
+  });
 });

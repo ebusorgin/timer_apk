@@ -18,6 +18,7 @@ import {
   createHttpMetricsMiddleware,
   createMetricsHandler,
 } from './services/metrics.mjs';
+import { initRedis } from './services/redis.mjs';
 
 const toArray = (value) => {
   if (!value) {
@@ -146,6 +147,16 @@ export function createServerApp(options = {}) {
     hasConnectionString: Boolean(persistenceConfig.connectionString),
   });
 
+  if (process.env.REDIS_URL) {
+    initRedis({ url: process.env.REDIS_URL })
+      .then((client) => {
+        if (client) logger.info('Redis connected');
+      })
+      .catch((err) => {
+        logger.warn({ err: err.message }, 'Redis init failed');
+      });
+  }
+
   const {
     rateLimit: rateLimitOptions,
     auth: authOptions,
@@ -186,7 +197,7 @@ export function createServerApp(options = {}) {
     app.use('/api', createAuthMiddleware(authConfig));
   }
 
-  routesRegistrar({ app, persistence, io, config, logger, metrics });
+  routesRegistrar({ app, persistence, io, config, logger, metrics, useTestAuth: guardrails.auth === false });
   socketsRegistrar({ io, persistence, config, logger, metrics });
 
   if (metrics.enabled) {

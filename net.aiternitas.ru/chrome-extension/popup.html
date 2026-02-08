@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>net.aiternitas.ru</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup">
+    <header class="popup-header">
+      <span class="popup-logo">net.aiternitas.ru</span>
+      <span class="popup-sub">Bluetooth / Wi‑Fi</span>
+    </header>
+
+    <section class="status">
+      <div class="status-row">
+        <span class="status-label">Bluetooth</span>
+        <span id="bluetooth-status" class="status-value">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Сеть</span>
+        <span id="network-status" class="status-value">—</span>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button type="button" id="btn-scan-ble" class="btn-scan">Найти устройство по BLE</button>
+      <p class="hint">Откроется выбор устройства. Узлы net.aiternitas (APK) могут быть видны.</p>
+    </section>
+
+    <section class="devices">
+      <h3>Найденные устройства</h3>
+      <ul id="device-list"></ul>
+      <p id="device-empty" class="empty">Пока нет</p>
+    </section>
+
+    <footer class="popup-footer">
+      <a href="https://net.aiternitas.ru/app" target="_blank" rel="noopener" class="btn-open">Открыть приложение</a>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

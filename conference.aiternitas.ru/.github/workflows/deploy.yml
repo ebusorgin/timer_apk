@@ -17,6 +17,10 @@ jobs:
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
       PERSISTENCE_DRIVER: postgres
       PGSSLMODE: disable
 
@@ -50,9 +54,8 @@ jobs:
           SSH_HOST="${{ env.SSH_HOST }}"
           SSH_USER="${{ env.SSH_USER }}"
           
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "bash -s" <<EOSSH
             set -e
-            
             REPO_DIR="/opt/conference"
             
             # Создаем директорию если не существует
@@ -73,6 +76,23 @@ jobs:
             if [ -f "package.json" ]; then
               npm install --production
             fi
+            
+            # Создание .env (secrets с runner)
+            cp /opt/conference/.env /opt/conference/.env.bak 2>/dev/null || true
+            echo "PORT=3000
+HOST=0.0.0.0
+NODE_ENV=production
+PERSISTENCE_DRIVER=postgres
+PGSSLMODE=disable
+DATABASE_URL=$DATABASE_URL
+REDIS_URL=$REDIS_URL
+ADMIN_SECRET=$ADMIN_SECRET
+VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY
+VAPID_MAILTO=mailto:conference@aiternitas.ru" > /opt/conference/.env
+            
+            # Сид админа (логин: admin, пароль: SevAdmin2026!)
+            node scripts/seed-admin.mjs 2>/dev/null || true
             
             # Перезапуск сервиса
             systemctl restart conference.service || echo "Service conference.service not found, will be created"

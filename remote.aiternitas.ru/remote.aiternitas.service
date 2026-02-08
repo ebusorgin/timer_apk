@@ -1,0 +1,16 @@
+[Unit]
+Description=remote.aiternitas.ru (Remote Control - screen stream + WebSocket)
+After=network.target xvfb.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/remote
+EnvironmentFile=/opt/remote/.env
+Environment=DISPLAY=:99
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/remote/venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 3005
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

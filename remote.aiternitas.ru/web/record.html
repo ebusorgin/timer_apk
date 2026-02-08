@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Запись макросов — Remote Control</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .record-page { max-width: 500px; margin: 0 auto; padding: 24px; }
+    .record-page h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .record-page p { color: var(--text-muted); margin-bottom: 24px; }
+    .record-controls { display: flex; gap: 12px; margin-bottom: 24px; }
+    .record-controls button { flex: 1; padding: 14px; border: none; border-radius: var(--radius); font-size: 16px; font-weight: 600; cursor: pointer; }
+    .btn-record { background: #ef4444; color: white; }
+    .btn-record.recording { background: #22c55e; animation: pulse 1s infinite; }
+    .btn-save { background: var(--accent); color: white; }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+    .macro-name { width: 100%; padding: 12px 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1); background: var(--surface); color: var(--text); border-radius: var(--radius-sm); font-size: 15px; }
+    .macros-list { margin-top: 24px; }
+    .macro-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface); border-radius: var(--radius-sm); margin-bottom: 8px; }
+    .macro-item span { font-weight: 500; }
+    .macro-item button { padding: 6px 12px; background: transparent; border: 1px solid var(--error); color: var(--error); border-radius: 6px; cursor: pointer; font-size: 13px; }
+    @keyframes pulse { 50% { opacity: 0.7; } }
+  </style>
+</head>
+<body>
+  <div class="record-page">
+    <h1>Запись макросов</h1>
+    <p>Нажмите «Записать», выполните действия на компьютере (клики, клавиши), затем «Стоп». Введите название и сохраните. Макрос появится на телефоне в быстрых действиях.</p>
+
+    <div class="record-controls">
+      <button class="btn-record" id="btnRecord">Записать</button>
+      <button class="btn-save" id="btnSave" disabled>Сохранить</button>
+    </div>
+
+    <input type="text" class="macro-name" id="macroName" placeholder="Название макроса (например: Запуск Dota)" />
+
+    <div class="macros-list" id="macrosList">
+      <p style="color: var(--text-muted); font-size: 14px;">Сохранённые макросы:</p>
+      <div id="macrosContainer"></div>
+    </div>
+  </div>
+  <script>
+    const btnRecord = document.getElementById('btnRecord');
+    const btnSave = document.getElementById('btnSave');
+    const macroName = document.getElementById('macroName');
+    const macrosContainer = document.getElementById('macrosContainer');
+
+    let isRecording = false;
+    let recordedEvents = [];
+
+    async function loadMacros() {
+      const r = await fetch('/api/macros');
+      const macros = await r.json();
+      macrosContainer.innerHTML = Object.entries(macros).map(([id, m]) =>
+        `<div class="macro-item"><span>${m.name}</span><button data-id="${id}">Удалить</button></div>`
+      ).join('') || '<p style="color: var(--text-muted);">Нет макросов</p>';
+      macrosContainer.querySelectorAll('button').forEach(b => {
+        b.onclick = async () => {
+          await fetch(`/api/macros/${b.dataset.id}`, { method: 'DELETE' });
+          loadMacros();
+        };
+      });
+    }
+
+    btnRecord.onclick = async () => {
+      if (isRecording) {
+        const r = await fetch('/api/macros/record/stop', { method: 'POST' });
+        const data = await r.json();
+        recordedEvents = data.events || [];
+        isRecording = false;
+        btnRecord.textContent = 'Записать';
+        btnRecord.classList.remove('recording');
+        btnSave.disabled = recordedEvents.length === 0;
+      } else {
+        await fetch('/api/macros/record/start', { method: 'POST' });
+        isRecording = true;
+        btnRecord.textContent = 'Стоп';
+        btnRecord.classList.add('recording');
+      }
+    };
+
+    btnSave.onclick = async () => {
+      const name = macroName.value.trim() || 'Без имени';
+      const r = await fetch('/api/macros/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, events: recordedEvents })
+      });
+      const data = await r.json();
+      macroName.value = '';
+      recordedEvents = [];
+      btnSave.disabled = true;
+      loadMacros();
+    };
+
+    loadMacros();
+  </script>
+</body>
+</html>

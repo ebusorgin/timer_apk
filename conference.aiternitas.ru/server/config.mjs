@@ -93,6 +93,10 @@ export function createConfig(options = {}) {
       subscribersFile: path.join(dataDir, 'subscribers.json'),
       usersFile: path.join(dataDir, 'users.json'),
       callsFile: path.join(dataDir, 'calls.json'),
+      contactsFile: path.join(dataDir, 'contacts.json'),
+      chatMessagesFile: path.join(dataDir, 'chat_messages.json'),
+      adminsFile: path.join(dataDir, 'admins.json'),
+      appSettingsFile: path.join(dataDir, 'app_settings.json'),
     },
     persistence: {
       driver: persistenceDriver,

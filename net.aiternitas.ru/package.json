@@ -1,0 +1,35 @@
+{
+  "name": "net.aiternitas.ru",
+  "version": "1.0.0",
+  "description": "Decentralized hybrid messenger — one app, multiple transports (relay + DTN)",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node server/server.mjs",
+    "dev": "node server/server.mjs",
+    "client": "node client/demo.mjs",
+    "test": "node --test test/",
+    "web:dev": "cd web && npm run dev",
+    "web:build": "cd web && npm run build"
+  },
+  "keywords": [
+    "messenger",
+    "e2ee",
+    "dtn",
+    "federation",
+    "relay"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.1",
+    "better-sqlite3": "^11.6.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}

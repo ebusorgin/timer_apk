@@ -60,20 +60,6 @@ const baseScenarios = [
     ],
   },
   {
-    name: 'initiator_hangup_all',
-    initiator: 'A',
-    actions: [
-      { type: 'camera', participant: 'A', enable: true },
-      { type: 'wait', ms: 2_000 },
-      { type: 'hangup-all', participant: 'host' },
-      { type: 'wait', ms: 2_000 },
-    ],
-    expectations: [
-      { page: 'A', expectDisconnected: true },
-      { page: 'B', expectDisconnected: true },
-    ],
-  },
-  {
     name: 'server_restart_cleanup',
     participants: ['A', 'B'],
     initiator: 'A',
@@ -330,6 +316,14 @@ async function waitForConferenceScreen(page) {
 
 async function clickConnect(page) {
   await page.waitForSelector('#btnConnect', { visible: true, timeout: 10_000 });
+  const nameInput = await page.$('#inputDisplayName');
+  if (nameInput) {
+    await nameInput.fill('E2E User');
+  }
+  const roomInput = await page.$('#inputRoomId');
+  if (roomInput) {
+    await roomInput.fill('general');
+  }
   await page.click('#btnConnect');
   await waitForConferenceScreen(page);
 }
@@ -733,19 +727,6 @@ async function runScenario(def) {
         }
         await openParticipant(label);
         await clickConnect(pages[label]);
-        return;
-      }
-
-      if (action.type === 'hangup-all') {
-        let participantLabel = action.participant;
-        if (participantLabel === 'host') {
-          participantLabel = await resolveHostLabel();
-        }
-
-        const page = pages[participantLabel];
-        if (!page) throw new Error(`Page for participant ${participantLabel} not found`);
-        await page.waitForSelector('#btnHangupAll', { visible: true, timeout: 15_000 });
-        await page.click('#btnHangupAll');
         return;
       }
 

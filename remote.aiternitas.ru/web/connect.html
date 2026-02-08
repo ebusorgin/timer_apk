@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Подключение — Remote</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body class="auth-page">
+  <div class="auth-card" id="card">
+    <div id="checking">Проверка...</div>
+    <div id="needLogin" style="display:none">
+      <p>Войдите, чтобы подключиться к компьютеру.</p>
+      <a href="/login" id="loginLink" class="cta-btn" style="display:inline-block;margin-top:12px">Войти</a>
+    </div>
+    <div id="redirecting" style="display:none">
+      <p>Подключение...</p>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const token = params.get('t') || params.get('token');
+    const card = document.getElementById('card');
+    const checking = document.getElementById('checking');
+    const needLogin = document.getElementById('needLogin');
+    const redirecting = document.getElementById('redirecting');
+    const loginLink = document.getElementById('loginLink');
+
+    (async () => {
+      if (!token) {
+        checking.textContent = 'Неверная ссылка. Нужен параметр t=КОД';
+        return;
+      }
+      const r = await fetch('/api/auth/me', { credentials: 'include' });
+      const data = await r.json().catch(() => ({}));
+      if (data.user) {
+        checking.style.display = 'none';
+        redirecting.style.display = 'block';
+        redirecting.innerHTML = '<p>Перенаправление на панель управления...</p>';
+        location.href = '/control?t=' + token;
+      } else {
+        checking.style.display = 'none';
+        needLogin.style.display = 'block';
+        loginLink.href = '/login?next=' + encodeURIComponent('/connect?t=' + token);
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+{
+  "subscribers": [
+    {
+      "id": "callee1",
+      "name": "Callee",
+      "createdAt": 1770401372611,
+      "updatedAt": 1770402116994
+    },
+    {
+      "id": "callee2",
+      "name": "Callee2",
+      "createdAt": 1770401372650,
+      "updatedAt": 1770402117038
+    },
+    {
+      "id": "caller1",
+      "name": "Caller",
+      "createdAt": 1770401420591,
+      "updatedAt": 1770402142855
+    },
+    {
+      "id": "test-1770401372556",
+      "name": "Test User",
+      "createdAt": 1770401372581,
+      "updatedAt": 1770401372581
+    },
+    {
+      "id": "test-1770401420580",
+      "name": "Test User",
+      "createdAt": 1770401420617,
+      "updatedAt": 1770401420617
+    },
+    {
+      "id": "test-1770401521724",
+      "name": "Test User",
+      "createdAt": 1770401521746,
+      "updatedAt": 1770401521746
+    },
+    {
+      "id": "test-1770401729258",
+      "name": "Test User",
+      "createdAt": 1770401729274,
+      "updatedAt": 1770401729274
+    },
+    {
+      "id": "test-1770401968397",
+      "name": "Test User",
+      "createdAt": 1770401968417,
+      "updatedAt": 1770401968417
+    },
+    {
+      "id": "test-1770402116958",
+      "name": "Test User",
+      "createdAt": 1770402116977,
+      "updatedAt": 1770402116977
+    }
+  ]
+}

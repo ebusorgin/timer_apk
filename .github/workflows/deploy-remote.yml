@@ -1,0 +1,69 @@
+name: Deploy Remote to Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - production
+    paths:
+      - 'remote.aiternitas.ru/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Remote to remote.aiternitas.ru
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
+      SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
+      SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check required secrets
+        shell: bash
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "⚠️  SSH_PRIVATE_KEY secret is not set. Deployment steps will be skipped."
+            echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+        id: secrets_check
+
+      - name: Setup SSH key
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy Remote
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
+        env:
+          SSH_KEY: ~/.ssh/deploy_key
+        run: |
+          cd remote.aiternitas.ru
+          chmod +x deploy-local-build.sh
+          ./deploy-local-build.sh
+
+      - name: Verify deployment
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "
+            echo '=== Remote Service Status ==='
+            systemctl status remote.aiternitas.service --no-pager | head -10 || true
+            echo ''
+            HTTP_CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3005/health || echo '000')
+            echo \"Health check: \$HTTP_CODE\"
+            [ \"\$HTTP_CODE\" = '200' ] && echo '✅ OK' || echo '⚠️ Check service'
+          "
+
+      - name: Skip notice
+        if: steps.secrets_check.outputs.skip_deploy == 'true'
+        run: |
+          echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."

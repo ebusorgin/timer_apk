@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Регистрация — Remote</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <h1>Регистрация</h1>
+    <form id="registerForm">
+      <input type="email" name="email" placeholder="Email" required />
+      <input type="password" name="password" placeholder="Пароль" required minlength="6" />
+      <div id="error" class="error-msg"></div>
+      <button type="submit">Зарегистрироваться</button>
+    </form>
+    <p class="auth-link">Уже есть аккаунт? <a href="/login">Вход</a></p>
+    <p class="auth-link"><a href="/">На главную</a></p>
+  </div>
+  <script>
+    const form = document.getElementById('registerForm');
+    const err = document.getElementById('error');
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      const fd = new FormData(form);
+      const r = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: fd.get('email'), password: fd.get('password') }),
+        credentials: 'include'
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        err.textContent = data.detail || 'Ошибка регистрации';
+        return;
+      }
+      const params = new URLSearchParams(location.search);
+      const next = params.get('next') || '/';
+      location.href = next;
+    };
+  </script>
+</body>
+</html>

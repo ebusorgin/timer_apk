@@ -1,0 +1,38 @@
+services:
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    volumes:
+      - prisma-data:/app/prisma
+    environment:
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - WG_MANAGER_URL=http://vpn-tor:9999
+      - SERVER_PUBLIC_KEY=${SERVER_PUBLIC_KEY:-}
+      - SERVER_ENDPOINT=${SERVER_ENDPOINT:-vpn.aiternitas.ru:51820}
+      - TOR_ENABLED=${TOR_ENABLED:-0}
+    depends_on:
+      - vpn-tor
+    restart: unless-stopped
+
+  vpn-tor:
+    build: ./docker/vpn-tor
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    ports:
+      - "51820:51820/udp"
+    volumes:
+      - vpn-config:/config
+    environment:
+      - INTERNAL_SUBNET=10.0.0
+      - LISTEN_PORT=51820
+      - EXIT_COUNTRY=${EXIT_COUNTRY:-de}
+      - TOR_ENABLED=${TOR_ENABLED:-0}
+    restart: unless-stopped
+
+volumes:
+  prisma-data:
+  vpn-config:

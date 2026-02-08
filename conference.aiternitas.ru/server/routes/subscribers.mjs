@@ -14,6 +14,9 @@ function assertPersistence(persistence) {
   }
 }
 
+const safeSubscriber = (s) => s ? { id: s.id, name: s.name, avatarUrl: s.avatarUrl || null } : null;
+const safeList = (list) => (list || []).map(safeSubscriber);
+
 export function registerSubscriberRoutes({ app, persistence, io, logger }) {
   if (!app) {
     throw new Error('registerSubscriberRoutes: app instance is required');
@@ -42,7 +45,7 @@ export function registerSubscriberRoutes({ app, persistence, io, logger }) {
       const subscribers = await persistence.listSubscribers();
       res.json({
         success: true,
-        subscribers: sortSubscribers(subscribers),
+        subscribers: safeList(sortSubscribers(subscribers)),
       });
     } catch (error) {
       scopedLogger.error('Ошибка чтения списка подписчиков', {
@@ -55,20 +58,55 @@ export function registerSubscriberRoutes({ app, persistence, io, logger }) {
     }
   });
 
+  app.get('/api/subscribers/search', async (req, res) => {
+    try {
+      const q = (req.query?.q || '').trim();
+      let subscribers = await persistence.listSubscribers();
+      if (q) {
+        const lower = q.toLowerCase();
+        subscribers = subscribers.filter(
+          (s) =>
+            (s.name && s.name.toLowerCase().includes(lower)) ||
+            (s.id && s.id.toLowerCase().includes(lower))
+        );
+      }
+      res.json({
+        success: true,
+        subscribers: safeList(sortSubscribers(subscribers)),
+      });
+    } catch (error) {
+      scopedLogger.error('Ошибка поиска подписчиков', { error: error?.message || error });
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось выполнить поиск',
+      });
+    }
+  });
+
   app.post('/api/subscribers', validateSubscriberUpsert, async (req, res) => {
     try {
       const { id: subscriberId, name: displayName } = req.validated.body;
       const existing = await persistence.getSubscriberById(subscriberId);
+
+      // Не перезаписывать данные пользователя с паролем (защита от перезаписи)
+      if (existing && existing.passwordHash) {
+        res.json({
+          success: true,
+          subscriber: safeSubscriber(existing),
+          subscribers: safeList(await persistence.listSubscribers()),
+        });
+        return;
+      }
+
       const subscriber = await persistence.upsertSubscriber({
         id: subscriberId,
         name: displayName,
       });
       const subscribers = await persistence.listSubscribers();
 
+      const safeSubscribers = safeList(subscribers);
       if (io) {
-        io.emit('subscribers:update', {
-          subscribers,
-        });
+        io.emit('subscribers:update', { subscribers: safeSubscribers });
       }
 
       scopedLogger.info('Подписчик сохранён', {
@@ -78,8 +116,8 @@ export function registerSubscriberRoutes({ app, persistence, io, logger }) {
 
       res.json({
         success: true,
-        subscriber,
-        subscribers,
+        subscriber: safeSubscriber(subscriber),
+        subscribers: safeSubscribers,
       });
     } catch (error) {
       scopedLogger.error('Ошибка сохранения подписчика', {

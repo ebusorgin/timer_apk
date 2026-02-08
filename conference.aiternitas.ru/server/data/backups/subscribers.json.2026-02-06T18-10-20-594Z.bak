@@ -1,0 +1,22 @@
+{
+  "subscribers": [
+    {
+      "id": "callee1",
+      "name": "Callee",
+      "createdAt": 1770401372611,
+      "updatedAt": 1770401372611
+    },
+    {
+      "id": "callee2",
+      "name": "Callee2",
+      "createdAt": 1770401372650,
+      "updatedAt": 1770401372650
+    },
+    {
+      "id": "test-1770401372556",
+      "name": "Test User",
+      "createdAt": 1770401372581,
+      "updatedAt": 1770401372581
+    }
+  ]
+}

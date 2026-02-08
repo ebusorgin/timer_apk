@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Управление компьютером</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Экран компьютера (стрим) -->
+    <div class="screen-container" id="screenContainer">
+      <img class="screen-stream" id="screenStream" src="/stream" alt="Экран компьютера" />
+      <div class="stream-overlay" id="streamOverlay"></div>
+      <div class="status-bar" id="statusBar">
+        <span id="status">Подключение...</span>
+      </div>
+    </div>
+
+    <!-- Панель быстрых действий (макросы) -->
+    <div class="quick-panel" id="quickPanel">
+      <button class="panel-toggle" id="panelToggle">⚡ Быстрые действия</button>
+      <div class="quick-actions" id="quickActions">
+        <!-- Макросы подгружаются динамически -->
+      </div>
+    </div>
+
+    <!-- Клавиатура (сворачиваемая) -->
+    <div class="keyboard-panel" id="keyboardPanel">
+      <button class="panel-toggle" id="keyboardToggle">⌨ Клавиши</button>
+      <div class="keys-content">
+        <div class="quick-keys">
+          <button data-key="Tab">Tab</button>
+          <button data-key="space">Пробел</button>
+          <button data-key="Enter">Enter</button>
+          <button data-key="Escape">Esc</button>
+          <button data-key="Backspace">⌫</button>
+        </div>
+        <div class="text-row">
+          <input type="text" id="textInput" placeholder="Ввести текст..." />
+          <button id="sendText">Ввести</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -4,6 +4,8 @@ import {
   validateSubscribers,
   validateUsers,
   validateCalls,
+  validateContacts,
+  validateChatMessages,
   CALL_STATUS_SET,
   CALL_STATUS_VALUES,
 } from './validators.mjs';
@@ -136,147 +138,97 @@ export function createPersistence(paths = {}, options = {}) {
   };
 
   const getSubscriberById = async (subscriberId) => {
-    if (!subscriberId) {
-      return null;
-    }
+    if (subscriberId == null || subscriberId === '') return null;
     if (typeof adapter.getSubscriberById === 'function') {
       const raw = await adapter.getSubscriberById(subscriberId);
-      if (!raw) {
-        return null;
-      }
-      const { records } = validateSubscribers([raw], { strict: false });
-      return records[0] || null;
+      return raw || null;
     }
     const subscribers = await readSubscribers();
-    return subscribers.find((item) => item.id === subscriberId) || null;
+    const sid = String(subscriberId);
+    return subscribers.find((item) => String(item.id) === sid) || null;
   };
 
-  const syncUserRecord = async (record) => {
-    if (!record) {
-      return;
+  const getSubscriberByLogin = async (login) => {
+    if (typeof adapter.getSubscriberByLogin === 'function') {
+      return adapter.getSubscriberByLogin(login) || null;
     }
-    try {
-      await writeUsers([record]);
-    } catch (error) {
-      logger?.warn?.('Не удалось синхронизировать запись пользователя', {
-        error: error?.message || error,
-        userId: record.id,
-      });
-    }
+    const subscribers = await readSubscribers();
+    return subscribers.find((s) => (s.login || '').trim() === String(login).trim()) || null;
   };
 
-  const upsertSubscriber = async ({ id, name }) => {
-    const existing = await getSubscriberById(id);
+  const syncUserRecord = async () => {
+    // Legacy: users table removed, subscribers is the single source
+  };
+
+  const upsertSubscriber = async (record) => {
+    if (typeof adapter.upsertSubscriber === 'function') {
+      return adapter.upsertSubscriber(record);
+    }
+    const subscribers = await readSubscribers();
+    const { records: [validated] } = validateSubscribers([record], { strict: true });
+    const idx = subscribers.findIndex((s) => String(s.id) === String(record.id));
     const now = Date.now();
-    const candidate = {
-      id,
-      name,
-      createdAt: existing?.createdAt ?? now,
+    const item = {
+      ...validated,
+      createdAt: idx >= 0 ? subscribers[idx].createdAt : now,
       updatedAt: now,
     };
-    const {
-      records: [record],
-    } = validateSubscribers([candidate], { strict: true });
+    if (idx >= 0) subscribers[idx] = item;
+    else subscribers.push(item);
+    await adapter.write('subscribers', sortSubscribers(subscribers));
+    return subscribers.find((s) => String(s.id) === String(record.id)) || item;
+  };
 
-    if (typeof adapter.upsertSubscriber === 'function') {
-      const saved = await adapter.upsertSubscriber(record);
-      const {
-        records: [normalized],
-      } = validateSubscribers([saved], { strict: false });
-      await syncUserRecord(normalized);
-      return normalized;
+  const insertSubscriber = async (record) => {
+    if (typeof adapter.insertSubscriber === 'function') {
+      return adapter.insertSubscriber(record);
     }
+    return upsertSubscriber(record);
+  };
 
-    const subscribers = await readSubscribers();
-    const index = subscribers.findIndex((item) => item.id === record.id);
-    if (index >= 0) {
-      subscribers[index] = {
-        ...subscribers[index],
-        ...record,
-        updatedAt: record.updatedAt,
-      };
-    } else {
-      subscribers.push(record);
-    }
-
-    const ordered = sortSubscribers(subscribers);
-    await adapter.write('subscribers', ordered);
-    await syncUserRecord(record);
-    return ordered.find((item) => item.id === record.id) || record;
+  const getCallById = async (callId) => {
+    if (typeof adapter.getCallById === 'function') return adapter.getCallById(callId);
+    const calls = await readCalls();
+    return (calls || []).find((c) => String(c.id) === String(callId)) || null;
   };
 
   const listPendingCalls = async (subscriberId) => {
-    if (!subscriberId) {
-      return [];
-    }
-
+    if (!subscriberId) return [];
     if (typeof adapter.listPendingCalls === 'function') {
-      const raw = await adapter.listPendingCalls(subscriberId);
-      const { records } = validateCalls(raw, { strict: false });
-      return records
-        .filter((call) => call?.to?.id === subscriberId && call.status === 'pending')
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      return adapter.listPendingCalls(subscriberId);
     }
-
     const calls = await readCalls();
+    const sid = String(subscriberId);
     return calls
-      .filter((call) => call?.to?.id === subscriberId && call.status === 'pending')
+      .filter((c) => String(c?.to?.id) === sid && c.status === 'pending')
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   };
 
   const createCall = async (payload) => {
-    const {
-      records: [record],
-    } = validateCalls([payload], { strict: true });
-
+    const { records: [record] } = validateCalls([payload], { strict: true });
     if (typeof adapter.insertCall === 'function') {
-      const stored = await adapter.insertCall(record);
-      const {
-        records: [normalized],
-      } = validateCalls([stored], { strict: false });
-      return normalized;
+      return adapter.insertCall(record);
     }
-
     const calls = await readCalls();
-    calls.push(record);
+    const id = String(Date.now()) + '_' + Math.random().toString(36).slice(2, 10);
+    const full = { ...record, id };
+    calls.push(full);
     await adapter.write('calls', calls);
-    return record;
+    return full;
   };
 
   const updateCallStatus = async (callId, status) => {
-    if (!callId || !CALL_STATUS_SET.has(status)) {
-      return null;
-    }
-
+    if (!callId || !CALL_STATUS_SET.has(status)) return null;
     if (typeof adapter.updateCallStatus === 'function') {
-      const updated = await adapter.updateCallStatus(callId, status, Date.now());
-      if (!updated) {
-        return null;
-      }
-      const {
-        records: [normalized],
-      } = validateCalls([updated], { strict: false });
-      return normalized;
+      return adapter.updateCallStatus(callId, status, Date.now());
     }
-
     const calls = await readCalls();
-    const index = calls.findIndex((call) => call.id === callId);
-    if (index === -1) {
-      return null;
-    }
-    calls[index] = {
-      ...calls[index],
-      status,
-      updatedAt: Date.now(),
-    };
-    const cleaned = calls.filter((call) => {
-      if (call.status === 'pending') {
-        return true;
-      }
-      return Date.now() - (call.updatedAt || call.createdAt || 0) < 60 * 60 * 1000;
-    });
-    await adapter.write('calls', cleaned);
-    return calls[index];
+    const idx = calls.findIndex((c) => String(c.id) === String(callId));
+    if (idx === -1) return null;
+    calls[idx] = { ...calls[idx], status, updatedAt: Date.now() };
+    const cleaned = calls.filter((c) => c.status === 'pending' || Date.now() - (c.updatedAt || c.createdAt || 0) < 3600000);
+    if (cleaned.length !== calls.length) await adapter.write('calls', cleaned);
+    return calls[idx];
   };
 
   const cleanupCalls = async (thresholdTimestamp = Date.now() - 60 * 60 * 1000) => {
@@ -296,6 +248,184 @@ export function createPersistence(paths = {}, options = {}) {
     }
   };
 
+  const listContacts = async (ownerId) => {
+    if (typeof adapter.listContacts === 'function') {
+      return adapter.listContacts(ownerId);
+    }
+    const raw = await adapter.read('contacts');
+    const { records } = validateContacts(raw, { strict: false });
+    return records
+      .filter((c) => (c.ownerId || c.owner_id) === ownerId)
+      .sort((a, b) => (a.createdAt || a.created_at || 0) - (b.createdAt || b.created_at || 0));
+  };
+
+  const addContact = async (ownerId, contactId) => {
+    if (typeof adapter.addContact === 'function') {
+      await adapter.addContact(ownerId, contactId);
+      return;
+    }
+    const raw = await adapter.read('contacts');
+    const { records } = validateContacts(raw, { strict: false });
+    const exists = records.some(
+      (c) => (c.ownerId || c.owner_id) === ownerId && (c.contactId || c.contact_id) === contactId
+    );
+    if (!exists) {
+      records.push({
+        ownerId,
+        contactId,
+        createdAt: Date.now(),
+      });
+      await adapter.write('contacts', records);
+    }
+  };
+
+  const removeContact = async (ownerId, contactId) => {
+    if (typeof adapter.removeContact === 'function') {
+      await adapter.removeContact(ownerId, contactId);
+      return;
+    }
+    const raw = await adapter.read('contacts');
+    const { records } = validateContacts(raw, { strict: false });
+    const filtered = records.filter(
+      (c) => !((c.ownerId || c.owner_id) === ownerId && (c.contactId || c.contact_id) === contactId)
+    );
+    if (filtered.length !== records.length) {
+      await adapter.write('contacts', filtered);
+    }
+  };
+
+  const listMessages = async (fromId, toId) => {
+    if (typeof adapter.listMessages === 'function') {
+      return adapter.listMessages(fromId, toId);
+    }
+    const raw = await adapter.read('chat_messages');
+    const { records } = validateChatMessages(raw, { strict: false });
+    return records
+      .filter(
+        (m) =>
+          ((m.fromId || m.from_id) === fromId && (m.toId || m.to_id) === toId) ||
+          ((m.fromId || m.from_id) === toId && (m.toId || m.to_id) === fromId)
+      )
+      .sort((a, b) => (a.createdAt || a.created_at || 0) - (b.createdAt || b.created_at || 0));
+  };
+
+  const insertMessage = async (record) => {
+    const candidate = {
+      id: record.id,
+      fromId: record.fromId,
+      toId: record.toId,
+      body: record.body,
+      createdAt: record.createdAt ?? Date.now(),
+    };
+    const {
+      records: [validated],
+    } = validateChatMessages([candidate], { strict: true });
+    if (typeof adapter.insertMessage === 'function') {
+      await adapter.insertMessage(validated);
+      return validated;
+    }
+    const raw = await adapter.read('chat_messages');
+    const { records } = validateChatMessages(raw, { strict: false });
+    records.push(validated);
+    await adapter.write('chat_messages', records);
+    return validated;
+  };
+
+  // --- Contact Requests ---
+  const listContactRequests = async (subscriberId) => {
+    if (typeof adapter.listContactRequests === 'function') {
+      return adapter.listContactRequests(subscriberId);
+    }
+    const raw = await adapter.read('contact_requests');
+    return (raw || [])
+      .filter((r) => r.toId === subscriberId && r.status === 'pending')
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  };
+
+  const listOutgoingContactRequests = async (subscriberId) => {
+    if (typeof adapter.listOutgoingContactRequests === 'function') {
+      return adapter.listOutgoingContactRequests(subscriberId);
+    }
+    const raw = await adapter.read('contact_requests');
+    return (raw || [])
+      .filter((r) => r.fromId === subscriberId && r.status === 'pending')
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  };
+
+  const createContactRequest = async (record) => {
+    if (typeof adapter.createContactRequest === 'function') {
+      return adapter.createContactRequest(record);
+    }
+    const raw = await adapter.read('contact_requests');
+    const items = raw || [];
+    const existing = items.find(
+      (r) => r.fromId === record.fromId && r.toId === record.toId && r.status === 'pending'
+    );
+    if (existing) return existing;
+    items.push(record);
+    await adapter.write('contact_requests', items);
+    return record;
+  };
+
+  const getContactRequestById = async (requestId) => {
+    if (typeof adapter.getContactRequestById === 'function') {
+      return adapter.getContactRequestById(requestId);
+    }
+    const raw = await adapter.read('contact_requests');
+    return (raw || []).find((r) => r.id === requestId) || null;
+  };
+
+  const updateContactRequestStatus = async (requestId, status) => {
+    if (typeof adapter.updateContactRequestStatus === 'function') {
+      return adapter.updateContactRequestStatus(requestId, status);
+    }
+    const raw = await adapter.read('contact_requests');
+    const items = raw || [];
+    const idx = items.findIndex((r) => r.id === requestId);
+    if (idx === -1) return null;
+    items[idx] = { ...items[idx], status, updatedAt: Date.now() };
+    await adapter.write('contact_requests', items);
+    return items[idx];
+  };
+
+  const getSetting = async (key) => {
+    if (typeof adapter.getSetting === 'function') return adapter.getSetting(key);
+    return null;
+  };
+
+  const setSetting = async (key, value) => {
+    if (typeof adapter.setSetting === 'function') await adapter.setSetting(key, value);
+  };
+
+  const getJwtTtlSeconds = async () => {
+    const v = await getSetting('jwt_ttl_seconds');
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? n : 86400;
+  };
+
+  const setJwtTtlSeconds = async (sec) => {
+    await setSetting('jwt_ttl_seconds', String(Math.max(60, Math.min(31536000, sec))));
+  };
+
+  const savePushSubscription = async (subscriberId, subscription) => {
+    if (typeof adapter.savePushSubscription === 'function') {
+      return adapter.savePushSubscription(subscriberId, subscription);
+    }
+    return null;
+  };
+
+  const getPushSubscription = async (subscriberId) => {
+    if (typeof adapter.getPushSubscription === 'function') {
+      return adapter.getPushSubscription(subscriberId);
+    }
+    return null;
+  };
+
+  const isAdmin = async (subscriberId) => {
+    const sub = await getSubscriberById(subscriberId);
+    return !!(sub && (sub.role === 'admin' || sub.isAdmin));
+  };
+
   return {
     adapter,
     readSubscribers,
@@ -307,10 +437,30 @@ export function createPersistence(paths = {}, options = {}) {
     listSubscribers,
     getSubscriberById,
     upsertSubscriber,
+    getCallById,
     listPendingCalls,
     createCall,
     updateCallStatus,
     cleanupCalls,
+    listContacts,
+    addContact,
+    removeContact,
+    listMessages,
+    insertMessage,
+    listContactRequests,
+    listOutgoingContactRequests,
+    createContactRequest,
+    getContactRequestById,
+    updateContactRequestStatus,
+    savePushSubscription,
+    getPushSubscription,
+    getSubscriberByLogin,
+    insertSubscriber,
+    isAdmin,
+    getSetting,
+    setSetting,
+    getJwtTtlSeconds,
+    setJwtTtlSeconds,
   };
 }
 

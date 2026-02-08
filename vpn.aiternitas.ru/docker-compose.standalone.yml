@@ -1,0 +1,24 @@
+# vpn-tor only - web runs via systemd
+services:
+  vpn-tor:
+    build: ./docker/vpn-tor
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    ports:
+      - "51820:51820/udp"
+      - "9999:9999"
+    volumes:
+      - vpn-config:/config
+    environment:
+      - INTERNAL_SUBNET=10.0.0
+      - LISTEN_PORT=51820
+      - EXIT_COUNTRY=de
+      - TOR_ENABLED=0
+    restart: unless-stopped
+
+volumes:
+  vpn-config:

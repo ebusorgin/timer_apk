@@ -1,0 +1,7 @@
+# Production override: bind mount for prisma to preserve existing DB
+services:
+  web:
+    volumes:
+      - ./prisma-data:/app/prisma
+    environment:
+      - DATABASE_URL=file:/app/prisma/prod.db

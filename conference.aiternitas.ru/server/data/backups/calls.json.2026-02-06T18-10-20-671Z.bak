@@ -1,0 +1,46 @@
+{
+  "calls": [
+    {
+      "id": "call_1770401372630_4pa5oo",
+      "from": {
+        "id": "caller1",
+        "name": "Caller"
+      },
+      "to": {
+        "id": "callee1",
+        "name": "Callee"
+      },
+      "createdAt": 1770401372630,
+      "updatedAt": 1770401372630,
+      "status": "pending"
+    },
+    {
+      "id": "call_1770401372666_0qa7h2",
+      "from": {
+        "id": "caller1",
+        "name": "Caller"
+      },
+      "to": {
+        "id": "callee2",
+        "name": "Callee2"
+      },
+      "createdAt": 1770401372666,
+      "updatedAt": 1770401372666,
+      "status": "pending"
+    },
+    {
+      "id": "call_1770401372689_rfd0uj",
+      "from": {
+        "id": "caller1",
+        "name": "Caller"
+      },
+      "to": {
+        "id": "callee3",
+        "name": "Неизвестный"
+      },
+      "createdAt": 1770401372689,
+      "updatedAt": 1770401372703,
+      "status": "acknowledged"
+    }
+  ]
+}

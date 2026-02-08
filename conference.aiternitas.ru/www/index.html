@@ -2,93 +2,263 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Severomorets Conference</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Conference</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=1.0.2">
+    <link rel="stylesheet" href="css/styles.css?v=2.0.1">
 </head>
 <body>
     <div id="app">
-        <!-- Экран подключения -->
-        <div id="connectScreen" class="screen active">
-            <div class="container">
-                <h1>Severomorets</h1>
-                <p class="subtitle">Secure Voice & Video Conference</p>
-                
-                <div class="connect-actions">
-                    <button id="btnConnect" class="btn btn-primary">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                            <polyline points="10 17 15 12 10 7"/>
-                            <line x1="15" y1="12" x2="3" y2="12"/>
-                        </svg>
-                        Войти в конференцию
-                    </button>
+        <!-- Экран входа -->
+        <div id="landingScreen" class="screen">
+            <div class="container container-narrow">
+                <h1>Conference</h1>
+                <p class="subtitle">Secure Voice & Video</p>
+                <!-- Переключатель Вход / Регистрация -->
+                <div class="auth-tabs">
+                    <button id="authTabLogin" class="auth-tab active">Вход</button>
+                    <button id="authTabRegister" class="auth-tab">Регистрация</button>
                 </div>
-                <div id="connectStatusMessage" class="status-message"></div>
+                <!-- Форма входа -->
+                <div id="loginForm" class="landing-form">
+                    <input id="inputLogin" type="text" placeholder="Логин" maxlength="128" autocomplete="username">
+                    <input id="inputLoginPassword" type="password" placeholder="Пароль" maxlength="128" autocomplete="current-password">
+                    <button id="btnLogin" class="btn btn-primary btn-block" disabled>Войти</button>
+                    <p id="loginError" class="auth-error" role="alert" aria-live="polite"></p>
+                </div>
+                <!-- Форма регистрации -->
+                <div id="registerForm" class="landing-form" style="display:none;">
+                    <input id="inputRegLogin" type="text" placeholder="Логин" maxlength="64" autocomplete="username">
+                    <input id="inputRegName" type="text" placeholder="Ваше имя" maxlength="64" autocomplete="name">
+                    <input id="inputRegPassword" type="password" placeholder="Пароль (мин. 4 символа)" maxlength="128" autocomplete="new-password">
+                    <button id="btnRegister" class="btn btn-primary btn-block" disabled>Зарегистрироваться</button>
+                    <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
+                    <input id="inputNameLanding" type="hidden">
+                </div>
             </div>
         </div>
 
-        <!-- Экран конференции -->
+        <!-- Главное приложение (WhatsApp-стиль) -->
+        <div id="mainAppScreen" class="screen">
+            <!-- Верхняя шапка -->
+            <header class="app-header">
+                <div id="headerUser" class="header-user">
+                    <div id="headerAvatar" class="header-avatar" title="Настройки"></div>
+                    <span id="headerUserName" class="header-user-name"></span>
+                </div>
+                <div class="app-header-actions">
+                    <button id="btnGlobalSearch" class="icon-btn" title="Поиск" aria-label="Поиск"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+                    <button id="btnOpenSettings" class="icon-btn" title="Настройки" aria-label="Настройки"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+                </div>
+            </header>
+
+            <!-- Табы -->
+            <nav class="tab-bar">
+                <button class="tab-btn active" data-tab="chats">Чаты</button>
+                <button class="tab-btn" data-tab="calls">Звонки</button>
+                <button class="tab-btn" data-tab="contacts">Контакты</button>
+            </nav>
+
+            <!-- Содержимое табов -->
+            <div class="tab-content">
+                <!-- Таб: Чаты -->
+                <div id="tabChats" class="tab-panel active">
+                    <div id="chatsList" class="list-view"></div>
+                    <div id="chatsEmpty" class="empty-state">Нет чатов. Добавьте контакты и начните общение.</div>
+                </div>
+
+                <!-- Таб: Звонки -->
+                <div id="tabCalls" class="tab-panel">
+                    <div class="calls-header-actions">
+                        <button id="btnCreateRoom" class="btn btn-small btn-secondary">Создать комнату</button>
+                        <button id="btnJoinRoom" class="btn btn-small btn-primary">Войти в комнату</button>
+                    </div>
+                    <div id="callHistory" class="list-view"></div>
+                    <div id="callsEmpty" class="empty-state">Нет звонков.</div>
+                </div>
+
+                <!-- Таб: Контакты -->
+                <div id="tabContacts" class="tab-panel">
+                    <div class="search-wrap">
+                        <input id="inputSearch" type="text" placeholder="Поиск по базе..." maxlength="64">
+                        <div id="searchResults" class="search-results" style="display:none;"></div>
+                    </div>
+                    <div id="contactRequestsBanner" class="contact-requests-banner" style="display:none;">
+                        <button id="btnShowRequests" class="btn btn-small btn-accent btn-block">Запросы (<span id="requestsCount">0</span>)</button>
+                    </div>
+                    <div id="contactRequestsList" class="contact-requests-list" style="display:none;"></div>
+                    <div id="myContactsList" class="list-view"></div>
+                    <div id="contactsEmpty" class="empty-state">Нет контактов. Используйте поиск.</div>
+                </div>
+            </div>
+
+            <!-- Глобальный поиск (оверлей) -->
+            <div id="globalSearchOverlay" class="overlay" style="display:none;">
+                <div class="overlay-header">
+                    <button id="btnCloseGlobalSearch" class="icon-btn" aria-label="Закрыть поиск"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+                    <input id="inputGlobalSearch" type="text" placeholder="Поиск..." maxlength="64" autofocus>
+                </div>
+                <div id="globalSearchResults" class="list-view"></div>
+            </div>
+
+            <!-- Экран чата (оверлей) -->
+            <div id="chatScreen" class="overlay" style="display:none;">
+                <div class="overlay-header">
+                    <button id="btnBackFromChat" class="icon-btn" aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+                    <span id="chatContactName" class="overlay-title"></span>
+                    <div class="overlay-actions">
+                        <button id="btnAudioCallFromChat" class="icon-btn" title="Аудио-звонок"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
+                        <button id="btnVideoCallFromChat" class="icon-btn" title="Видео-звонок"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+                    </div>
+                </div>
+                <div id="chatMessages" class="chat-messages"></div>
+                <div id="typingIndicator" class="typing-indicator" style="display:none;"><span></span> печатает...</div>
+                <div class="chat-input-wrap">
+                    <input id="inputChatMessage" type="text" placeholder="Сообщение..." maxlength="4096">
+                    <button id="btnSendMessage" class="icon-btn send-btn" aria-label="Отправить сообщение"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+                </div>
+            </div>
+
+            <!-- Профиль контакта (оверлей) -->
+            <div id="contactProfile" class="overlay" style="display:none;">
+                <div class="overlay-header">
+                    <button id="btnBackFromProfile" class="icon-btn" aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+                    <span class="overlay-title">Профиль</span>
+                </div>
+                <div class="profile-body">
+                    <div class="profile-avatar" id="profileAvatar"></div>
+                    <h2 id="profileName" class="profile-name"></h2>
+                    <span id="profilePresence" class="profile-presence"></span>
+                    <p id="profileId" class="profile-id"></p>
+                    <div class="profile-actions">
+                        <button id="btnProfileChat" class="profile-action-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Чат</span></button>
+                        <button id="btnProfileAudioCall" class="profile-action-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Аудио</span></button>
+                        <button id="btnProfileVideoCall" class="profile-action-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg><span>Видео</span></button>
+                    </div>
+                    <div class="profile-section">
+                        <button id="btnProfileRemove" class="btn btn-danger btn-block">Удалить контакт</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Вход в комнату (оверлей) -->
+            <div id="joinRoomOverlay" class="overlay" style="display:none;">
+                <div class="overlay-header">
+                    <button id="btnBackFromJoinRoom" class="icon-btn" aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+                    <span class="overlay-title">Войти в комнату</span>
+                </div>
+                <div class="overlay-body" style="padding:24px;">
+                    <label for="inputRoomId">ID комнаты</label>
+                    <input id="inputRoomId" type="text" placeholder="general" maxlength="64" autocomplete="off">
+                    <input id="inputDisplayName" type="hidden">
+                    <button id="btnConnect" class="btn btn-primary btn-block" style="margin-top:16px;">Войти</button>
+                    <div id="connectStatusMessage" class="status-message"></div>
+                </div>
+            </div>
+
+            <!-- Настройки (оверлей) -->
+            <div id="settingsOverlay" class="overlay" style="display:none;">
+                <div class="overlay-header">
+                    <button id="btnBackFromSettings" class="icon-btn" aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+                    <span class="overlay-title">Настройки</span>
+                </div>
+                <div class="profile-body">
+                    <div class="settings-avatar-wrap">
+                        <div class="profile-avatar" id="settingsAvatar"></div>
+                        <label for="inputAvatarFile" class="btn btn-small btn-secondary" style="margin-top:12px;cursor:pointer;">Изменить фото</label>
+                        <input id="inputAvatarFile" type="file" accept="image/jpeg,image/png,image/webp" style="display:none;">
+                    </div>
+                    <div class="settings-form">
+                        <label for="inputSettingsName">Имя</label>
+                        <input id="inputSettingsName" type="text" maxlength="64" placeholder="Ваше имя">
+                        <button id="btnSaveProfile" class="btn btn-primary btn-block" style="margin-top:12px;">Сохранить</button>
+                    </div>
+                    <div class="settings-info">
+                        <p>Ваш ID: <span id="settingsUserId" class="settings-user-id"></span></p>
+                    </div>
+                    <div id="adminLinkSection" class="profile-section" style="display:none;">
+                        <a href="/admin.html" class="btn btn-ghost btn-block" style="text-decoration:none;text-align:center;">Админка</a>
+                    </div>
+                    <div class="profile-section">
+                        <button id="btnLogout" class="btn btn-danger btn-block">Выйти</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран P2P звонка -->
+        <div id="callScreen" class="screen">
+            <div class="call-container">
+                <div class="call-info">
+                    <div class="call-avatar" id="callAvatar"></div>
+                    <h2 id="callContactName" class="call-contact-name"></h2>
+                    <p id="callStatus" class="call-status">Вызов...</p>
+                    <p id="callTimer" class="call-timer" style="display:none;">00:00</p>
+                </div>
+                <div id="callVideoContainer" class="call-video-container" style="display:none;">
+                    <video id="remoteVideo" class="call-remote-video" autoplay playsinline></video>
+                    <video id="localVideoSmall" class="call-local-video" autoplay muted playsinline></video>
+                </div>
+                <div class="call-controls">
+                    <button id="btnCallMute" class="btn-control" title="Микрофон"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+                    <button id="btnCallVideo" class="btn-control" title="Камера"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+                    <button id="btnCallHangup" class="btn-control btn-hangup" title="Завершить"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран конференции (видео) -->
         <div id="conferenceScreen" class="screen">
             <div class="conference-container">
+                <div class="conference-header">
+                    <span id="conferenceRoomTitle" class="conference-room-title">Комната</span>
+                    <div class="conference-header-actions">
+                        <div class="invite-link-wrap">
+                            <input id="inviteLink" type="text" readonly placeholder="Ссылка-приглашение">
+                            <button id="btnCopyInvite" type="button" class="btn btn-small">Копировать</button>
+                        </div>
+                        <button id="btnChangeRoom" class="btn btn-small btn-ghost">Выйти</button>
+                    </div>
+                </div>
                 <div id="conferenceStatus" class="conference-status" style="display:none;"></div>
-                
                 <div id="videoGrid" class="video-grid">
                     <div class="video-tile self video-off">
                         <video id="localVideo" class="video-element" autoplay muted playsinline></video>
-                        <div class="video-label">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="12" cy="7" r="4"></circle>
-                            </svg>
-                            Вы
-                        </div>
+                        <div class="video-label">Вы</div>
                     </div>
                 </div>
-
                 <div id="participantsList" class="participants-list"></div>
-
                 <div class="conference-controls">
-                    <button id="btnVideo" class="btn-control video" title="Камера">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M23 7l-7 5 7 5V7z"/>
-                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                        </svg>
-                    </button>
-                    
-                    <button id="btnMute" class="btn-control" title="Микрофон">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                            <line x1="12" y1="19" x2="12" y2="23"/>
-                            <line x1="8" y1="23" x2="16" y2="23"/>
-                        </svg>
-                    </button>
-
-                    <button id="btnHangupAll" class="btn-control btn-danger" title="Завершить для всех">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
-                            <line x1="12" y1="2" x2="12" y2="12"/>
-                        </svg>
-                    </button>
-
-                    <button id="btnDisconnect" class="btn-control btn-danger" title="Отключиться">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/>
-                            <line x1="23" y1="1" x2="1" y2="23"/>
-                        </svg>
-                    </button>
+                    <button id="btnVideo" class="btn-control video" title="Камера"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
+                    <button id="btnMute" class="btn-control" title="Микрофон"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+                    <button id="btnDisconnect" class="btn-control btn-danger" title="Отключиться"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg></button>
                 </div>
-                
                 <div id="statusMessage" class="status-message"></div>
             </div>
         </div>
     </div>
 
+    <!-- Модальное окно входящего звонка -->
+    <div id="incomingCallModal" class="modal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="incoming-call-avatar" id="incomingCallAvatar"></div>
+            <h3 id="incomingCallTitle">Входящий звонок</h3>
+            <p id="incomingCallFrom" class="incoming-call-from"></p>
+            <p id="incomingCallType" class="incoming-call-type"></p>
+            <div class="modal-actions">
+                <button id="btnRejectCall" class="btn-control btn-hangup" title="Отклонить"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg></button>
+                <button id="btnAcceptCall" class="btn-control btn-accept" title="Принять"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast-уведомления -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="js/app.js?v=1.0.2"></script>
+    <script src="js/app.js?v=2.0.0"></script>
 </body>
 </html>

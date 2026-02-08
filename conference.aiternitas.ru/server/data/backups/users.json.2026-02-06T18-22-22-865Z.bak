@@ -1,0 +1,10 @@
+{
+  "users": [
+    {
+      "id": "caller1",
+      "name": "Caller",
+      "createdAt": 1770401420591,
+      "updatedAt": 1770402142855
+    }
+  ]
+}

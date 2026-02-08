@@ -1,0 +1,10 @@
+{
+  "users": [
+    {
+      "id": "search-beta",
+      "name": "Beta User",
+      "createdAt": 1770404504337,
+      "updatedAt": 1770404504337
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+macros.json
+*.log
+data/
+desktop/venv/
+desktop/build/
+desktop/dist/

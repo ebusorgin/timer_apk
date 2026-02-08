@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "id": "msg_1770404540881_tddijln5",
+      "fromId": "user-a-1770404540729",
+      "toId": "user-b-1770404540729",
+      "body": "Hello!",
+      "createdAt": 1770404540881
+    },
+    {
+      "id": "msg_1770404540931_gxzhqohn",
+      "fromId": "user-b-1770404540729",
+      "toId": "user-a-1770404540729",
+      "body": "Hi back!",
+      "createdAt": 1770404540931
+    }
+  ]
+}

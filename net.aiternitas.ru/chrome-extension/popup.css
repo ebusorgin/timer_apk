@@ -1,0 +1,28 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; color: #e4e4e7; background: #0f0f12; min-width: 300px; }
+.popup { padding: 14px 16px; }
+.popup-header { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #27272a; }
+.popup-logo { font-weight: 600; font-size: 14px; color: #e4e4e7; display: block; }
+.popup-sub { font-size: 11px; color: #71717a; }
+.status { background: #18181b; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.status-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+.status-label { color: #a1a1aa; font-size: 12px; }
+.status-value { font-weight: 500; font-size: 12px; }
+.status-value.on { color: #22c55e; }
+.status-value.off { color: #71717a; }
+.status-value.err { color: #ef4444; }
+.actions { margin-bottom: 12px; }
+.btn-scan { width: 100%; padding: 10px 14px; font-size: 13px; font-weight: 500; cursor: pointer; background: #7c3aed; color: #fff; border: none; border-radius: 8px; }
+.btn-scan:hover { background: #6d28d9; }
+.btn-scan:disabled { background: #3f3f46; color: #71717a; cursor: not-allowed; }
+.hint { font-size: 11px; color: #52525b; margin: 6px 0 0; line-height: 1.3; }
+.devices { margin-bottom: 12px; }
+.devices h3 { font-size: 11px; color: #71717a; margin: 0 0 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.devices ul { list-style: none; padding: 0; margin: 0; }
+.devices li { padding: 6px 0; font-size: 12px; border-bottom: 1px solid #27272a; display: flex; justify-content: space-between; align-items: center; }
+.devices li .name { font-weight: 500; }
+.devices li .addr { color: #71717a; font-size: 11px; }
+.devices .empty { font-size: 11px; color: #52525b; margin: 4px 0 0; }
+.popup-footer { padding-top: 10px; border-top: 1px solid #27272a; }
+.btn-open { display: block; text-align: center; padding: 8px 12px; font-size: 12px; font-weight: 500; color: #a78bfa; text-decoration: none; border: 1px solid #7c3aed; border-radius: 6px; }
+.btn-open:hover { background: #2e1065; color: #e4e4e7; }

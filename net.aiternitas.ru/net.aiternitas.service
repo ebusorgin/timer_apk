@@ -1,0 +1,14 @@
+[Unit]
+Description=net.aiternitas.ru (relay + web API)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/net
+ExecStart=/usr/bin/node server/server.mjs
+Restart=always
+EnvironmentFile=/opt/net/.env
+
+[Install]
+WantedBy=multi-user.target
