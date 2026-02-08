@@ -74,6 +74,7 @@ export async function ensureSchema(pool, logger) {
       sort_order INT DEFAULT 0
     )
   `);
+  await pool.query(`ALTER TABLE ${schema('school_types')} ADD COLUMN IF NOT EXISTS description TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS school_types_sort_idx ON ${schema('school_types')}(sort_order)`);
 
   await pool.query(`
@@ -397,20 +398,56 @@ export function createPostgresAdapter(poolConfig, logger) {
 
     async getSchoolTypes() {
       const { rows } = await pool.query(
-        `SELECT id, title, sort_order FROM ${schema('school_types')} ORDER BY sort_order, id`
+        `SELECT id, title, sort_order, description FROM ${schema('school_types')} ORDER BY sort_order, id`
       );
-      return rows.map((r) => ({ id: r.id, title: r.title, sortOrder: r.sort_order ?? 0 }));
+      return rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        sortOrder: r.sort_order ?? 0,
+        description: r.description || '',
+      }));
     },
 
-    async insertSchoolType({ id, title, sortOrder = 0 }) {
+    async insertSchoolType({ id, title, sortOrder = 0, description = '' }) {
       const { rows } = await pool.query(
-        `INSERT INTO ${schema('school_types')} (id, title, sort_order) VALUES ($1, $2, $3)
-         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, sort_order = EXCLUDED.sort_order
-         RETURNING id, title, sort_order`,
-        [id, title, sortOrder]
+        `INSERT INTO ${schema('school_types')} (id, title, sort_order, description) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, sort_order = EXCLUDED.sort_order, description = EXCLUDED.description
+         RETURNING id, title, sort_order, description`,
+        [id, title, sortOrder, description || '']
       );
       const r = rows[0];
-      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0 } : null;
+      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
+    },
+
+    async updateSchoolType(id, updates) {
+      const { title, sortOrder, description } = updates;
+      const setClauses = [];
+      const values = [];
+      let idx = 0;
+      if (title !== undefined) {
+        idx++;
+        setClauses.push(`title = $${idx}`);
+        values.push(title);
+      }
+      if (sortOrder !== undefined) {
+        idx++;
+        setClauses.push(`sort_order = $${idx}`);
+        values.push(sortOrder);
+      }
+      if (description !== undefined) {
+        idx++;
+        setClauses.push(`description = $${idx}`);
+        values.push(description);
+      }
+      if (setClauses.length === 0) return this.getSchoolTypes().then((arr) => arr.find((st) => st.id === id) || null);
+      idx++;
+      values.push(id);
+      const { rows } = await pool.query(
+        `UPDATE ${schema('school_types')} SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+        values
+      );
+      const r = rows[0];
+      return r ? { id: r.id, title: r.title, sortOrder: r.sort_order ?? 0, description: r.description || '' } : null;
     },
 
     async getDirections() {

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 
@@ -36,6 +36,8 @@ interface Direction {
 interface SchoolType {
   id: string;
   title: string;
+  description?: string;
+  sortOrder?: number;
 }
 
 interface Student {
@@ -55,7 +57,7 @@ interface Student {
       <div class="tabs">
         <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">Дашборд</button>
         <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadDirections()">Программы</button>
-        <button [class.active]="tab() === 'directions'" (click)="tab.set('directions'); loadDirections()">Направления</button>
+        <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">Направления</button>
         <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">Ученики</button>
       </div>
 
@@ -76,9 +78,17 @@ interface Student {
       }
 
       @if (tab() === 'programs') {
-        <button (click)="openProgramForm()" class="btn-add">+ Добавить программу</button>
+        <div class="programs-toolbar">
+          <select (change)="onProgramFilter($event)">
+            <option value="">Все направления</option>
+            @for (st of schoolTypes(); track st.id) {
+              <option [value]="st.id">{{ st.title }}</option>
+            }
+          </select>
+          <button (click)="openProgramForm()" class="btn-add">+ Добавить программу</button>
+        </div>
         <div class="list">
-          @for (p of adminPrograms(); track p.id) {
+          @for (p of filteredPrograms(); track p.id) {
             <div class="row">
               <div class="row-content">
                 <strong>{{ p.title }}</strong>
@@ -143,27 +153,37 @@ interface Student {
         }
       }
 
-      @if (tab() === 'directions') {
-        <button (click)="openDirectionForm()" class="btn-add">+ Добавить направление</button>
+      @if (tab() === 'schoolTypes') {
         <div class="list">
-          @for (d of adminDirections(); track d.id) {
+          @for (st of adminSchoolTypes(); track st.id) {
             <div class="row">
-              <span>{{ d.name }}</span>
+              <div class="row-content">
+                <strong>{{ st.title }}</strong>
+                @if (st.description) {
+                  <span class="muted">{{ st.description }}</span>
+                }
+              </div>
               <div class="row-actions">
-                <button (click)="editDirection(d)">Изменить</button>
-                <button (click)="deleteDirection(d)" class="btn-danger">Удалить</button>
+                <button (click)="editSchoolType(st)">Изменить</button>
               </div>
             </div>
           }
         </div>
-        @if (showDirectionForm()) {
-          <div class="modal-overlay" (click)="closeDirectionForm()">
+        @if (showSchoolTypeForm()) {
+          <div class="modal-overlay" (click)="closeSchoolTypeForm()">
             <div class="modal" (click)="$event.stopPropagation()">
-              <h3>{{ editingDirection() ? 'Редактировать направление' : 'Новое направление' }}</h3>
-              <form (ngSubmit)="saveDirection()">
-                <label>Название <input [(ngModel)]="directionForm.name" name="name" required /></label>
+              <h3>Редактировать направление</h3>
+              @if (schoolTypeError()) {
+                <div class="form-error">{{ schoolTypeError() }}</div>
+              }
+              @if (schoolTypeSuccess()) {
+                <div class="form-success">{{ schoolTypeSuccess() }}</div>
+              }
+              <form (ngSubmit)="saveSchoolType()">
+                <label>Название <input [(ngModel)]="schoolTypeForm.title" name="title" required /></label>
+                <label>Описание <textarea [(ngModel)]="schoolTypeForm.description" name="desc" rows="2" placeholder="Краткое описание для карточки"></textarea></label>
                 <div class="modal-actions">
-                  <button type="button" (click)="closeDirectionForm()">Отмена</button>
+                  <button type="button" (click)="closeSchoolTypeForm()">Отмена</button>
                   <button type="submit">Сохранить</button>
                 </div>
               </form>
@@ -205,7 +225,9 @@ interface Student {
       text-align: center;
     }
     .stat-card .num { display: block; font-size: 2rem; font-weight: 700; color: var(--color-primary); }
-    .btn-add { margin-bottom: 1rem; padding: 0.5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: var(--radius); cursor: pointer; }
+    .btn-add { padding: 0.5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: var(--radius); cursor: pointer; }
+    .programs-toolbar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .programs-toolbar select { padding: 0.5rem 1rem; border-radius: var(--radius); border: 1px solid var(--color-border); }
     .list, .students-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .row, .student-row {
       display: flex;
@@ -218,7 +240,7 @@ interface Student {
     }
     .row-content { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
     .row-actions { display: flex; gap: 0.5rem; }
-    .age { color: var(--color-muted); }
+    .age, .muted { color: var(--color-muted); font-size: 0.9rem; }
     .btn-danger { background: var(--color-error); color: white; }
     input[type="search"] {
       width: 100%;
@@ -258,16 +280,22 @@ interface Student {
   `],
 })
 export class AdminComponent implements OnInit {
-  tab = signal<'stats' | 'programs' | 'directions' | 'students'>('stats');
+  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'students'>('stats');
   stats = signal<Stats | null>(null);
   adminPrograms = signal<Program[]>([]);
+  programFilter = signal<string>('');
   adminDirections = signal<Direction[]>([]);
   schoolTypes = signal<SchoolType[]>([]);
+  adminSchoolTypes = signal<SchoolType[]>([]);
   adminStudents = signal<Student[]>([]);
   showProgramForm = signal(false);
   showDirectionForm = signal(false);
+  showSchoolTypeForm = signal(false);
   editingProgram = signal<Program | null>(null);
   editingDirection = signal<Direction | null>(null);
+  editingSchoolType = signal<SchoolType | null>(null);
+  schoolTypeError = signal<string | null>(null);
+  schoolTypeSuccess = signal<string | null>(null);
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
   selectedDirections = signal<Set<string>>(new Set());
@@ -287,6 +315,7 @@ export class AdminComponent implements OnInit {
     schedule: '',
   };
   directionForm = { name: '' };
+  schoolTypeForm = { title: '', description: '' };
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private api: ApiService) {}
@@ -295,6 +324,17 @@ export class AdminComponent implements OnInit {
     this.loadStats();
     this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
       next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
+    });
+  }
+
+  loadSchoolTypes() {
+    this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/admin/school-types').subscribe({
+      next: (r) => { if (r.success) this.adminSchoolTypes.set(r.schoolTypes); },
+      error: () => {
+        this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
+          next: (res) => { if (res.success) this.adminSchoolTypes.set(res.schoolTypes); },
+        });
+      },
     });
   }
 
@@ -308,6 +348,18 @@ export class AdminComponent implements OnInit {
     this.api.get<{ success: boolean; programs: Program[] }>('/admin/programs').subscribe({
       next: (res) => { if (res.success) this.adminPrograms.set(res.programs); },
     });
+  }
+
+  filteredPrograms = computed(() => {
+    const filter = this.programFilter();
+    const list = this.adminPrograms();
+    if (!filter) return list;
+    return list.filter((p) => (p.schoolType || 'tech') === filter);
+  });
+
+  onProgramFilter(e: Event) {
+    const v = (e.target as HTMLSelectElement).value;
+    this.programFilter.set(v);
   }
 
   loadDirections() {
@@ -496,6 +548,41 @@ export class AdminComponent implements OnInit {
     if (!confirm('Удалить направление «' + d.name + '»?')) return;
     this.api.delete<{ success: boolean }>(`/admin/directions/${d.id}`).subscribe({
       next: () => this.loadDirections(),
+    });
+  }
+
+  editSchoolType(st: SchoolType) {
+    this.editingSchoolType.set(st);
+    this.schoolTypeError.set(null);
+    this.schoolTypeSuccess.set(null);
+    this.schoolTypeForm = { title: st.title, description: st.description || '' };
+    this.showSchoolTypeForm.set(true);
+  }
+
+  closeSchoolTypeForm() {
+    this.showSchoolTypeForm.set(false);
+    this.editingSchoolType.set(null);
+    this.schoolTypeError.set(null);
+    this.schoolTypeSuccess.set(null);
+  }
+
+  saveSchoolType() {
+    const st = this.editingSchoolType();
+    if (!st) return;
+    this.schoolTypeError.set(null);
+    this.api.put<{ success: boolean; schoolType: SchoolType }>(`/admin/school-types/${st.id}`, {
+      title: this.schoolTypeForm.title.trim(),
+      description: this.schoolTypeForm.description?.trim() || '',
+    }).subscribe({
+      next: () => {
+        this.schoolTypeSuccess.set('Сохранено');
+        this.loadSchoolTypes();
+        this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
+          next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
+        });
+        setTimeout(() => this.closeSchoolTypeForm(), 800);
+      },
+      error: (err) => this.schoolTypeError.set(err.error?.error || 'Ошибка сохранения'),
     });
   }
 

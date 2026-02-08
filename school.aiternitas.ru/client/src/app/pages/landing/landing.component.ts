@@ -1,7 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ParticleCanvasComponent } from '../../components/particle-canvas/particle-canvas.component';
 import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'school-landing',
@@ -39,28 +40,16 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       <div class="container">
         <h2 class="section-title" schoolScrollReveal>Выберите направление</h2>
         <div class="school-types">
-          <a routerLink="/programs" [queryParams]="{school_type: 'tech'}" class="school-card tech" schoolScrollReveal>
-            <div class="school-card-bg" [style.background-image]="'url(' + techBg + ')'"></div>
-            <div class="school-card-body">
-              <div class="school-card-icon">⚡</div>
-              <h3>Техническая школа</h3>
-              <p>Программирование, робототехника, микроконтроллеры, нейросети, радиотехника</p>
-              <span class="school-card-arrow">→</span>
-            </div>
-          </a>
-          <a routerLink="/programs" [queryParams]="{school_type: 'art'}" class="school-card art" schoolScrollReveal>
-            <div class="school-card-bg" [style.background-image]="'url(' + artBg + ')'"></div>
-            <div class="school-card-body">
-              <div class="school-card-icon">🎨</div>
-              <h3>Художественная школа</h3>
-              <p>Рисование, живопись, графика, декоративно-прикладное искусство, дизайн</p>
-              <span class="school-card-arrow">→</span>
-            </div>
-          </a>
-        </div>
-        <div class="grid">
-          @for (d of directions; track d) {
-            <div class="card" schoolScrollReveal>{{ d }}</div>
+          @for (st of schoolTypes(); track st.id) {
+            <a [routerLink]="['/programs']" [queryParams]="{school_type: st.id}" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>
+              <div class="school-card-bg" [style.background-image]="'url(' + getBg(st.id) + ')'"></div>
+              <div class="school-card-body">
+                <div class="school-card-icon">{{ st.id === 'tech' ? '⚡' : '🎨' }}</div>
+                <h3>{{ st.title }}</h3>
+                <p>{{ st.description || '' }}</p>
+                <span class="school-card-arrow">→</span>
+              </div>
+            </a>
           }
         </div>
       </div>
@@ -299,6 +288,7 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       font-weight: 700;
       text-align: center;
       margin: 0 0 3rem;
+      color: var(--color-text);
     }
     .school-types {
       display: grid;
@@ -336,19 +326,21 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(to top, rgba(15,15,26,0.95) 0%, rgba(15,15,26,0.6) 40%, transparent 70%);
+      background: linear-gradient(to top, rgba(15,15,26,0.98) 0%, rgba(15,15,26,0.85) 35%, rgba(15,15,26,0.4) 60%, transparent 80%);
     }
     .school-card.tech .school-card-bg::after {
-      background: linear-gradient(to top, rgba(15,15,26,0.95) 0%, rgba(99,102,241,0.2) 40%, transparent 70%);
+      background: linear-gradient(to top, rgba(15,15,26,0.98) 0%, rgba(15,15,26,0.85) 35%, rgba(99,102,241,0.3) 60%, transparent 80%);
     }
     .school-card.art .school-card-bg::after {
-      background: linear-gradient(to top, rgba(15,15,26,0.95) 0%, rgba(168,85,247,0.2) 40%, transparent 70%);
+      background: linear-gradient(to top, rgba(15,15,26,0.98) 0%, rgba(15,15,26,0.85) 35%, rgba(168,85,247,0.3) 60%, transparent 80%);
     }
     .school-card-body {
       position: relative;
       z-index: 1;
       padding: 2.5rem;
       width: 100%;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.6);
     }
     .school-card.tech {
       background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(6,182,212,0.1) 100%);
@@ -366,10 +358,12 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       font-family: var(--font-display);
       font-size: 1.5rem;
       margin: 0 0 0.5rem;
+      color: inherit;
+      font-weight: 700;
     }
     .school-card p {
       margin: 0;
-      color: var(--color-muted);
+      color: rgba(255,255,255,0.95);
       line-height: 1.6;
     }
     .school-card-arrow {
@@ -377,29 +371,13 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       bottom: 2rem;
       right: 2rem;
       font-size: 1.5rem;
-      opacity: 0.6;
+      opacity: 0.9;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
       transition: transform var(--transition);
     }
     .school-card:hover .school-card-arrow {
       transform: translateX(6px);
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 1rem;
-    }
-    .card {
-      padding: 1.5rem;
-      background: var(--color-bg-card);
-      border-radius: var(--radius);
-      text-align: center;
-      font-weight: 600;
-      border: 1px solid var(--color-border);
-      transition: transform var(--transition), border-color var(--transition);
-    }
-    .card:hover {
-      transform: translateY(-4px);
-      border-color: var(--color-primary);
     }
     .cta {
       padding: 6rem 0;
@@ -583,13 +561,6 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       transform: translateY(0);
     }
     .school-card[schoolScrollReveal].revealed { transition-delay: 0.1s; }
-    .grid .card[schoolScrollReveal] { transition-duration: 0.5s; }
-    .grid .card:nth-child(1) { transition-delay: 0.05s; }
-    .grid .card:nth-child(2) { transition-delay: 0.1s; }
-    .grid .card:nth-child(3) { transition-delay: 0.15s; }
-    .grid .card:nth-child(4) { transition-delay: 0.2s; }
-    .grid .card:nth-child(5) { transition-delay: 0.25s; }
-    .grid .card:nth-child(6) { transition-delay: 0.3s; }
     @media (max-width: 768px) {
       .about-grid { grid-template-columns: 1fr; }
       .about-image { order: -1; }
@@ -603,14 +574,23 @@ import { ScrollRevealDirective } from '../../directives/scroll-reveal.directive'
       .hero-subtitle { font-size: 1rem; }
       .hero-actions { flex-direction: column; }
       .btn-hero { justify-content: center; }
-      .grid { grid-template-columns: repeat(2, 1fr); }
     }
   `],
 })
-export class LandingComponent {
-  directions = ['Программирование', 'Робототехника', 'Нейросети', 'Рисование', 'Живопись', 'Дизайн'];
-  techBg = 'tech-class.png';
-  artBg = 'art-class.png';
+export class LandingComponent implements OnInit {
+  schoolTypes = signal<{ id: string; title: string; description?: string }[]>([]);
+
+  constructor(private api: ApiService) {}
+
+  ngOnInit() {
+    this.api.get<{ success: boolean; schoolTypes: { id: string; title: string; description?: string }[] }>('/programs/meta/school-types').subscribe({
+      next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
+    });
+  }
+
+  getBg(id: string): string {
+    return id === 'tech' ? 'tech-class.png' : id === 'art' ? 'art-class.png' : 'hero-dynamic.png';
+  }
   benefits = [
     { icon: '🎯', title: 'Практика с первого дня', text: 'Минимум теории — максимум проектов. Дети сразу создают игры, роботов и рисунки.' },
     { icon: '📈', title: 'Пошаговое развитие', text: 'Программы выстроены от основ к сложным темам. Учёт возраста и предыдущего опыта.' },

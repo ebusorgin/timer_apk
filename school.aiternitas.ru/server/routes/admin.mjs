@@ -115,6 +115,25 @@ export function registerAdminRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.put('/api/admin/school-types/:id', adminAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const st = await persistence.updateSchoolType(req.params.id, {
+        title: body.title,
+        sortOrder: body.sortOrder ?? body.sort_order,
+        description: body.description,
+      });
+      if (!st) {
+        res.status(404).json({ success: false, error: 'Направление не найдено' });
+        return;
+      }
+      res.json({ success: true, schoolType: st });
+    } catch (err) {
+      log.error?.('Ошибка updateSchoolType', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка обновления' });
+    }
+  });
+
   app.get('/api/admin/directions', adminAuth, async (req, res) => {
     try {
       const directions = await persistence.getDirectionsAdmin();
