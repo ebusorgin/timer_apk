@@ -18,9 +18,14 @@
     "test": "node --test tests/server/",
     "test:client": "cd client && npm run test -- --no-watch --browsers=ChromeHeadless"
   },
-  "keywords": ["school", "education", "aiternitas"],
+  "keywords": [
+    "school",
+    "education",
+    "aiternitas"
+  ],
   "license": "ISC",
   "devDependencies": {
+    "sharp": "^0.34.5",
     "supertest": "^7.0.0"
   },
   "dependencies": {
