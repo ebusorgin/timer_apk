@@ -57,7 +57,8 @@ interface Student {
       <div class="tabs">
         <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">Дашборд</button>
         <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadDirections()">Программы</button>
-        <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">Направления</button>
+        <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">Типы школ</button>
+        <button [class.active]="tab() === 'directions'" (click)="tab.set('directions'); directionError.set(null); loadDirections()">Направления</button>
         <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">Ученики</button>
       </div>
 
@@ -172,7 +173,7 @@ interface Student {
         @if (showSchoolTypeForm()) {
           <div class="modal-overlay" (click)="closeSchoolTypeForm()">
             <div class="modal" (click)="$event.stopPropagation()">
-              <h3>Редактировать направление</h3>
+              <h3>Редактировать тип школы</h3>
               @if (schoolTypeError()) {
                 <div class="form-error">{{ schoolTypeError() }}</div>
               }
@@ -184,6 +185,45 @@ interface Student {
                 <label>Описание <textarea [(ngModel)]="schoolTypeForm.description" name="desc" rows="2" placeholder="Краткое описание для карточки"></textarea></label>
                 <div class="modal-actions">
                   <button type="button" (click)="closeSchoolTypeForm()">Отмена</button>
+                  <button type="submit">Сохранить</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        }
+      }
+
+      @if (tab() === 'directions') {
+        <div class="programs-toolbar">
+          <button (click)="openDirectionForm()" class="btn-add">+ Добавить направление</button>
+        </div>
+        @if (directionError()) {
+          <div class="form-error mb-1">{{ directionError() }}</div>
+        }
+        <div class="list">
+          @for (d of adminDirections(); track d.id) {
+            <div class="row">
+              <div class="row-content">
+                <strong>{{ d.name }}</strong>
+              </div>
+              <div class="row-actions">
+                <button (click)="editDirection(d)">Изменить</button>
+                <button (click)="deleteDirection(d)" class="btn-danger">Удалить</button>
+              </div>
+            </div>
+          }
+        </div>
+        @if (showDirectionForm()) {
+          <div class="modal-overlay" (click)="closeDirectionForm()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <h3>{{ editingDirection() ? 'Редактировать направление' : 'Новое направление' }}</h3>
+              @if (directionError()) {
+                <div class="form-error">{{ directionError() }}</div>
+              }
+              <form (ngSubmit)="saveDirection()">
+                <label>Название <input [(ngModel)]="directionForm.name" name="name" required /></label>
+                <div class="modal-actions">
+                  <button type="button" (click)="closeDirectionForm()">Отмена</button>
                   <button type="submit">Сохранить</button>
                 </div>
               </form>
@@ -272,6 +312,7 @@ interface Student {
     .modal input, .modal textarea, .modal select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
     .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
     .form-error { color: var(--color-error); margin-bottom: 1rem; }
+    .mb-1 { margin-bottom: 1rem; }
     .form-success { color: var(--color-primary); margin-bottom: 1rem; }
     .directions-checkboxes { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.25rem 0; }
     .checkbox-label { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0; font-weight: normal; cursor: pointer; }
@@ -280,7 +321,7 @@ interface Student {
   `],
 })
 export class AdminComponent implements OnInit {
-  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'students'>('stats');
+  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'directions' | 'students'>('stats');
   stats = signal<Stats | null>(null);
   adminPrograms = signal<Program[]>([]);
   programFilter = signal<string>('');
@@ -296,6 +337,7 @@ export class AdminComponent implements OnInit {
   editingSchoolType = signal<SchoolType | null>(null);
   schoolTypeError = signal<string | null>(null);
   schoolTypeSuccess = signal<string | null>(null);
+  directionError = signal<string | null>(null);
   errorMessage = signal<string | null>(null);
   successMessage = signal<string | null>(null);
   selectedDirections = signal<Set<string>>(new Set());
@@ -516,12 +558,14 @@ export class AdminComponent implements OnInit {
 
   openDirectionForm() {
     this.editingDirection.set(null);
+    this.directionError.set(null);
     this.directionForm = { name: '' };
     this.showDirectionForm.set(true);
   }
 
   editDirection(d: Direction) {
     this.editingDirection.set(d);
+    this.directionError.set(null);
     this.directionForm = { name: d.name };
     this.showDirectionForm.set(true);
   }
@@ -529,25 +573,36 @@ export class AdminComponent implements OnInit {
   closeDirectionForm() {
     this.showDirectionForm.set(false);
     this.editingDirection.set(null);
+    this.directionError.set(null);
   }
 
   saveDirection() {
+    this.directionError.set(null);
+    const name = this.directionForm.name?.trim();
+    if (!name) {
+      this.directionError.set('Название обязательно');
+      return;
+    }
     const ed = this.editingDirection();
     if (ed) {
-      this.api.put<{ success: boolean }>(`/admin/directions/${ed.id}`, { name: this.directionForm.name }).subscribe({
+      this.api.put<{ success: boolean }>(`/admin/directions/${ed.id}`, { name }).subscribe({
         next: () => { this.closeDirectionForm(); this.loadDirections(); },
+        error: (err) => this.directionError.set(err.error?.error || 'Ошибка сохранения'),
       });
     } else {
-      this.api.post<{ success: boolean }>('/admin/directions', { name: this.directionForm.name }).subscribe({
+      this.api.post<{ success: boolean }>('/admin/directions', { name }).subscribe({
         next: () => { this.closeDirectionForm(); this.loadDirections(); },
+        error: (err) => this.directionError.set(err.error?.error || 'Ошибка создания'),
       });
     }
   }
 
   deleteDirection(d: Direction) {
     if (!confirm('Удалить направление «' + d.name + '»?')) return;
-    this.api.delete<{ success: boolean }>(`/admin/directions/${d.id}`).subscribe({
-      next: () => this.loadDirections(),
+    this.directionError.set(null);
+    this.api.delete<{ success: boolean; error?: string }>(`/admin/directions/${d.id}`).subscribe({
+      next: () => { this.directionError.set(null); this.loadDirections(); },
+      error: (err) => this.directionError.set(err.error?.error || 'Не удалось удалить'),
     });
   }
 

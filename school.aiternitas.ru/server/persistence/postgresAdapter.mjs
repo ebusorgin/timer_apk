@@ -499,9 +499,24 @@ export function createPostgresAdapter(poolConfig, logger) {
 
     async deleteDirection(id) {
       const nid = normalizeId(id);
-      if (nid == null) return false;
+      if (nid == null) return { ok: false, error: 'Invalid id' };
+      const { rows: dirRows } = await pool.query(
+        `SELECT name FROM ${schema('directions')} WHERE id = $1`,
+        [nid]
+      );
+      if (dirRows.length === 0) return { ok: false, error: 'Направление не найдено' };
+      const dirName = dirRows[0].name;
+      const { rows: progRows } = await pool.query(
+        `SELECT id FROM ${schema('programs')}
+         WHERE direction = $1 OR $1 = ANY(COALESCE(directions, ARRAY[direction]))
+         LIMIT 1`,
+        [dirName]
+      );
+      if (progRows.length > 0) {
+        return { ok: false, error: 'Нельзя удалить: направление используется в программах' };
+      }
       const { rowCount } = await pool.query(`DELETE FROM ${schema('directions')} WHERE id = $1`, [nid]);
-      return rowCount > 0;
+      return rowCount > 0 ? { ok: true } : { ok: false, error: 'Направление не найдено' };
     },
 
     async close() {

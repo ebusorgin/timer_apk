@@ -170,9 +170,9 @@ export function registerAdminRoutes({ app, persistence, logger }) {
 
   app.delete('/api/admin/directions/:id', adminAuth, async (req, res) => {
     try {
-      const ok = await persistence.deleteDirection(req.params.id);
-      if (!ok) {
-        res.status(404).json({ success: false, error: 'Направление не найдено' });
+      const result = await persistence.deleteDirection(req.params.id);
+      if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error || 'Направление не найдено' });
         return;
       }
       res.json({ success: true });

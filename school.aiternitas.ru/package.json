@@ -16,7 +16,8 @@
     "seed-admin": "node scripts/seed-admin.mjs",
     "build": "cd client && npm run build",
     "test": "node --test tests/server/",
-    "test:client": "cd client && npm run test -- --no-watch --browsers=ChromeHeadless"
+    "test:client": "cd client && npm run test -- --no-watch --browsers=ChromeHeadless",
+    "optimize-images": "node scripts/optimize-images.mjs"
   },
   "keywords": [
     "school",
