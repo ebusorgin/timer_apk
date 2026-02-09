@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, HostListener } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { TranslateModule } from '@ngx-translate/core';
@@ -10,8 +10,9 @@ import { TranslateService } from '@ngx-translate/core';
   standalone: true,
   imports: [RouterLink, FormsModule, TranslateModule],
   template: `
-    <div class="container auth-page">
-      <div class="auth-card">
+    <div class="auth-overlay" (click)="close()">
+      <div class="auth-card" (click)="$event.stopPropagation()">
+        <button type="button" class="auth-close" (click)="close()" aria-label="Close">&times;</button>
         <h1>{{ 'auth.login' | translate }}</h1>
         <form (ngSubmit)="submit()">
           <input type="email" [(ngModel)]="email" name="email" [placeholder]="'auth.email' | translate" required />
@@ -24,15 +25,41 @@ import { TranslateService } from '@ngx-translate/core';
     </div>
   `,
   styles: [`
-    .auth-page { padding: 3rem 0; display: flex; justify-content: center; }
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 1rem;
+      cursor: pointer;
+    }
     .auth-card {
+      position: relative;
       width: 100%;
       max-width: 400px;
       padding: 2rem;
       background: var(--color-bg-alt);
       border-radius: var(--radius);
       box-shadow: var(--shadow-lg);
+      cursor: default;
     }
+    .auth-close {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      background: none;
+      border: none;
+      font-size: 1.75rem;
+      line-height: 1;
+      color: var(--color-muted);
+      cursor: pointer;
+      padding: 0.25rem;
+      transition: color var(--transition);
+    }
+    .auth-close:hover { color: var(--color-text); }
     .auth-card h1 { text-align: center; margin-bottom: 1.5rem; }
     input {
       width: 100%;
@@ -68,6 +95,14 @@ export class LoginComponent {
     private router: Router,
     private translate: TranslateService,
   ) {}
+
+  @HostListener('document:keydown.escape') closeOnEscape() {
+    this.close();
+  }
+
+  close() {
+    this.router.navigate(['/']);
+  }
 
   async submit() {
     this.error = '';
