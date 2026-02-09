@@ -1,8 +1,15 @@
 import { Component, OnInit, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+
+interface Group {
+  id: string;
+  title: string;
+  schedule: string;
+}
 
 interface Lesson {
   n: number;
@@ -32,7 +39,7 @@ interface Program {
 @Component({
   selector: 'school-program-detail',
   standalone: true,
-  imports: [RouterLink, TranslateModule],
+  imports: [FormsModule, RouterLink, TranslateModule],
   template: `
     <div class="container page">
       @if (loading()) {
@@ -79,9 +86,22 @@ interface Program {
           </div>
         }
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
-          <button (click)="enroll()" [disabled]="enrolling()">
-            {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
-          </button>
+          <div class="enroll-block">
+            @if (groups().length > 0) {
+              <div class="group-select">
+                <label for="group">{{ 'programDetail.selectGroup' | translate }}</label>
+                <select id="group" class="form-input" [(ngModel)]="selectedGroupId">
+                  <option value="">—</option>
+                  @for (g of groups(); track g.id) {
+                    <option [value]="g.id">{{ g.title || g.schedule }}</option>
+                  }
+                </select>
+              </div>
+            }
+            <button (click)="enroll()" [disabled]="enrolling()">
+              {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
+            </button>
+          </div>
         } @else if (!auth.isLoggedIn()) {
           <a routerLink="/register" class="btn-register">{{ 'programDetail.registerToEnroll' | translate }}</a>
         }
@@ -139,10 +159,16 @@ interface Program {
       font-size: 1rem;
     }
     .btn-register { text-decoration: none; display: inline-block; }
+    .enroll-block { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+    .group-select { display: flex; flex-direction: column; gap: 0.5rem; max-width: 280px; }
+    .group-select label { font-size: 0.9rem; color: var(--color-muted); }
+    .form-input { padding: 0.5rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--color-border); font-size: 1rem; }
   `],
 })
 export class ProgramDetailComponent implements OnInit {
   program = signal<Program | null>(null);
+  groups = signal<Group[]>([]);
+  selectedGroupId = '';
   loading = signal(true);
   enrolling = signal(false);
 
@@ -170,10 +196,21 @@ export class ProgramDetailComponent implements OnInit {
     if (!id) return;
     this.api.get<{ success: boolean; program: Program }>(`/programs/${id}`).subscribe({
       next: (res) => {
-        if (res.success) this.program.set(res.program);
+        if (res.success) {
+          this.program.set(res.program);
+          if (res.program?.id) this.loadGroups(res.program.id);
+        }
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
+    });
+  }
+
+  loadGroups(programId: string) {
+    this.api.get<{ success: boolean; groups: Group[] }>(`/programs/${programId}/groups`).subscribe({
+      next: (res) => {
+        if (res.success) this.groups.set(res.groups || []);
+      },
     });
   }
 
@@ -181,7 +218,9 @@ export class ProgramDetailComponent implements OnInit {
     const p = this.program();
     if (!p) return;
     this.enrolling.set(true);
-    this.api.post<{ success: boolean }>('/me/enrollments', { programId: p.id }).subscribe({
+    const body: { programId: string; groupId?: string } = { programId: p.id };
+    if (this.selectedGroupId) body.groupId = this.selectedGroupId;
+    this.api.post<{ success: boolean }>('/me/enrollments', body).subscribe({
       next: (res) => {
         if (res.success) alert(this.translate.instant('programDetail.enrolled'));
         this.enrolling.set(false);

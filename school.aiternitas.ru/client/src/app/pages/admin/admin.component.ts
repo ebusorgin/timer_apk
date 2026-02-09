@@ -56,8 +56,30 @@ interface Enrollment {
   studentEmail: string;
   programTitle: string;
   programId: string;
+  groupId?: string | null;
+  groupTitle?: string;
+  groupSchedule?: string;
   status: string;
+  progress?: number;
   enrolledAt: number;
+}
+
+interface Group {
+  id: string;
+  programId: string;
+  programTitle: string;
+  title: string;
+  schedule: string;
+  maxStudents: number;
+}
+
+interface Homework {
+  id: string;
+  groupId: string;
+  lessonN: number;
+  title: string;
+  description: string;
+  dueAt?: number | null;
 }
 
 @Component({
@@ -70,9 +92,10 @@ interface Enrollment {
       <div class="tabs">
         <button [class.active]="tab() === 'stats'" (click)="tab.set('stats')">{{ 'admin.tabStats' | translate }}</button>
         <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadSchoolTypes()">{{ 'admin.tabPrograms' | translate }}</button>
+        <button [class.active]="tab() === 'groups'" (click)="tab.set('groups'); loadGroups(); loadPrograms()">{{ 'admin.tabGroups' | translate }}</button>
         <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">{{ 'admin.tabSchoolTypes' | translate }}</button>
         <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">{{ 'admin.tabStudents' | translate }}</button>
-        <button [class.active]="tab() === 'enrollments'" (click)="tab.set('enrollments'); loadEnrollments()">{{ 'admin.tabEnrollments' | translate }}</button>
+        <button [class.active]="tab() === 'enrollments'" (click)="tab.set('enrollments'); loadEnrollments(); loadGroups()">{{ 'admin.tabEnrollments' | translate }}</button>
       </div>
 
       @if (tab() === 'stats') {
@@ -312,6 +335,121 @@ interface Enrollment {
         }
       }
 
+      @if (tab() === 'groups') {
+        <div class="programs-toolbar">
+          <button (click)="openGroupForm()" class="btn-add">{{ 'admin.addGroup' | translate }}</button>
+        </div>
+        @if (loadingGroups()) {
+          <p class="loading-text">{{ 'admin.loading' | translate }}</p>
+        } @else if (adminGroups().length === 0) {
+          <p class="empty-state">{{ 'admin.noGroups' | translate }}</p>
+        } @else {
+          <div class="list">
+            @for (g of adminGroups(); track g.id) {
+              <div class="row">
+                <div class="row-content">
+                  <strong>{{ g.title || g.programTitle }}</strong>
+                  <span class="muted">{{ g.programTitle }}</span>
+                  <span class="schedule">{{ g.schedule }}</span>
+                </div>
+                <div class="row-actions">
+                  <button (click)="editGroup(g)">{{ 'admin.edit' | translate }}</button>
+                  <button (click)="openHomeworkForm(g)">{{ 'admin.homework' | translate }}</button>
+                  <button (click)="openAnnouncementForm(g)">{{ 'admin.announcement' | translate }}</button>
+                  <button (click)="deleteGroup(g)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+        @if (showGroupForm()) {
+          <div class="modal-overlay" (click)="closeGroupForm()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ (editingGroup() ? 'admin.edit' : 'admin.addGroup') | translate }} {{ 'admin.tabGroups' | translate }}</h3>
+                <button type="button" class="modal-close" (click)="closeGroupForm()">×</button>
+              </div>
+              <form (ngSubmit)="saveGroup()" class="modal-body">
+                <div class="form-row">
+                  <label class="form-label">{{ 'admin.groupProgram' | translate }}</label>
+                  <select [(ngModel)]="groupForm.programId" name="programId" class="form-input" required>
+                    @for (p of adminPrograms(); track p.id) {
+                      <option [value]="p.id">{{ p.title }}</option>
+                    }
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label class="form-label">{{ 'admin.groupTitle' | translate }}</label>
+                  <input [(ngModel)]="groupForm.title" name="title" class="form-input" placeholder="Группа А" />
+                </div>
+                <div class="form-row">
+                  <label class="form-label">{{ 'admin.groupSchedule' | translate }}</label>
+                  <input [(ngModel)]="groupForm.schedule" name="schedule" class="form-input" placeholder="Пн 16:00, Ср 16:00" required />
+                </div>
+                <div class="modal-actions">
+                  <button type="button" (click)="closeGroupForm()" class="btn-secondary">{{ 'admin.cancel' | translate }}</button>
+                  <button type="submit" class="btn-primary">{{ 'admin.save' | translate }}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        }
+        @if (showHomeworkForm()) {
+          <div class="modal-overlay" (click)="closeHomeworkForm()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ 'admin.homework' | translate }}: {{ homeworkGroup()?.title || homeworkGroup()?.programTitle }}</h3>
+                <button type="button" class="modal-close" (click)="closeHomeworkForm()">×</button>
+              </div>
+              <div class="modal-body">
+                @if (groupHomework().length > 0) {
+                  <div class="homework-list">
+                    @for (hw of groupHomework(); track hw.id) {
+                      <div class="homework-item">
+                        <strong>{{ hw.title }}</strong> — {{ 'programDetail.lesson' | translate }} {{ hw.lessonN }}
+                      </div>
+                    }
+                  </div>
+                }
+                <form (ngSubmit)="saveHomework()" class="form-section">
+                  <label class="form-label">{{ 'admin.homeworkLesson' | translate }}</label>
+                  <input type="number" [(ngModel)]="homeworkForm.lessonN" name="lessonN" class="form-input" min="1" />
+                  <label class="form-label">{{ 'admin.homeworkTitle' | translate }}</label>
+                  <input [(ngModel)]="homeworkForm.title" name="title" class="form-input" required />
+                  <label class="form-label">{{ 'admin.description' | translate }}</label>
+                  <textarea [(ngModel)]="homeworkForm.description" name="desc" class="form-input form-textarea" rows="3"></textarea>
+                  <button type="submit" class="btn-primary">{{ 'admin.addHomework' | translate }}</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        }
+        @if (showAnnouncementForm()) {
+          <div class="modal-overlay" (click)="closeAnnouncementForm()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ 'admin.addAnnouncement' | translate }}: {{ announcementGroup()?.title || announcementGroup()?.programTitle }}</h3>
+                <button type="button" class="modal-close" (click)="closeAnnouncementForm()">×</button>
+              </div>
+              <form (ngSubmit)="saveAnnouncement()" class="modal-body">
+                <div class="form-row">
+                  <label class="form-label">{{ 'admin.announcementTitle' | translate }}</label>
+                  <input [(ngModel)]="announcementForm.title" name="title" class="form-input" required />
+                </div>
+                <div class="form-row">
+                  <label class="form-label">{{ 'admin.announcementBody' | translate }}</label>
+                  <textarea [(ngModel)]="announcementForm.body" name="body" class="form-input form-textarea" rows="4"></textarea>
+                </div>
+                <div class="modal-actions">
+                  <button type="button" (click)="closeAnnouncementForm()" class="btn-secondary">{{ 'admin.cancel' | translate }}</button>
+                  <button type="submit" class="btn-primary">{{ 'admin.save' | translate }}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        }
+      }
+
       @if (tab() === 'schoolTypes') {
         <div class="school-types-toolbar">
           <button (click)="openSchoolTypeForm()" class="btn-add">{{ 'admin.addSchoolType' | translate }}</button>
@@ -436,6 +574,8 @@ interface Enrollment {
             <div class="enrollments-header">
               <span>{{ 'admin.enrollmentStudent' | translate }}</span>
               <span>{{ 'admin.enrollmentProgram' | translate }}</span>
+              <span>{{ 'admin.assignGroup' | translate }}</span>
+              <span>{{ 'admin.progress' | translate }}</span>
               <span>{{ 'admin.enrollmentDate' | translate }}</span>
               <span>{{ 'admin.status' | translate }}</span>
             </div>
@@ -446,6 +586,13 @@ interface Enrollment {
                   <span class="enrollment-email">{{ e.studentEmail }}</span>
                 </div>
                 <a [routerLink]="['/programs', e.programId]" class="enrollment-program">{{ e.programTitle }}</a>
+                <select class="form-input form-input-sm" [value]="e.groupId || ''" (change)="assignEnrollmentGroup(e.id, $event)">
+                  <option value="">—</option>
+                  @for (g of getGroupsForProgram(e.programId); track g.id) {
+                    <option [value]="g.id">{{ g.title || g.schedule }}</option>
+                  }
+                </select>
+                <input type="number" class="form-input form-input-sm progress-input" min="0" max="100" [value]="e.progress ?? 0" (change)="updateEnrollmentProgress(e.id, $event)" />
                 <span class="enrollment-date">{{ formatDate(e.enrolledAt) }}</span>
                 <span class="enrollment-status">{{ e.status }}</span>
               </div>
@@ -510,8 +657,8 @@ interface Enrollment {
     .student-name { font-weight: 600; }
     .student-email { font-size: 0.9rem; color: var(--color-muted); }
     .search-input { margin-bottom: 1rem; }
-    .enrollments-header { display: grid; grid-template-columns: 1fr 1fr minmax(80px,auto) minmax(70px,auto); gap: 1rem; padding: 0.75rem 1rem; background: var(--color-bg); border-radius: var(--radius); margin-bottom: 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-muted); }
-    .enrollment-row { display: grid; grid-template-columns: 1fr 1fr minmax(80px,auto) minmax(70px,auto); gap: 1rem; padding: 0.75rem 1rem; background: var(--color-bg-alt); border-radius: var(--radius); align-items: center; margin-bottom: 0.5rem; }
+    .enrollments-header { display: grid; grid-template-columns: 1fr 1fr minmax(120px,auto) minmax(60px,auto) minmax(80px,auto) minmax(70px,auto); gap: 1rem; padding: 0.75rem 1rem; background: var(--color-bg); border-radius: var(--radius); margin-bottom: 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-muted); }
+    .enrollment-row { display: grid; grid-template-columns: 1fr 1fr minmax(120px,auto) minmax(60px,auto) minmax(80px,auto) minmax(70px,auto); gap: 1rem; padding: 0.75rem 1rem; background: var(--color-bg-alt); border-radius: var(--radius); align-items: center; margin-bottom: 0.5rem; }
     .enrollment-student { display: flex; flex-direction: column; gap: 0.1rem; }
     .enrollment-name { font-weight: 600; }
     .enrollment-email { font-size: 0.85rem; color: var(--color-muted); }
@@ -680,19 +827,31 @@ interface Enrollment {
   `],
 })
 export class AdminComponent implements OnInit {
-  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'students' | 'enrollments'>('stats');
+  tab = signal<'stats' | 'programs' | 'groups' | 'schoolTypes' | 'students' | 'enrollments'>('stats');
   stats = signal<Stats | null>(null);
   loadingStats = signal(true);
   loadingPrograms = signal(false);
   loadingSchoolTypes = signal(false);
   loadingStudents = signal(false);
   loadingEnrollments = signal(false);
+  loadingGroups = signal(false);
   adminPrograms = signal<Program[]>([]);
   programFilter = signal<string>('');
   schoolTypes = signal<SchoolType[]>([]);
   adminSchoolTypes = signal<SchoolType[]>([]);
   adminStudents = signal<Student[]>([]);
   adminEnrollments = signal<Enrollment[]>([]);
+  adminGroups = signal<Group[]>([]);
+  showGroupForm = signal(false);
+  editingGroup = signal<Group | null>(null);
+  groupForm = { programId: '', title: '', schedule: '' };
+  showHomeworkForm = signal(false);
+  homeworkGroup = signal<Group | null>(null);
+  showAnnouncementForm = signal(false);
+  announcementGroup = signal<Group | null>(null);
+  announcementForm = { title: '', body: '' };
+  groupHomework = signal<Homework[]>([]);
+  homeworkForm = { lessonN: 1, title: '', description: '' };
   showProgramForm = signal(false);
   showSchoolTypeForm = signal(false);
   editingProgram = signal<Program | null>(null);
@@ -818,6 +977,132 @@ export class AdminComponent implements OnInit {
         this.loadingEnrollments.set(false);
       },
       error: () => this.loadingEnrollments.set(false),
+    });
+  }
+
+  loadGroups() {
+    this.loadingGroups.set(true);
+    this.api.get<{ success: boolean; groups: Group[] }>('/admin/groups').subscribe({
+      next: (res) => {
+        if (res.success) this.adminGroups.set(res.groups);
+        this.loadingGroups.set(false);
+      },
+      error: () => this.loadingGroups.set(false),
+    });
+  }
+
+  openGroupForm() {
+    this.editingGroup.set(null);
+    this.groupForm = { programId: this.adminPrograms()[0]?.id || '', title: '', schedule: '' };
+    this.showGroupForm.set(true);
+  }
+
+  editGroup(g: Group) {
+    this.editingGroup.set(g);
+    this.groupForm = { programId: g.programId, title: g.title || '', schedule: g.schedule || '' };
+    this.showGroupForm.set(true);
+  }
+
+  closeGroupForm() {
+    this.showGroupForm.set(false);
+    this.editingGroup.set(null);
+  }
+
+  saveGroup() {
+    if (!this.groupForm.programId || !this.groupForm.schedule?.trim()) return;
+    const body = { programId: this.groupForm.programId, title: this.groupForm.title?.trim() || '', schedule: this.groupForm.schedule.trim() };
+    const g = this.editingGroup();
+    if (g) {
+      this.api.put<{ success: boolean }>(`/admin/groups/${g.id}`, body).subscribe({
+        next: () => { this.loadGroups(); this.closeGroupForm(); },
+      });
+    } else {
+      this.api.post<{ success: boolean }>('/admin/groups', body).subscribe({
+        next: () => { this.loadGroups(); this.closeGroupForm(); },
+      });
+    }
+  }
+
+  deleteGroup(g: Group) {
+    if (!confirm(`Удалить группу «${g.title || g.programTitle}»?`)) return;
+    this.api.delete<{ success: boolean }>(`/admin/groups/${g.id}`).subscribe({
+      next: () => this.loadGroups(),
+    });
+  }
+
+  openHomeworkForm(g: Group) {
+    this.homeworkGroup.set(g);
+    this.homeworkForm = { lessonN: 1, title: '', description: '' };
+    this.api.get<{ success: boolean; homework: Homework[] }>(`/admin/groups/${g.id}/homework`).subscribe({
+      next: (res) => { if (res.success) this.groupHomework.set(res.homework); },
+    });
+    this.showHomeworkForm.set(true);
+  }
+
+  closeHomeworkForm() {
+    this.showHomeworkForm.set(false);
+    this.homeworkGroup.set(null);
+  }
+
+  openAnnouncementForm(g: Group) {
+    this.announcementGroup.set(g);
+    this.announcementForm = { title: '', body: '' };
+    this.showAnnouncementForm.set(true);
+  }
+
+  closeAnnouncementForm() {
+    this.showAnnouncementForm.set(false);
+    this.announcementGroup.set(null);
+  }
+
+  saveAnnouncement() {
+    const g = this.announcementGroup();
+    if (!g || !this.announcementForm.title.trim()) return;
+    this.api.post<{ success: boolean }>('/admin/announcements', {
+      groupId: g.id,
+      title: this.announcementForm.title.trim(),
+      body: this.announcementForm.body.trim(),
+    }).subscribe({
+      next: () => {
+        this.closeAnnouncementForm();
+      },
+    });
+  }
+
+  getGroupsForProgram(programId: string): Group[] {
+    return this.adminGroups().filter((g) => g.programId === programId);
+  }
+
+  assignEnrollmentGroup(enrollmentId: string, ev: Event) {
+    const v = (ev.target as HTMLSelectElement).value;
+    this.api.put<{ success: boolean }>(`/admin/enrollments/${enrollmentId}/group`, { groupId: v || null }).subscribe({
+      next: () => this.loadEnrollments(),
+    });
+  }
+
+  updateEnrollmentProgress(enrollmentId: string, ev: Event) {
+    const v = (ev.target as HTMLInputElement).value;
+    const p = Math.min(100, Math.max(0, parseInt(v, 10) || 0));
+    this.api.put<{ success: boolean }>(`/admin/enrollments/${enrollmentId}/progress`, { progress: p }).subscribe({
+      next: () => this.loadEnrollments(),
+    });
+  }
+
+  saveHomework() {
+    const g = this.homeworkGroup();
+    if (!g || !this.homeworkForm.title?.trim()) return;
+    this.api.post<{ success: boolean }>('/admin/homework', {
+      groupId: g.id,
+      lessonN: this.homeworkForm.lessonN || 1,
+      title: this.homeworkForm.title.trim(),
+      description: this.homeworkForm.description?.trim() || '',
+    }).subscribe({
+      next: () => {
+        this.homeworkForm = { lessonN: 1, title: '', description: '' };
+        this.api.get<{ success: boolean; homework: Homework[] }>(`/admin/groups/${g.id}/homework`).subscribe({
+          next: (res) => { if (res.success) this.groupHomework.set(res.homework); },
+        });
+      },
     });
   }
 

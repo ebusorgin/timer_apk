@@ -25,6 +25,25 @@ export function registerMeRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.put('/api/me/profile', auth, async (req, res) => {
+    try {
+      const { name } = req.body || {};
+      if (!name || typeof name !== 'string') {
+        res.status(400).json({ success: false, error: 'Имя обязательно' });
+        return;
+      }
+      const updated = await persistence.updateUser?.(req.userId, { name });
+      if (!updated) {
+        res.status(404).json({ success: false, error: 'Пользователь не найден' });
+        return;
+      }
+      res.json({ success: true, user: { id: updated.id, email: updated.email, name: updated.name, role: updated.role } });
+    } catch (err) {
+      log.error?.('Ошибка updateProfile', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка сохранения' });
+    }
+  });
+
   app.get('/api/me/enrollments', auth, async (req, res) => {
     try {
       const enrollments = await persistence.getEnrollmentsByUserId(req.userId, getLocale(req));
@@ -35,15 +54,35 @@ export function registerMeRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.get('/api/me/announcements', auth, async (req, res) => {
+    try {
+      const announcements = await persistence.getAnnouncementsByUserId?.(req.userId);
+      res.json({ success: true, announcements: announcements || [] });
+    } catch (err) {
+      log.error?.('Ошибка getAnnouncements', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка загрузки' });
+    }
+  });
+
+  app.get('/api/me/homework', auth, async (req, res) => {
+    try {
+      const homework = await persistence.getHomeworkByUserId?.(req.userId);
+      res.json({ success: true, homework: homework || [] });
+    } catch (err) {
+      log.error?.('Ошибка getHomework', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка загрузки' });
+    }
+  });
+
   app.post('/api/me/enrollments', auth, async (req, res) => {
     try {
-      const { programId } = req.body || {};
+      const { programId, groupId } = req.body || {};
       const user = await persistence.getUserById(req.userId);
       if (user?.role !== 'student') {
         res.status(403).json({ success: false, error: 'Только ученики могут записываться' });
         return;
       }
-      const enrollment = await persistence.enrollUser(req.userId, programId);
+      const enrollment = await persistence.enrollUser(req.userId, programId, groupId);
       if (!enrollment) {
         res.status(400).json({ success: false, error: 'Программа не найдена или уже записан' });
         return;

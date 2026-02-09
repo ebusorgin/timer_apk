@@ -63,4 +63,14 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
       res.status(500).json({ success: false, error: 'Ошибка загрузки' });
     }
   });
+
+  app.get('/api/programs/:id/groups', async (req, res) => {
+    try {
+      const groups = await persistence.getGroupsByProgramId?.(req.params.id);
+      res.json({ success: true, groups: groups || [] });
+    } catch (err) {
+      log.error?.('Ошибка getGroups', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка загрузки групп' });
+    }
+  });
 }

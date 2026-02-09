@@ -79,6 +79,10 @@ export class AuthService {
     this.router.navigate(['/']);
   }
 
+  updateUserData(user: User) {
+    this.userSignal.set(user);
+  }
+
   isAdmin() {
     return this.userSignal()?.role === 'admin';
   }

@@ -31,6 +31,167 @@ export function registerAdminRoutes({ app, persistence, logger }) {
     }
   });
 
+  app.get('/api/admin/groups', adminAuth, async (req, res) => {
+    try {
+      const { programId } = req.query || {};
+      const groups = await persistence.getAllGroups?.({ programId: programId || undefined });
+      res.json({ success: true, groups: groups || [] });
+    } catch (err) {
+      log.error?.('Ошибка getGroups', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.post('/api/admin/groups', adminAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const group = await persistence.createGroup?.({
+        programId: body.programId,
+        title: body.title || '',
+        schedule: body.schedule || '',
+        maxStudents: body.maxStudents ?? 10,
+      });
+      if (!group) {
+        res.status(400).json({ success: false, error: 'Ошибка создания группы' });
+        return;
+      }
+      res.json({ success: true, group });
+    } catch (err) {
+      log.error?.('Ошибка createGroup', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.put('/api/admin/groups/:id', adminAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const group = await persistence.updateGroup?.(req.params.id, {
+        title: body.title,
+        schedule: body.schedule,
+        maxStudents: body.maxStudents,
+        status: body.status,
+      });
+      if (!group) {
+        res.status(404).json({ success: false, error: 'Группа не найдена' });
+        return;
+      }
+      res.json({ success: true, group });
+    } catch (err) {
+      log.error?.('Ошибка updateGroup', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.delete('/api/admin/groups/:id', adminAuth, async (req, res) => {
+    try {
+      const ok = await persistence.deleteGroup?.(req.params.id);
+      if (!ok) {
+        res.status(404).json({ success: false, error: 'Группа не найдена' });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err) {
+      log.error?.('Ошибка deleteGroup', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.put('/api/admin/enrollments/:id/group', adminAuth, async (req, res) => {
+    try {
+      const { groupId } = req.body || {};
+      const enrollment = await persistence.updateEnrollmentGroup?.(req.params.id, groupId || null);
+      if (!enrollment) {
+        res.status(404).json({ success: false, error: 'Запись не найдена' });
+        return;
+      }
+      res.json({ success: true, enrollment });
+    } catch (err) {
+      log.error?.('Ошибка updateEnrollmentGroup', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.put('/api/admin/enrollments/:id/progress', adminAuth, async (req, res) => {
+    try {
+      const { progress } = req.body || {};
+      const enrollment = await persistence.updateEnrollmentProgress?.(req.params.id, progress);
+      if (!enrollment) {
+        res.status(404).json({ success: false, error: 'Запись не найдена' });
+        return;
+      }
+      res.json({ success: true, enrollment });
+    } catch (err) {
+      log.error?.('Ошибка updateEnrollmentProgress', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.get('/api/admin/groups/:id/homework', adminAuth, async (req, res) => {
+    try {
+      const homework = await persistence.getHomeworkByGroupId?.(req.params.id);
+      res.json({ success: true, homework: homework || [] });
+    } catch (err) {
+      log.error?.('Ошибка getHomework', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.post('/api/admin/homework', adminAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const hw = await persistence.createHomework?.({
+        groupId: body.groupId,
+        lessonN: body.lessonN ?? 1,
+        title: body.title || '',
+        description: body.description || '',
+        dueAt: body.dueAt || null,
+      });
+      if (!hw) {
+        res.status(400).json({ success: false, error: 'Ошибка создания ДЗ' });
+        return;
+      }
+      res.json({ success: true, homework: hw });
+    } catch (err) {
+      log.error?.('Ошибка createHomework', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
+  app.post('/api/admin/announcements', adminAuth, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const ann = await persistence.createAnnouncement?.({
+        groupId: body.groupId || null,
+        programId: body.programId || null,
+        title: body.title || '',
+        body: body.body || '',
+        authorId: req.userId,
+      });
+      if (!ann) {
+        res.status(400).json({ success: false, error: 'Укажите группу или программу' });
+        return;
+      }
+      res.json({ success: true, announcement: ann });
+    } catch (err) {
+      log.error?.('Ошибка createAnnouncement', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка создания' });
+    }
+  });
+
+  app.delete('/api/admin/homework/:id', adminAuth, async (req, res) => {
+    try {
+      const ok = await persistence.deleteHomework?.(req.params.id);
+      if (!ok) {
+        res.status(404).json({ success: false, error: 'ДЗ не найдено' });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err) {
+      log.error?.('Ошибка deleteHomework', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
   app.get('/api/admin/students', adminAuth, async (req, res) => {
     try {
       const { search, limit, offset } = req.query || {};

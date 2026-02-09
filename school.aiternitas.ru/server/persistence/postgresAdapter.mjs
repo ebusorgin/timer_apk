@@ -136,10 +136,38 @@ function enrollmentFromRow(row) {
     id: String(row.id),
     userId: String(row.user_id),
     programId: String(row.program_id),
+    groupId: row.group_id ? String(row.group_id) : null,
     status: row.status || 'active',
     progress: row.progress ?? 0,
     enrolledAt: Number(row.enrolled_at),
     updatedAt: row.updated_at ? Number(row.updated_at) : null,
+  };
+}
+
+function groupFromRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    programId: String(row.program_id),
+    title: row.title || '',
+    schedule: row.schedule || '',
+    maxStudents: row.max_students ?? 10,
+    status: row.status || 'active',
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+function homeworkFromRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    groupId: String(row.group_id),
+    lessonN: row.lesson_n ?? 1,
+    title: row.title || '',
+    description: row.description || '',
+    dueAt: row.due_at ? Number(row.due_at) : null,
+    createdAt: Number(row.created_at),
   };
 }
 
@@ -186,6 +214,19 @@ export function createPostgresAdapter(poolConfig, logger) {
         [email?.trim()?.toLowerCase(), name?.trim(), passwordHash, role, now]
       );
       return userFromRow(rows[0]);
+    },
+
+    async updateUser(id, updates) {
+      const nid = normalizeId(id);
+      if (nid == null) return null;
+      const name = updates?.name;
+      if (name == null || typeof name !== 'string') return this.getUserById(id);
+      const now = Date.now();
+      const { rows } = await pool.query(
+        `UPDATE ${schema('users')} SET name = $1, updated_at = $2 WHERE id = $3 RETURNING id, email, name, role, created_at, updated_at`,
+        [name.trim(), now, nid]
+      );
+      return rows[0] ? userFromRow(rows[0]) : null;
     },
 
     async getPrograms(filters = {}) {
@@ -355,33 +396,49 @@ export function createPostgresAdapter(poolConfig, logger) {
       const nid = normalizeId(userId);
       if (nid == null) return [];
       const { rows } = await pool.query(
-        `SELECT e.*, p.title_ru, p.title_sr, p.title_en, p.slug as program_slug, p.school_type as program_school_type
+        `SELECT e.*, p.title_ru, p.title_sr, p.title_en, p.slug as program_slug, p.school_type as program_school_type,
+                p.curriculum_ru, p.curriculum_sr, p.curriculum_en, p.curriculum,
+                g.id as group_id, g.title as group_title, g.schedule as group_schedule
          FROM ${schema('enrollments')} e
          JOIN ${schema('programs')} p ON p.id = e.program_id
+         LEFT JOIN ${schema('groups')} g ON g.id = e.group_id
          WHERE e.user_id = $1
          ORDER BY e.enrolled_at DESC`,
         [nid]
       );
-      return rows.map((r) => ({
-        ...enrollmentFromRow(r),
-        programTitle: pickLocale(r, locale, 'title'),
-        programSlug: r.program_slug,
-        programSchoolType: r.program_school_type,
-      }));
+      return rows.map((r) => {
+        const curr = pickLocale(r, locale, 'curriculum');
+        const curriculum = Array.isArray(curr) ? curr : (r.curriculum || []);
+        const lessonCount = curriculum.length;
+        const nextLessonN = Math.min(Math.floor((r.progress ?? 0) / 100 * lessonCount) + 1, lessonCount);
+        const nextLesson = curriculum[nextLessonN - 1];
+        return {
+          ...enrollmentFromRow(r),
+          groupId: r.group_id ? String(r.group_id) : null,
+          groupTitle: r.group_title || '',
+          groupSchedule: r.group_schedule || '',
+          programTitle: pickLocale(r, locale, 'title'),
+          programSlug: r.program_slug,
+          programSchoolType: r.program_school_type,
+          nextLessonN: nextLessonN <= lessonCount ? nextLessonN : null,
+          nextLessonTopic: nextLesson?.topic || null,
+        };
+      });
     },
 
-    async enrollUser(userId, programId) {
+    async enrollUser(userId, programId, groupId) {
       const uid = normalizeId(userId);
       const pid = normalizeId(programId);
+      const gid = groupId != null ? normalizeId(groupId) : null;
       if (uid == null || pid == null) return null;
       const now = Date.now();
       try {
         const { rows } = await pool.query(
-          `INSERT INTO ${schema('enrollments')} (user_id, program_id, status, enrolled_at)
-           VALUES ($1, $2, 'active', $3)
-           ON CONFLICT (user_id, program_id) DO UPDATE SET status = 'active', updated_at = $3
+          `INSERT INTO ${schema('enrollments')} (user_id, program_id, group_id, status, enrolled_at)
+           VALUES ($1, $2, $3, 'active', $4)
+           ON CONFLICT (user_id, program_id) DO UPDATE SET status = 'active', group_id = EXCLUDED.group_id, updated_at = $4
            RETURNING *`,
-          [uid, pid, now]
+          [uid, pid, gid, now]
         );
         return enrollmentFromRow(rows[0]);
       } catch (e) {
@@ -420,12 +477,14 @@ export function createPostgresAdapter(poolConfig, logger) {
     async getAllEnrollments(filters = {}) {
       const { limit = 100, offset = 0, programId, userId } = filters;
       let query = `
-        SELECT e.id, e.user_id, e.program_id, e.status, e.progress, e.enrolled_at,
+        SELECT e.id, e.user_id, e.program_id, e.group_id, e.status, e.progress, e.enrolled_at,
                u.name as user_name, u.email as user_email,
-               p.title_ru as program_title_ru, p.title_sr as program_title_sr, p.title_en as program_title_en
+               p.title_ru as program_title_ru, p.title_sr as program_title_sr, p.title_en as program_title_en,
+               g.title as group_title, g.schedule as group_schedule
         FROM ${schema('enrollments')} e
         JOIN ${schema('users')} u ON u.id = e.user_id
         JOIN ${schema('programs')} p ON p.id = e.program_id
+        LEFT JOIN ${schema('groups')} g ON g.id = e.group_id
         WHERE 1=1`;
       const params = [];
       let idx = 1;
@@ -446,6 +505,9 @@ export function createPostgresAdapter(poolConfig, logger) {
         id: String(r.id),
         userId: String(r.user_id),
         programId: String(r.program_id),
+        groupId: r.group_id ? String(r.group_id) : null,
+        groupTitle: r.group_title || '',
+        groupSchedule: r.group_schedule || '',
         status: r.status || 'active',
         progress: r.progress ?? 0,
         enrolledAt: Number(r.enrolled_at),
@@ -463,6 +525,210 @@ export function createPostgresAdapter(poolConfig, logger) {
         [pid, 'active']
       );
       return Number(rows[0]?.c ?? 0);
+    },
+
+    async updateEnrollmentGroup(enrollmentId, groupId) {
+      const eid = normalizeId(enrollmentId);
+      const gid = groupId != null ? normalizeId(groupId) : null;
+      if (eid == null) return null;
+      const { rows } = await pool.query(
+        `UPDATE ${schema('enrollments')} SET group_id = $2, updated_at = $3 WHERE id = $1 RETURNING *`,
+        [eid, gid, Date.now()]
+      );
+      return rows[0] ? enrollmentFromRow(rows[0]) : null;
+    },
+
+    async updateEnrollmentProgress(enrollmentId, progress) {
+      const eid = normalizeId(enrollmentId);
+      const p = Math.min(100, Math.max(0, Number(progress) || 0));
+      if (eid == null) return null;
+      const { rows } = await pool.query(
+        `UPDATE ${schema('enrollments')} SET progress = $2, updated_at = $3 WHERE id = $1 RETURNING *`,
+        [eid, p, Date.now()]
+      );
+      return rows[0] ? enrollmentFromRow(rows[0]) : null;
+    },
+
+    async getGroupsByProgramId(programId) {
+      const pid = normalizeId(programId);
+      if (pid == null) return [];
+      const { rows } = await pool.query(
+        `SELECT * FROM ${schema('groups')} WHERE program_id = $1 AND status = 'active' ORDER BY id`,
+        [pid]
+      );
+      return rows.map(groupFromRow);
+    },
+
+    async getAllGroups(filters = {}) {
+      const { programId } = filters;
+      let query = `SELECT g.*, p.title_ru as program_title_ru, p.title_sr as program_title_sr, p.title_en as program_title_en
+        FROM ${schema('groups')} g
+        JOIN ${schema('programs')} p ON p.id = g.program_id
+        WHERE 1=1`;
+      const params = [];
+      if (programId) {
+        params.push(normalizeId(programId));
+        query += ` AND g.program_id = $${params.length}`;
+      }
+      query += ` ORDER BY g.program_id, g.id`;
+      const { rows } = await pool.query(query, params);
+      return rows.map((r) => ({
+        ...groupFromRow(r),
+        programTitle: r.program_title_ru || r.program_title_sr || r.program_title_en || '',
+      }));
+    },
+
+    async getGroupById(id) {
+      const nid = normalizeId(id);
+      if (nid == null) return null;
+      const { rows } = await pool.query(`SELECT * FROM ${schema('groups')} WHERE id = $1`, [nid]);
+      return rows[0] ? groupFromRow(rows[0]) : null;
+    },
+
+    async createGroup(data) {
+      const now = Date.now();
+      const { rows } = await pool.query(
+        `INSERT INTO ${schema('groups')} (program_id, title, schedule, max_students, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING *`,
+        [
+          normalizeId(data.programId),
+          data.title || '',
+          data.schedule || '',
+          data.maxStudents ?? 10,
+          data.status || 'active',
+          now,
+        ]
+      );
+      return rows[0] ? groupFromRow(rows[0]) : null;
+    },
+
+    async updateGroup(id, updates) {
+      const nid = normalizeId(id);
+      if (nid == null) return null;
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      if (updates.title !== undefined) { sets.push(`title = $${idx}`); vals.push(updates.title); idx++; }
+      if (updates.schedule !== undefined) { sets.push(`schedule = $${idx}`); vals.push(updates.schedule); idx++; }
+      if (updates.maxStudents !== undefined) { sets.push(`max_students = $${idx}`); vals.push(updates.maxStudents); idx++; }
+      if (updates.status !== undefined) { sets.push(`status = $${idx}`); vals.push(updates.status); idx++; }
+      if (sets.length === 0) return this.getGroupById(id);
+      vals.push(Date.now(), nid);
+      sets.push(`updated_at = $${idx}`);
+      const { rows } = await pool.query(
+        `UPDATE ${schema('groups')} SET ${sets.join(', ')} WHERE id = $${idx + 1} RETURNING *`,
+        vals
+      );
+      return rows[0] ? groupFromRow(rows[0]) : null;
+    },
+
+    async deleteGroup(id) {
+      const nid = normalizeId(id);
+      if (nid == null) return false;
+      const { rowCount } = await pool.query(`DELETE FROM ${schema('groups')} WHERE id = $1`, [nid]);
+      return rowCount > 0;
+    },
+
+    async getHomeworkByGroupId(groupId) {
+      const gid = normalizeId(groupId);
+      if (gid == null) return [];
+      const { rows } = await pool.query(
+        `SELECT * FROM ${schema('homework')} WHERE group_id = $1 ORDER BY lesson_n, created_at DESC`,
+        [gid]
+      );
+      return rows.map(homeworkFromRow);
+    },
+
+    async getHomeworkByUserId(userId) {
+      const uid = normalizeId(userId);
+      if (uid == null) return [];
+      const { rows } = await pool.query(
+        `SELECT h.*, g.title as group_title, g.schedule as group_schedule, p.title_ru as program_title_ru
+         FROM ${schema('homework')} h
+         JOIN ${schema('groups')} g ON g.id = h.group_id
+         JOIN ${schema('programs')} p ON p.id = g.program_id
+         JOIN ${schema('enrollments')} e ON e.program_id = p.id AND e.group_id = g.id
+         WHERE e.user_id = $1 AND e.status = 'active'
+         ORDER BY h.due_at ASC NULLS LAST, h.created_at DESC`,
+        [uid]
+      );
+      return rows.map((r) => ({
+        ...homeworkFromRow(r),
+        groupTitle: r.group_title || '',
+        groupSchedule: r.group_schedule || '',
+        programTitle: r.program_title_ru || '',
+      }));
+    },
+
+    async createHomework(data) {
+      const now = Date.now();
+      const { rows } = await pool.query(
+        `INSERT INTO ${schema('homework')} (group_id, lesson_n, title, description, due_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [
+          normalizeId(data.groupId),
+          data.lessonN ?? 1,
+          data.title || '',
+          data.description || '',
+          data.dueAt ?? null,
+          now,
+        ]
+      );
+      return rows[0] ? homeworkFromRow(rows[0]) : null;
+    },
+
+    async deleteHomework(id) {
+      const nid = normalizeId(id);
+      if (nid == null) return false;
+      const { rowCount } = await pool.query(`DELETE FROM ${schema('homework')} WHERE id = $1`, [nid]);
+      return rowCount > 0;
+    },
+
+    async getAnnouncementsByUserId(userId) {
+      const uid = normalizeId(userId);
+      if (uid == null) return [];
+      const { rows } = await pool.query(
+        `SELECT a.*, g.title as group_title, g.schedule as group_schedule, p.title_ru as program_title_ru
+         FROM ${schema('announcements')} a
+         LEFT JOIN ${schema('groups')} g ON g.id = a.group_id
+         LEFT JOIN ${schema('programs')} p ON p.id = COALESCE(a.program_id, g.program_id)
+         JOIN ${schema('enrollments')} e ON e.user_id = $1 AND e.status = 'active'
+           AND ((a.group_id IS NOT NULL AND e.group_id = a.group_id) OR (a.group_id IS NULL AND a.program_id = e.program_id))
+         ORDER BY a.created_at DESC
+         LIMIT 50`,
+        [uid]
+      );
+      return rows.map((r) => ({
+        id: String(r.id),
+        groupId: r.group_id ? String(r.group_id) : null,
+        programId: r.program_id ? String(r.program_id) : null,
+        title: r.title || '',
+        body: r.body || '',
+        groupTitle: r.group_title || '',
+        groupSchedule: r.group_schedule || '',
+        programTitle: r.program_title_ru || '',
+        createdAt: Number(r.created_at),
+      }));
+    },
+
+    async createAnnouncement(data) {
+      const now = Date.now();
+      const groupId = data.groupId ? normalizeId(data.groupId) : null;
+      const programId = data.programId ? normalizeId(data.programId) : null;
+      if (!groupId && !programId) return null;
+      const { rows } = await pool.query(
+        `INSERT INTO ${schema('announcements')} (group_id, program_id, title, body, author_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [groupId, programId, data.title || '', data.body || '', normalizeId(data.authorId) || null, now]
+      );
+      return rows[0] ? {
+        id: String(rows[0].id),
+        groupId: rows[0].group_id ? String(rows[0].group_id) : null,
+        programId: rows[0].program_id ? String(rows[0].program_id) : null,
+        title: rows[0].title || '',
+        body: rows[0].body || '',
+        createdAt: Number(rows[0].created_at),
+      } : null;
     },
 
     async getStats(locale = 'ru') {

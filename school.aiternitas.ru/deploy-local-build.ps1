@@ -91,7 +91,7 @@ Write-Host "OK" -ForegroundColor Green
 
 # 4. Create DB if needed, npm install, migrate, seed
 Write-Host "[4/6] Installing and seeding..." -ForegroundColor Yellow
-$remoteCmd = "sudo -u postgres psql -c 'CREATE DATABASE school;' 2>/dev/null || true; cd $REMOTE_DIR && npm install --production && node scripts/migrate-db.mjs && node scripts/migrate-drop-directions.mjs && node scripts/migrate-i18n.mjs && node scripts/seed-admin.mjs"
+$remoteCmd = "sudo -u postgres psql -c 'CREATE DATABASE school;' 2>/dev/null || true; cd $REMOTE_DIR && npm install --production && node scripts/migrate-db.mjs && node scripts/migrate-drop-directions.mjs && node scripts/migrate-i18n.mjs && node scripts/migrate-groups-homework.mjs && node scripts/migrate-announcements.mjs && node scripts/seed-admin.mjs"
 ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SERVER $remoteCmd
 Write-Host "OK" -ForegroundColor Green
 
