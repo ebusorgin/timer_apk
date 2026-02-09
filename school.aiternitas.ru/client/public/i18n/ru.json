@@ -125,6 +125,7 @@
   "admin.programTitle": "Название",
   "admin.slug": "Slug",
   "admin.description": "Описание",
+  "admin.descriptionPlaceholder": "Краткое описание программы для карточки. Будет видно на странице программы.",
   "admin.ageFrom": "Возраст от",
   "admin.ageTo": "Возраст до",
   "admin.schoolType": "Тип школы",

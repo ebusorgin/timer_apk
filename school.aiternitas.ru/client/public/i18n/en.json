@@ -125,6 +125,7 @@
   "admin.programTitle": "Title",
   "admin.slug": "Slug",
   "admin.description": "Description",
+  "admin.descriptionPlaceholder": "Short program description for the card. Shown on the program page.",
   "admin.ageFrom": "Age from",
   "admin.ageTo": "Age to",
   "admin.schoolType": "School type",

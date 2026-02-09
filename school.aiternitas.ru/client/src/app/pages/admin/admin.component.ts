@@ -106,8 +106,12 @@ interface Student {
         </div>
         @if (showProgramForm()) {
           <div class="modal-overlay" (click)="closeProgramForm()">
-            <div class="modal" (click)="$event.stopPropagation()">
-              <h3>{{ (editingProgram() ? 'admin.editProgram' : 'admin.newProgram') | translate }}</h3>
+            <div class="modal modal-program" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ (editingProgram() ? 'admin.editProgram' : 'admin.newProgram') | translate }}</h3>
+                <button type="button" class="modal-close" (click)="closeProgramForm()" aria-label="Close">×</button>
+              </div>
+              <div class="modal-body">
               @if (errorMessage()) {
                 <div class="form-error">{{ errorMessage() }}</div>
               }
@@ -120,43 +124,91 @@ interface Student {
                   <button type="button" [class.active]="programFormLang() === 'sr'" (click)="programFormLang.set('sr')">SR</button>
                   <button type="button" [class.active]="programFormLang() === 'en'" (click)="programFormLang.set('en')">EN</button>
                 </div>
-                @if (programFormLang() === 'ru') {
-                  <label>{{ 'admin.programTitle' | translate }} (RU) <input [(ngModel)]="programForm.titleRu" name="titleRu" required /></label>
-                  <label>{{ 'admin.description' | translate }} (RU) <textarea [(ngModel)]="programForm.descriptionRu" name="descRu" rows="3"></textarea></label>
-                  <label>{{ 'admin.curriculum' | translate }} (RU) <textarea [(ngModel)]="programForm.curriculumRuJson" name="currRu" rows="6" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea></label>
-                }
-                @if (programFormLang() === 'sr') {
-                  <label>{{ 'admin.programTitle' | translate }} (SR) <input [(ngModel)]="programForm.titleSr" name="titleSr" /></label>
-                  <label>{{ 'admin.description' | translate }} (SR) <textarea [(ngModel)]="programForm.descriptionSr" name="descSr" rows="3"></textarea></label>
-                  <label>{{ 'admin.curriculum' | translate }} (SR) <textarea [(ngModel)]="programForm.curriculumSrJson" name="currSr" rows="6"></textarea></label>
-                }
-                @if (programFormLang() === 'en') {
-                  <label>{{ 'admin.programTitle' | translate }} (EN) <input [(ngModel)]="programForm.titleEn" name="titleEn" /></label>
-                  <label>{{ 'admin.description' | translate }} (EN) <textarea [(ngModel)]="programForm.descriptionEn" name="descEn" rows="3"></textarea></label>
-                  <label>{{ 'admin.curriculum' | translate }} (EN) <textarea [(ngModel)]="programForm.curriculumEnJson" name="currEn" rows="6"></textarea></label>
-                }
-                <hr />
-                <label>{{ 'admin.slug' | translate }} <input [(ngModel)]="programForm.slug" name="slug" /></label>
-                <label>{{ 'admin.ageFrom' | translate }} <input type="number" [(ngModel)]="programForm.ageMin" name="ageMin" min="5" max="18" /></label>
-                <label>{{ 'admin.ageTo' | translate }} <input type="number" [(ngModel)]="programForm.ageMax" name="ageMax" min="5" max="18" /></label>
-                <label>{{ 'admin.schoolType' | translate }}
-                  <select [(ngModel)]="programForm.schoolType" name="schoolType">
-                    @for (st of schoolTypes(); track st.id) {
-                      <option [value]="st.id">{{ st.title }}</option>
-                    }
-                  </select>
-                </label>
-                <label>{{ 'admin.weeks' | translate }} <input type="number" [(ngModel)]="programForm.durationWeeks" name="weeks" min="1" /></label>
-                <label>{{ 'admin.lessonsPerWeek' | translate }} <input type="number" [(ngModel)]="programForm.lessonsPerWeek" name="lessonsPerWeek" min="1" max="7" /></label>
-                <label>{{ 'admin.format' | translate }} <input [(ngModel)]="programForm.format" name="format" /></label>
-                <label>{{ 'admin.imageUrl' | translate }} <input [(ngModel)]="programForm.imageUrl" name="imageUrl" placeholder="https://..." /></label>
-                <label>{{ 'admin.price' | translate }} <input type="number" [(ngModel)]="programForm.price" name="price" [placeholder]="'admin.pricePlaceholder' | translate" /></label>
-                <label>{{ 'admin.schedule' | translate }} <input [(ngModel)]="programForm.schedule" name="schedule" /></label>
+                <div class="form-section">
+                  @if (programFormLang() === 'ru') {
+                    <label class="form-label">{{ 'admin.programTitle' | translate }} (RU)</label>
+                    <input [(ngModel)]="programForm.titleRu" name="titleRu" required class="form-input" />
+                    <label class="form-label">{{ 'admin.description' | translate }} (RU)</label>
+                    <textarea [(ngModel)]="programForm.descriptionRu" name="descRu" rows="5" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
+                    <label class="form-label">{{ 'admin.curriculum' | translate }} (RU) <span class="form-hint">{{ 'admin.curriculumHint' | translate }}</span></label>
+                    <textarea [(ngModel)]="programForm.curriculumRuJson" name="currRu" rows="8" class="form-input form-textarea form-code" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea>
+                  }
+                  @if (programFormLang() === 'sr') {
+                    <label class="form-label">{{ 'admin.programTitle' | translate }} (SR)</label>
+                    <input [(ngModel)]="programForm.titleSr" name="titleSr" class="form-input" />
+                    <label class="form-label">{{ 'admin.description' | translate }} (SR)</label>
+                    <textarea [(ngModel)]="programForm.descriptionSr" name="descSr" rows="5" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
+                    <label class="form-label">{{ 'admin.curriculum' | translate }} (SR) <span class="form-hint">{{ 'admin.curriculumHint' | translate }}</span></label>
+                    <textarea [(ngModel)]="programForm.curriculumSrJson" name="currSr" rows="8" class="form-input form-textarea form-code" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea>
+                  }
+                  @if (programFormLang() === 'en') {
+                    <label class="form-label">{{ 'admin.programTitle' | translate }} (EN)</label>
+                    <input [(ngModel)]="programForm.titleEn" name="titleEn" class="form-input" />
+                    <label class="form-label">{{ 'admin.description' | translate }} (EN)</label>
+                    <textarea [(ngModel)]="programForm.descriptionEn" name="descEn" rows="5" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
+                    <label class="form-label">{{ 'admin.curriculum' | translate }} (EN) <span class="form-hint">{{ 'admin.curriculumHint' | translate }}</span></label>
+                    <textarea [(ngModel)]="programForm.curriculumEnJson" name="currEn" rows="8" class="form-input form-textarea form-code" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea>
+                  }
+                </div>
+                <hr class="form-divider" />
+                <div class="form-section form-section-params">
+                  <div class="form-row">
+                    <label class="form-label">{{ 'admin.slug' | translate }}</label>
+                    <input [(ngModel)]="programForm.slug" name="slug" class="form-input" />
+                  </div>
+                  <div class="form-row form-row-inline">
+                    <div class="form-field">
+                      <label class="form-label">{{ 'admin.ageFrom' | translate }}</label>
+                      <input type="number" [(ngModel)]="programForm.ageMin" name="ageMin" min="5" max="18" class="form-input form-input-sm" />
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">{{ 'admin.ageTo' | translate }}</label>
+                      <input type="number" [(ngModel)]="programForm.ageMax" name="ageMax" min="5" max="18" class="form-input form-input-sm" />
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <label class="form-label">{{ 'admin.schoolType' | translate }}</label>
+                    <select [(ngModel)]="programForm.schoolType" name="schoolType" class="form-input">
+                      @for (st of schoolTypes(); track st.id) {
+                        <option [value]="st.id">{{ st.title }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="form-row form-row-inline">
+                    <div class="form-field">
+                      <label class="form-label">{{ 'admin.weeks' | translate }}</label>
+                      <input type="number" [(ngModel)]="programForm.durationWeeks" name="weeks" min="1" class="form-input form-input-sm" />
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">{{ 'admin.lessonsPerWeek' | translate }}</label>
+                      <input type="number" [(ngModel)]="programForm.lessonsPerWeek" name="lessonsPerWeek" min="1" max="7" class="form-input form-input-sm" />
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <label class="form-label">{{ 'admin.format' | translate }}</label>
+                    <input [(ngModel)]="programForm.format" name="format" class="form-input" placeholder="онлайн / офлайн / гибрид" />
+                  </div>
+                  <div class="form-row">
+                    <label class="form-label">{{ 'admin.imageUrl' | translate }}</label>
+                    <input [(ngModel)]="programForm.imageUrl" name="imageUrl" class="form-input" placeholder="https://..." />
+                  </div>
+                  <div class="form-row form-row-inline">
+                    <div class="form-field">
+                      <label class="form-label">{{ 'admin.price' | translate }}</label>
+                      <input type="number" [(ngModel)]="programForm.price" name="price" class="form-input form-input-sm" [placeholder]="'admin.pricePlaceholder' | translate" />
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">{{ 'admin.schedule' | translate }}</label>
+                      <input [(ngModel)]="programForm.schedule" name="schedule" class="form-input" placeholder="Пн, Ср 16:00" />
+                    </div>
+                  </div>
+                </div>
                 <div class="modal-actions">
-                  <button type="button" (click)="closeProgramForm()">{{ 'admin.cancel' | translate }}</button>
-                  <button type="submit">{{ 'admin.save' | translate }}</button>
+                  <button type="button" (click)="closeProgramForm()" class="btn-secondary">{{ 'admin.cancel' | translate }}</button>
+                  <button type="submit" class="btn-primary">{{ 'admin.save' | translate }}</button>
                 </div>
               </form>
+              </div>
             </div>
           </div>
         }
@@ -180,8 +232,12 @@ interface Student {
         </div>
         @if (showSchoolTypeForm()) {
           <div class="modal-overlay" (click)="closeSchoolTypeForm()">
-            <div class="modal" (click)="$event.stopPropagation()">
-              <h3>{{ 'admin.editSchoolType' | translate }}</h3>
+            <div class="modal modal-school-type" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ 'admin.editSchoolType' | translate }}</h3>
+                <button type="button" class="modal-close" (click)="closeSchoolTypeForm()" aria-label="Close">×</button>
+              </div>
+              <div class="modal-body">
               @if (schoolTypeError()) {
                 <div class="form-error">{{ schoolTypeError() }}</div>
               }
@@ -194,23 +250,32 @@ interface Student {
                   <button type="button" [class.active]="schoolTypeFormLang() === 'sr'" (click)="schoolTypeFormLang.set('sr')">SR</button>
                   <button type="button" [class.active]="schoolTypeFormLang() === 'en'" (click)="schoolTypeFormLang.set('en')">EN</button>
                 </div>
-                @if (schoolTypeFormLang() === 'ru') {
-                  <label>{{ 'admin.programTitle' | translate }} (RU) <input [(ngModel)]="schoolTypeForm.titleRu" name="titleRu" required /></label>
-                  <label>{{ 'admin.description' | translate }} (RU) <textarea [(ngModel)]="schoolTypeForm.descriptionRu" name="descRu" rows="2"></textarea></label>
-                }
-                @if (schoolTypeFormLang() === 'sr') {
-                  <label>{{ 'admin.programTitle' | translate }} (SR) <input [(ngModel)]="schoolTypeForm.titleSr" name="titleSr" /></label>
-                  <label>{{ 'admin.description' | translate }} (SR) <textarea [(ngModel)]="schoolTypeForm.descriptionSr" name="descSr" rows="2"></textarea></label>
-                }
-                @if (schoolTypeFormLang() === 'en') {
-                  <label>{{ 'admin.programTitle' | translate }} (EN) <input [(ngModel)]="schoolTypeForm.titleEn" name="titleEn" /></label>
-                  <label>{{ 'admin.description' | translate }} (EN) <textarea [(ngModel)]="schoolTypeForm.descriptionEn" name="descEn" rows="2"></textarea></label>
-                }
+                <div class="form-section">
+                  @if (schoolTypeFormLang() === 'ru') {
+                    <label class="form-label">{{ 'admin.programTitle' | translate }} (RU)</label>
+                    <input [(ngModel)]="schoolTypeForm.titleRu" name="titleRu" required class="form-input" />
+                    <label class="form-label">{{ 'admin.description' | translate }} (RU)</label>
+                    <textarea [(ngModel)]="schoolTypeForm.descriptionRu" name="descRu" rows="4" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
+                  }
+                  @if (schoolTypeFormLang() === 'sr') {
+                    <label class="form-label">{{ 'admin.programTitle' | translate }} (SR)</label>
+                    <input [(ngModel)]="schoolTypeForm.titleSr" name="titleSr" class="form-input" />
+                    <label class="form-label">{{ 'admin.description' | translate }} (SR)</label>
+                    <textarea [(ngModel)]="schoolTypeForm.descriptionSr" name="descSr" rows="4" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
+                  }
+                  @if (schoolTypeFormLang() === 'en') {
+                    <label class="form-label">{{ 'admin.programTitle' | translate }} (EN)</label>
+                    <input [(ngModel)]="schoolTypeForm.titleEn" name="titleEn" class="form-input" />
+                    <label class="form-label">{{ 'admin.description' | translate }} (EN)</label>
+                    <textarea [(ngModel)]="schoolTypeForm.descriptionEn" name="descEn" rows="4" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
+                  }
+                </div>
                 <div class="modal-actions">
-                  <button type="button" (click)="closeSchoolTypeForm()">{{ 'admin.cancel' | translate }}</button>
-                  <button type="submit">{{ 'admin.save' | translate }}</button>
+                  <button type="button" (click)="closeSchoolTypeForm()" class="btn-secondary">{{ 'admin.cancel' | translate }}</button>
+                  <button type="submit" class="btn-primary">{{ 'admin.save' | translate }}</button>
                 </div>
               </form>
+              </div>
             </div>
           </div>
         }
@@ -234,11 +299,14 @@ interface Student {
     .tabs { display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
     .tabs button {
       padding: 0.5rem 1rem;
+      min-height: 44px;
       border: 1px solid var(--color-border);
       background: var(--color-bg-alt);
       border-radius: var(--radius);
       cursor: pointer;
+      transition: all var(--transition);
     }
+    .tabs button:hover { background: var(--color-bg-card); }
     .tabs button.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
     .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
     .stat-card {
@@ -249,59 +317,163 @@ interface Student {
       text-align: center;
     }
     .stat-card .num { display: block; font-size: 2rem; font-weight: 700; color: var(--color-primary); }
-    .btn-add { padding: 0.5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: var(--radius); cursor: pointer; }
+    .btn-add { padding: 0.5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: var(--radius); cursor: pointer; min-height: 44px; }
     .programs-toolbar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
-    .programs-toolbar select { padding: 0.5rem 1rem; border-radius: var(--radius); border: 1px solid var(--color-border); }
+    .programs-toolbar select { padding: 0.5rem 1rem; min-height: 44px; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg); }
     .list, .students-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .row, .student-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      padding: 0.75rem;
+      padding: 0.75rem 1rem;
       background: var(--color-bg-alt);
       border-radius: var(--radius);
     }
     .row-content { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
     .row-actions { display: flex; gap: 0.5rem; }
+    .row-actions button { min-height: 38px; padding: 0.4rem 0.9rem; }
     .age, .muted { color: var(--color-muted); font-size: 0.9rem; }
-    .btn-danger { background: var(--color-error); color: white; }
+    .btn-danger { background: var(--color-error); color: white; border-color: var(--color-error); }
     input[type="search"] {
       width: 100%;
       max-width: 400px;
-      padding: 0.5rem 1rem;
+      padding: 0.6rem 1rem;
       margin-bottom: 1rem;
       border: 1px solid var(--color-border);
       border-radius: var(--radius);
+      background: var(--color-bg);
     }
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
+      padding: 1rem;
     }
     .modal {
       background: var(--color-bg-alt);
-      padding: 2rem;
-      border-radius: var(--radius);
-      max-width: 500px;
-      width: 90%;
-      max-height: 90vh;
+      padding: 0;
+      border-radius: var(--radius-lg);
+      max-width: 560px;
+      width: 100%;
+      max-height: 92vh;
       overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--color-border);
     }
-    .modal label { display: block; margin-bottom: 1rem; }
-    .modal input, .modal textarea, .modal select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
-    .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
-    .form-error { color: var(--color-error); margin-bottom: 1rem; }
-    .form-success { color: var(--color-primary); margin-bottom: 1rem; }
-    .hint { display: block; font-size: 0.8rem; color: var(--color-muted); margin-top: 0.25rem; }
-    .form-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .form-tabs button { padding: 0.4rem 0.8rem; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg-alt); cursor: pointer; }
+    .modal-program { max-width: 640px; }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .modal-header h3 { margin: 0; font-size: 1.2rem; }
+    .modal-close {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--color-muted);
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: color var(--transition), background var(--transition);
+    }
+    .modal-close:hover { color: var(--color-text); background: var(--color-bg); }
+    .modal-body { padding: 0 1.5rem 1.5rem; }
+    .modal form { padding: 0; }
+    .form-section { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 0; }
+    .form-section-params { display: grid; gap: 0.75rem; }
+    .form-row { display: flex; flex-direction: column; gap: 0.25rem; }
+    .form-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-field { display: flex; flex-direction: column; gap: 0.25rem; }
+    .form-label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: 0.15rem;
+    }
+    .form-hint {
+      font-weight: 400;
+      font-size: 0.8rem;
+      color: var(--color-muted);
+    }
+    .form-input, .form-textarea {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: border-color var(--transition);
+    }
+    .form-input:focus, .form-textarea:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+    }
+    .form-textarea { resize: vertical; min-height: 80px; }
+    .form-code { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.85rem; line-height: 1.5; }
+    .form-input-sm { max-width: 100px; }
+    .form-divider { margin: 1.25rem 0; border: none; border-top: 1px solid var(--color-border); }
+    .modal-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+    .btn-primary {
+      padding: 0.6rem 1.25rem;
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 600;
+      min-height: 44px;
+      transition: background var(--transition);
+    }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-secondary {
+      padding: 0.6rem 1.25rem;
+      background: var(--color-bg);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      min-height: 44px;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .btn-secondary:hover { background: var(--color-bg-alt); border-color: var(--color-muted); }
+    .form-error { color: var(--color-error); padding: 0.75rem 1rem; background: rgba(248,113,113,0.1); border-radius: var(--radius); margin-bottom: 1rem; }
+    .form-success { color: var(--color-success); padding: 0.75rem 1rem; background: rgba(52,211,153,0.1); border-radius: var(--radius); margin-bottom: 1rem; }
+    .form-tabs { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; }
+    .form-tabs button {
+      padding: 0.45rem 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg);
+      color: var(--color-muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all var(--transition);
+    }
+    .form-tabs button:hover { color: var(--color-text); }
     .form-tabs button.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
-    .modal hr { margin: 1rem 0; border: none; border-top: 1px solid var(--color-border); }
+    @media (max-width: 600px) {
+      .form-row-inline { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .modal { max-height: 95vh; border-radius: var(--radius); }
+      .row { flex-direction: column; align-items: stretch; }
+      .row-actions { justify-content: flex-start; }
+    }
   `],
 })
 export class AdminComponent implements OnInit {

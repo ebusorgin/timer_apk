@@ -125,6 +125,7 @@
   "admin.programTitle": "Назив",
   "admin.slug": "Slug",
   "admin.description": "Опис",
+  "admin.descriptionPlaceholder": "Кратак опис програма за картицу. Приказује се на страници програма.",
   "admin.ageFrom": "Године од",
   "admin.ageTo": "Године до",
   "admin.schoolType": "Тип школе",
