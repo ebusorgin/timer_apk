@@ -63,11 +63,44 @@ import { ApiService } from '../../services/api.service';
             <h2 class="section-title">{{ 'section.about' | translate }}</h2>
             <p>{{ 'section.aboutText1' | translate }}</p>
             <p>{{ 'section.aboutText2' | translate }}</p>
+            <p>{{ 'section.aboutText3' | translate }}</p>
             <ul class="about-list">
               <li>{{ 'section.aboutItem1' | translate }}</li>
               <li>{{ 'section.aboutItem2' | translate }}</li>
               <li>{{ 'section.aboutItem3' | translate }}</li>
             </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="platform-section">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.platform' | translate }}</h2>
+        <p class="platform-intro" schoolScrollReveal>{{ 'section.platformIntro' | translate }}</p>
+        <div class="platform-grid">
+          <div class="platform-card" schoolScrollReveal>
+            <div class="platform-icon">📋</div>
+            <h3>{{ 'platform.cabinet' | translate }}</h3>
+            <p>{{ 'platform.cabinetDesc' | translate }}</p>
+            <img src="hero-school.png" alt="" class="platform-preview" />
+          </div>
+          <div class="platform-card" schoolScrollReveal>
+            <div class="platform-icon">👥</div>
+            <h3>{{ 'platform.groups' | translate }}</h3>
+            <p>{{ 'platform.groupsDesc' | translate }}</p>
+            <img src="gallery-tech-class.png" alt="" class="platform-preview" />
+          </div>
+          <div class="platform-card" schoolScrollReveal>
+            <div class="platform-icon">📝</div>
+            <h3>{{ 'platform.homework' | translate }}</h3>
+            <p>{{ 'platform.homeworkDesc' | translate }}</p>
+            <img src="gallery-art-class.png" alt="" class="platform-preview" />
+          </div>
+          <div class="platform-card" schoolScrollReveal>
+            <div class="platform-icon">📢</div>
+            <h3>{{ 'platform.announcements' | translate }}</h3>
+            <p>{{ 'platform.announcementsDesc' | translate }}</p>
+            <img src="gallery-creative.png" alt="" class="platform-preview" />
           </div>
         </div>
       </div>
@@ -120,11 +153,24 @@ import { ApiService } from '../../services/api.service';
     <section class="gallery">
       <div class="container">
         <h2 class="section-title" schoolScrollReveal>{{ 'section.gallery' | translate }}</h2>
+        <p class="gallery-intro" schoolScrollReveal>{{ 'section.aboutText2' | translate }}</p>
         <div class="gallery-grid" schoolScrollReveal>
-          <div class="gallery-item"><img src="gallery-tech-class.png" [attr.alt]="'gallery.altTech' | translate" /></div>
-          <div class="gallery-item"><img src="gallery-art-class.png" [attr.alt]="'gallery.altArt' | translate" /></div>
-          <div class="gallery-item"><img src="gallery-robotics.png" [attr.alt]="'gallery.altRobotics' | translate" /></div>
-          <div class="gallery-item"><img src="gallery-creative.png" [attr.alt]="'gallery.altCreative' | translate" /></div>
+          <figure class="gallery-item gallery-item-large">
+            <img src="gallery-tech-class.png" [attr.alt]="'gallery.altTech' | translate" />
+            <figcaption>{{ 'gallery.captionTech' | translate }}</figcaption>
+          </figure>
+          <figure class="gallery-item">
+            <img src="gallery-art-class.png" [attr.alt]="'gallery.altArt' | translate" />
+            <figcaption>{{ 'gallery.captionArt' | translate }}</figcaption>
+          </figure>
+          <figure class="gallery-item">
+            <img src="gallery-robotics.png" [attr.alt]="'gallery.altRobotics' | translate" />
+            <figcaption>{{ 'gallery.captionRobotics' | translate }}</figcaption>
+          </figure>
+          <figure class="gallery-item gallery-item-large">
+            <img src="gallery-creative.png" [attr.alt]="'gallery.altCreative' | translate" />
+            <figcaption>{{ 'gallery.captionCreative' | translate }}</figcaption>
+          </figure>
         </div>
       </div>
     </section>
@@ -525,26 +571,103 @@ import { ApiService } from '../../services/api.service';
     }
     .step h3 { font-size: 1.1rem; margin: 0 0 0.5rem; }
     .step p { margin: 0; font-size: 0.95rem; color: var(--color-muted); line-height: 1.6; }
+    .platform-section {
+      padding: 4rem 0;
+      background: linear-gradient(180deg, var(--color-bg-alt) 0%, var(--color-bg) 100%);
+    }
+    .platform-intro {
+      text-align: center;
+      color: var(--color-muted);
+      max-width: 560px;
+      margin: -1rem auto 2.5rem;
+      line-height: 1.7;
+    }
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+    .platform-card {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      padding: 1.5rem;
+      transition: transform var(--transition), box-shadow var(--transition);
+    }
+    .platform-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+    .platform-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+    .platform-card h3 {
+      font-size: 1.2rem;
+      margin: 0 0 0.5rem;
+    }
+    .platform-card > p {
+      font-size: 0.95rem;
+      color: var(--color-muted);
+      line-height: 1.6;
+      margin: 0 0 1rem;
+    }
+    .platform-preview {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-radius: var(--radius);
+      margin-top: 0.5rem;
+      opacity: 0.9;
+    }
     .gallery {
       padding: 4rem 0;
       background: var(--color-bg);
     }
+    .gallery-intro {
+      text-align: center;
+      color: var(--color-muted);
+      max-width: 640px;
+      margin: -1rem auto 2rem;
+      line-height: 1.7;
+    }
     .gallery-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: auto auto;
       gap: 1rem;
     }
     .gallery-item {
-      border-radius: var(--radius);
+      border-radius: var(--radius-lg);
       overflow: hidden;
-      aspect-ratio: 4/3;
-      transition: transform var(--transition);
+      transition: transform var(--transition), box-shadow var(--transition);
+      margin: 0;
     }
-    .gallery-item:hover { transform: scale(1.02); }
     .gallery-item img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      display: block;
+      aspect-ratio: 4/3;
+    }
+    .gallery-item figcaption {
+      padding: 0.75rem 1rem;
+      background: var(--color-bg-alt);
+      font-size: 0.9rem;
+      color: var(--color-muted);
+      border-top: 1px solid var(--color-border);
+    }
+    .gallery-item:hover {
+      transform: scale(1.02);
+      box-shadow: var(--shadow-lg);
+    }
+    .gallery-item-large {
+      grid-column: span 2;
+    }
+    .gallery-item-large img {
+      aspect-ratio: 21/9;
     }
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(24px); }
@@ -561,7 +684,7 @@ import { ApiService } from '../../services/api.service';
     }
     .school-card[schoolScrollReveal].revealed { transition-delay: 0.1s; }
     @media (max-width: 768px) {
-      .directions, .about, .benefits, .ages, .how, .gallery, .cta { padding: 3rem 0; }
+      .directions, .about, .benefits, .ages, .how, .gallery, .cta, .platform-section { padding: 3rem 0; }
       .section-title { margin-bottom: 1.5rem; }
       .about-grid { grid-template-columns: 1fr; gap: 2rem; }
       .about-image { order: -1; }
@@ -569,7 +692,10 @@ import { ApiService } from '../../services/api.service';
       .school-card-icon { font-size: 2rem; }
       .ages-grid { grid-template-columns: 1fr; }
       .steps { grid-template-columns: 1fr; gap: 1.5rem; }
-      .gallery-grid { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+      .gallery-grid { grid-template-columns: 1fr; }
+      .gallery-item-large { grid-column: span 1; }
+      .gallery-item-large img { aspect-ratio: 4/3; }
+      .platform-grid { grid-template-columns: 1fr; }
       .benefit-card { padding: 1.5rem; }
     }
     @media (max-width: 600px) {
