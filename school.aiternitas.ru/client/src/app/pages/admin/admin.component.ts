@@ -174,24 +174,78 @@ interface Enrollment {
                     <input [(ngModel)]="programForm.titleRu" name="titleRu" required class="form-input" />
                     <label class="form-label">{{ 'admin.description' | translate }} (RU)</label>
                     <textarea [(ngModel)]="programForm.descriptionRu" name="descRu" rows="5" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
-                    <label class="form-label">{{ 'admin.curriculum' | translate }} (RU) <span class="form-hint">{{ 'admin.curriculumHint' | translate }}</span></label>
-                    <textarea [(ngModel)]="programForm.curriculumRuJson" name="currRu" rows="8" class="form-input form-textarea form-code" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea>
+                    <label class="form-label">{{ 'admin.curriculum' | translate }} (RU)</label>
+                    <div class="curriculum-list">
+                      @for (lesson of programForm.curriculumRu; track $index) {
+                        <div class="lesson-editor">
+                          <div class="lesson-header">
+                            <span class="lesson-num">{{ 'admin.lessonNum' | translate }} {{ lesson.n }}</span>
+                            <button type="button" (click)="removeLesson('ru', $index)" class="btn-remove">{{ 'admin.removeLesson' | translate }}</button>
+                          </div>
+                          <label class="form-label">{{ 'admin.lessonTopic' | translate }}</label>
+                          <input [(ngModel)]="lesson.topic" [name]="'ru_topic_' + $index" class="form-input" />
+                          <label class="form-label">{{ 'admin.lessonDescription' | translate }}</label>
+                          <textarea [(ngModel)]="lesson.description" [name]="'ru_desc_' + $index" class="form-input form-textarea" rows="2"></textarea>
+                          <label class="form-label">{{ 'admin.lessonConclusions' | translate }}</label>
+                          <input [(ngModel)]="lesson.conclusions" [name]="'ru_conc_' + $index" class="form-input" />
+                          <label class="form-label">{{ 'admin.lessonResult' | translate }}</label>
+                          <input [(ngModel)]="lesson.result" [name]="'ru_res_' + $index" class="form-input" />
+                        </div>
+                      }
+                      <button type="button" (click)="addLesson('ru')" class="btn-add-lesson">{{ 'admin.addLesson' | translate }}</button>
+                    </div>
                   }
                   @if (programFormLang() === 'sr') {
                     <label class="form-label">{{ 'admin.programTitle' | translate }} (SR)</label>
                     <input [(ngModel)]="programForm.titleSr" name="titleSr" class="form-input" />
                     <label class="form-label">{{ 'admin.description' | translate }} (SR)</label>
                     <textarea [(ngModel)]="programForm.descriptionSr" name="descSr" rows="5" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
-                    <label class="form-label">{{ 'admin.curriculum' | translate }} (SR) <span class="form-hint">{{ 'admin.curriculumHint' | translate }}</span></label>
-                    <textarea [(ngModel)]="programForm.curriculumSrJson" name="currSr" rows="8" class="form-input form-textarea form-code" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea>
+                    <label class="form-label">{{ 'admin.curriculum' | translate }} (SR)</label>
+                    <div class="curriculum-list">
+                      @for (lesson of programForm.curriculumSr; track $index) {
+                        <div class="lesson-editor">
+                          <div class="lesson-header">
+                            <span class="lesson-num">{{ 'admin.lessonNum' | translate }} {{ lesson.n }}</span>
+                            <button type="button" (click)="removeLesson('sr', $index)" class="btn-remove">{{ 'admin.removeLesson' | translate }}</button>
+                          </div>
+                          <label class="form-label">{{ 'admin.lessonTopic' | translate }}</label>
+                          <input [(ngModel)]="lesson.topic" [name]="'sr_topic_' + $index" class="form-input" />
+                          <label class="form-label">{{ 'admin.lessonDescription' | translate }}</label>
+                          <textarea [(ngModel)]="lesson.description" [name]="'sr_desc_' + $index" class="form-input form-textarea" rows="2"></textarea>
+                          <label class="form-label">{{ 'admin.lessonConclusions' | translate }}</label>
+                          <input [(ngModel)]="lesson.conclusions" [name]="'sr_conc_' + $index" class="form-input" />
+                          <label class="form-label">{{ 'admin.lessonResult' | translate }}</label>
+                          <input [(ngModel)]="lesson.result" [name]="'sr_res_' + $index" class="form-input" />
+                        </div>
+                      }
+                      <button type="button" (click)="addLesson('sr')" class="btn-add-lesson">{{ 'admin.addLesson' | translate }}</button>
+                    </div>
                   }
                   @if (programFormLang() === 'en') {
                     <label class="form-label">{{ 'admin.programTitle' | translate }} (EN)</label>
                     <input [(ngModel)]="programForm.titleEn" name="titleEn" class="form-input" />
                     <label class="form-label">{{ 'admin.description' | translate }} (EN)</label>
                     <textarea [(ngModel)]="programForm.descriptionEn" name="descEn" rows="5" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
-                    <label class="form-label">{{ 'admin.curriculum' | translate }} (EN) <span class="form-hint">{{ 'admin.curriculumHint' | translate }}</span></label>
-                    <textarea [(ngModel)]="programForm.curriculumEnJson" name="currEn" rows="8" class="form-input form-textarea form-code" [placeholder]="'admin.curriculumPlaceholder' | translate"></textarea>
+                    <label class="form-label">{{ 'admin.curriculum' | translate }} (EN)</label>
+                    <div class="curriculum-list">
+                      @for (lesson of programForm.curriculumEn; track $index) {
+                        <div class="lesson-editor">
+                          <div class="lesson-header">
+                            <span class="lesson-num">{{ 'admin.lessonNum' | translate }} {{ lesson.n }}</span>
+                            <button type="button" (click)="removeLesson('en', $index)" class="btn-remove">{{ 'admin.removeLesson' | translate }}</button>
+                          </div>
+                          <label class="form-label">{{ 'admin.lessonTopic' | translate }}</label>
+                          <input [(ngModel)]="lesson.topic" [name]="'en_topic_' + $index" class="form-input" />
+                          <label class="form-label">{{ 'admin.lessonDescription' | translate }}</label>
+                          <textarea [(ngModel)]="lesson.description" [name]="'en_desc_' + $index" class="form-input form-textarea" rows="2"></textarea>
+                          <label class="form-label">{{ 'admin.lessonConclusions' | translate }}</label>
+                          <input [(ngModel)]="lesson.conclusions" [name]="'en_conc_' + $index" class="form-input" />
+                          <label class="form-label">{{ 'admin.lessonResult' | translate }}</label>
+                          <input [(ngModel)]="lesson.result" [name]="'en_res_' + $index" class="form-input" />
+                        </div>
+                      }
+                      <button type="button" (click)="addLesson('en')" class="btn-add-lesson">{{ 'admin.addLesson' | translate }}</button>
+                    </div>
                   }
                 </div>
                 <hr class="form-divider" />
@@ -466,6 +520,20 @@ interface Enrollment {
     .enrollment-date { font-size: 0.9rem; color: var(--color-muted); }
     .enrollment-status { font-size: 0.85rem; }
     @keyframes pulse { 50% { opacity: 0.5; } }
+    .curriculum-list { display: flex; flex-direction: column; gap: 1rem; }
+    .lesson-editor {
+      padding: 1rem;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .lesson-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+    .lesson-num { font-weight: 600; color: var(--color-primary); }
+    .btn-remove { padding: 0.25rem 0.5rem; font-size: 0.85rem; background: transparent; color: var(--color-error); border: 1px solid var(--color-error); border-radius: 6px; cursor: pointer; }
+    .btn-remove:hover { background: rgba(248,113,113,0.1); }
+    .btn-add-lesson { align-self: flex-start; padding: 0.5rem 1rem; background: var(--color-bg); border: 1px dashed var(--color-border); border-radius: var(--radius); color: var(--color-muted); cursor: pointer; }
+    .btn-add-lesson:hover { border-color: var(--color-primary); color: var(--color-primary); }
     .row-actions { display: flex; gap: 0.5rem; }
     .row-actions button { min-height: 38px; padding: 0.4rem 0.9rem; }
     .age, .muted { color: var(--color-muted); font-size: 0.9rem; }
@@ -650,9 +718,9 @@ export class AdminComponent implements OnInit {
     imageUrl: '' as string | null,
     price: null as number | string | null,
     schedule: '',
-    curriculumRuJson: '',
-    curriculumSrJson: '',
-    curriculumEnJson: '',
+    curriculumRu: [] as Lesson[],
+    curriculumSr: [] as Lesson[],
+    curriculumEn: [] as Lesson[],
   };
   schoolTypeForm = { titleRu: '', titleSr: '', titleEn: '', descriptionRu: '', descriptionSr: '', descriptionEn: '', sortOrder: 0 };
   programFormLang = signal<'ru' | 'sr' | 'en'>('ru');
@@ -790,11 +858,28 @@ export class AdminComponent implements OnInit {
       imageUrl: null,
       price: null,
       schedule: '',
-      curriculumRuJson: '',
-      curriculumSrJson: '',
-      curriculumEnJson: '',
+      curriculumRu: [],
+      curriculumSr: [],
+      curriculumEn: [],
     };
     this.showProgramForm.set(true);
+  }
+
+  addLesson(lang: 'ru' | 'sr' | 'en') {
+    const arr = lang === 'ru' ? this.programForm.curriculumRu : lang === 'sr' ? this.programForm.curriculumSr : this.programForm.curriculumEn;
+    const n = arr.length + 1;
+    const newLesson: Lesson = { n, topic: '', description: '', conclusions: '', result: '' };
+    if (lang === 'ru') this.programForm.curriculumRu = [...arr, newLesson];
+    else if (lang === 'sr') this.programForm.curriculumSr = [...arr, newLesson];
+    else this.programForm.curriculumEn = [...arr, newLesson];
+  }
+
+  removeLesson(lang: 'ru' | 'sr' | 'en', index: number) {
+    const arr = lang === 'ru' ? this.programForm.curriculumRu : lang === 'sr' ? this.programForm.curriculumSr : this.programForm.curriculumEn;
+    const next = arr.filter((_, i) => i !== index).map((l, i) => ({ ...l, n: i + 1 }));
+    if (lang === 'ru') this.programForm.curriculumRu = next;
+    else if (lang === 'sr') this.programForm.curriculumSr = next;
+    else this.programForm.curriculumEn = next;
   }
 
   editProgram(p: Program) {
@@ -823,9 +908,9 @@ export class AdminComponent implements OnInit {
             imageUrl: prog.imageUrl ?? prog.image_url ?? null,
             price: prog.price ?? null,
             schedule: prog.schedule ?? '',
-            curriculumRuJson: Array.isArray(prog.curriculumRu) ? JSON.stringify(prog.curriculumRu, null, 2) : '',
-            curriculumSrJson: Array.isArray(prog.curriculumSr) ? JSON.stringify(prog.curriculumSr, null, 2) : '',
-            curriculumEnJson: Array.isArray(prog.curriculumEn) ? JSON.stringify(prog.curriculumEn, null, 2) : '',
+            curriculumRu: Array.isArray(prog.curriculumRu) ? prog.curriculumRu.map((l: Lesson) => ({ ...l })) : [],
+            curriculumSr: Array.isArray(prog.curriculumSr) ? prog.curriculumSr.map((l: Lesson) => ({ ...l })) : [],
+            curriculumEn: Array.isArray(prog.curriculumEn) ? prog.curriculumEn.map((l: Lesson) => ({ ...l })) : [],
           };
         }
         this.showProgramForm.set(true);
@@ -848,9 +933,9 @@ export class AdminComponent implements OnInit {
           imageUrl: p.imageUrl ?? null,
           price: p.price ?? null,
           schedule: p.schedule ?? '',
-          curriculumRuJson: p.curriculum?.length ? JSON.stringify(p.curriculum, null, 2) : '',
-          curriculumSrJson: '',
-          curriculumEnJson: '',
+          curriculumRu: p.curriculum?.length ? p.curriculum.map(l => ({ ...l })) : [],
+          curriculumSr: [],
+          curriculumEn: [],
         };
         this.showProgramForm.set(true);
       },
@@ -875,23 +960,9 @@ export class AdminComponent implements OnInit {
       this.errorMessage.set(this.translate.instant('admin.ageError'));
       return;
     }
-    let curriculumRu: Lesson[] = [];
-    let curriculumSr: Lesson[] = [];
-    let curriculumEn: Lesson[] = [];
-    try {
-      if (this.programForm.curriculumRuJson?.trim()) {
-        curriculumRu = JSON.parse(this.programForm.curriculumRuJson);
-      }
-      if (this.programForm.curriculumSrJson?.trim()) {
-        curriculumSr = JSON.parse(this.programForm.curriculumSrJson);
-      }
-      if (this.programForm.curriculumEnJson?.trim()) {
-        curriculumEn = JSON.parse(this.programForm.curriculumEnJson);
-      }
-    } catch {
-      this.errorMessage.set(this.translate.instant('admin.curriculumJsonError'));
-      return;
-    }
+    const curriculumRu = this.programForm.curriculumRu || [];
+    const curriculumSr = this.programForm.curriculumSr || [];
+    const curriculumEn = this.programForm.curriculumEn || [];
     const slug = this.programForm.slug?.trim() || titleRu.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, '');
     const body = {
       titleRu,
