@@ -10,17 +10,42 @@ export function registerProgramsRoutes({ app, persistence, logger }) {
 
   app.get('/api/programs', async (req, res) => {
     try {
-      const { age_min, age_max, school_type } = req.query || {};
+      const { age_min, age_max, school_type, level } = req.query || {};
       const filters = { locale: getLocale(req) };
       if (age_min != null) filters.ageMin = parseInt(age_min, 10);
       if (age_max != null) filters.ageMax = parseInt(age_max, 10);
       if (school_type) filters.schoolType = String(school_type).trim();
+      if (level) filters.level = String(level).trim();
 
       const programs = await persistence.getPrograms(filters);
       res.json({ success: true, programs });
     } catch (err) {
       log.error?.('Ошибка getPrograms', { error: err?.message });
       res.status(500).json({ success: false, error: 'Ошибка загрузки программ' });
+    }
+  });
+
+  app.get('/api/programs/meta/popular-ids', async (req, res) => {
+    try {
+      const ids = await persistence.getPopularProgramIds?.(5) || [];
+      res.json({ success: true, popularIds: ids });
+    } catch (err) {
+      log.error?.('Ошибка getPopularProgramIds', { error: err?.message });
+      res.json({ success: true, popularIds: [] });
+    }
+  });
+
+  app.get('/api/stats', async (req, res) => {
+    try {
+      const stats = await persistence.getStats?.(getLocale(req));
+      if (!stats) {
+        res.json({ success: true, stats: { students: 0, enrollments: 0, programs: 0 } });
+        return;
+      }
+      res.json({ success: true, stats: { students: stats.students, enrollments: stats.enrollments, programs: stats.programs } });
+    } catch (err) {
+      log.error?.('Ошибка getStats', { error: err?.message });
+      res.json({ success: true, stats: { students: 0, enrollments: 0, programs: 0 } });
     }
   });
 

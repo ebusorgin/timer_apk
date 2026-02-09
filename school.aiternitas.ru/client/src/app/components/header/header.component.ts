@@ -17,11 +17,14 @@ import { LocaleService } from '../../services/locale.service';
         <span class="nav-toggle-bar"></span>
       </button>
       <nav class="nav" [class.nav-open]="menuOpen()" (click)="menuOpen.set(false)">
-        <select class="lang-select" [value]="locale.locale()" (change)="onLangChange($event)">
-          @for (l of locale.getLocales(); track l) {
-            <option [value]="l">{{ l.toUpperCase() }}</option>
-          }
-        </select>
+        <div class="lang-wrap">
+          <span class="lang-label">{{ 'nav.language' | translate }}</span>
+          <select class="lang-select" [value]="locale.locale()" (change)="onLangChange($event)" [attr.aria-label]="'nav.language' | translate">
+            @for (l of locale.getLocales(); track l) {
+              <option [value]="l">{{ l === 'ru' ? 'Русский' : l === 'sr' ? 'Српски' : 'English' }}</option>
+            }
+          </select>
+        </div>
         <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">{{ 'nav.home' | translate }}</a>
         <a routerLink="/programs" routerLinkActive="active">{{ 'nav.programs' | translate }}</a>
         @if (auth.user(); as u) {
@@ -86,14 +89,28 @@ import { LocaleService } from '../../services/locale.service';
       transition: border-color var(--transition), background var(--transition);
     }
     button:hover { background: var(--color-bg); }
+    .lang-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lang-label {
+      font-size: 0.85rem;
+      color: var(--color-muted);
+    }
     .lang-select {
-      padding: 0.25rem 0.5rem;
+      padding: 0.4rem 0.75rem;
       border-radius: var(--radius);
       border: 1px solid var(--color-border);
-      background: var(--color-bg-alt);
-      font-size: 0.85rem;
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      font-size: 0.9rem;
       cursor: pointer;
       min-height: var(--touch-min);
+    }
+    .lang-select option {
+      background: var(--color-bg);
+      color: var(--color-text);
     }
     .nav-toggle {
       display: none;

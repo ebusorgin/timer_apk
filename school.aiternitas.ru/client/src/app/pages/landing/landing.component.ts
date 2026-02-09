@@ -19,11 +19,16 @@ import { ApiService } from '../../services/api.service';
       </div>
       <div class="container hero-content">
         <p class="hero-badge">{{ 'hero.badge' | translate }}</p>
-        <h1 class="hero-title">
-          <span class="hero-title-line">{{ 'hero.title1' | translate }}</span>
-          <span class="hero-title-accent">{{ 'hero.title2' | translate }}</span>
-        </h1>
-        <p class="hero-subtitle">{{ 'hero.subtitle' | translate }}</p>
+        <h1 class="hero-title hero-title-concrete">{{ 'hero.titleConcrete' | translate }}</h1>
+        <p class="hero-subtitle">{{ 'hero.subtitleConcrete' | translate }}</p>
+        <div class="hero-benefits" schoolScrollReveal>
+          <span class="hero-benefits-label">{{ 'hero.benefitsTitle' | translate }}</span>
+          <ul class="hero-benefits-list">
+            <li>{{ 'hero.benefit1' | translate }}</li>
+            <li>{{ 'hero.benefit2' | translate }}</li>
+            <li>{{ 'hero.benefit3' | translate }}</li>
+          </ul>
+        </div>
         <div class="hero-actions">
           <a routerLink="/programs" class="btn-hero btn-primary">
             <span>{{ 'hero.viewPrograms' | translate }}</span>
@@ -32,6 +37,16 @@ import { ApiService } from '../../services/api.service';
             </svg>
           </a>
           <a routerLink="/register" class="btn-hero btn-ghost">{{ 'hero.signUp' | translate }}</a>
+        </div>
+      </div>
+    </section>
+    <section class="stats-section">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.stats' | translate }}</h2>
+        <div class="stats-grid" schoolScrollReveal>
+          <div class="stat-item"><span class="stat-num">{{ stats().students }}</span><span>{{ 'stats.students' | translate }}</span></div>
+          <div class="stat-item"><span class="stat-num">{{ stats().programs }}</span><span>{{ 'stats.programs' | translate }}</span></div>
+          <div class="stat-item"><span class="stat-num">{{ stats().years }}</span><span>{{ 'stats.years' | translate }}</span></div>
         </div>
       </div>
     </section>
@@ -82,24 +97,28 @@ import { ApiService } from '../../services/api.service';
             <div class="platform-icon">📋</div>
             <h3>{{ 'platform.cabinet' | translate }}</h3>
             <p>{{ 'platform.cabinetDesc' | translate }}</p>
+            <p class="platform-scenario">{{ 'platform.scenarioCabinet' | translate }}</p>
             <img src="hero-school.png" alt="" class="platform-preview" />
           </div>
           <div class="platform-card" schoolScrollReveal>
             <div class="platform-icon">👥</div>
             <h3>{{ 'platform.groups' | translate }}</h3>
             <p>{{ 'platform.groupsDesc' | translate }}</p>
+            <p class="platform-scenario">{{ 'platform.scenarioGroups' | translate }}</p>
             <img src="gallery-tech-class.png" alt="" class="platform-preview" />
           </div>
           <div class="platform-card" schoolScrollReveal>
             <div class="platform-icon">📝</div>
             <h3>{{ 'platform.homework' | translate }}</h3>
             <p>{{ 'platform.homeworkDesc' | translate }}</p>
+            <p class="platform-scenario">{{ 'platform.scenarioHomework' | translate }}</p>
             <img src="gallery-art-class.png" alt="" class="platform-preview" />
           </div>
           <div class="platform-card" schoolScrollReveal>
             <div class="platform-icon">📢</div>
             <h3>{{ 'platform.announcements' | translate }}</h3>
             <p>{{ 'platform.announcementsDesc' | translate }}</p>
+            <p class="platform-scenario">{{ 'platform.scenarioAnnouncements' | translate }}</p>
             <img src="gallery-creative.png" alt="" class="platform-preview" />
           </div>
         </div>
@@ -124,13 +143,31 @@ import { ApiService } from '../../services/api.service';
         <h2 class="section-title" schoolScrollReveal>{{ 'section.ages' | translate }}</h2>
         <div class="ages-grid">
           @for (a of ageGroups; track a.rangeKey) {
-            <div class="age-card" schoolScrollReveal>
-              <div class="age-image" [style.background-image]="'url(' + a.img + ')'"></div>
-              <div class="age-body">
-                <span class="age-range">{{ a.rangeKey | translate }} {{ 'programs.years' | translate }}</span>
-                <h3>{{ a.titleKey | translate }}</h3>
-                <p>{{ a.descKey | translate }}</p>
+            <a [routerLink]="['/programs']" [queryParams]="a.queryParams" class="age-card-link" schoolScrollReveal>
+              <div class="age-card">
+                <div class="age-image" [style.background-image]="'url(' + a.img + ')'"></div>
+                <div class="age-body">
+                  <span class="age-range">{{ a.rangeKey | translate }} {{ 'programs.years' | translate }}</span>
+                  <h3>{{ a.titleKey | translate }}</h3>
+                  <p>{{ a.descKey | translate }}</p>
+                  <p class="age-projects">{{ a.projectsKey | translate }}</p>
+                </div>
               </div>
+            </a>
+          }
+        </div>
+      </div>
+    </section>
+    <section class="student-path">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.studentPath' | translate }}</h2>
+        <div class="path-timeline" schoolScrollReveal>
+          @for (p of pathSteps; track p.stepKey; let i = $index) {
+            <div class="path-step">
+              <span class="path-num">{{ i + 1 }}</span>
+              <h4>{{ p.stepKey | translate }}</h4>
+              <p>{{ p.descKey | translate }}</p>
+              @if (i < pathSteps.length - 1) { <span class="path-arrow">→</span> }
             </div>
           }
         </div>
@@ -174,11 +211,44 @@ import { ApiService } from '../../services/api.service';
         </div>
       </div>
     </section>
+    <section class="reviews-section">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.reviews' | translate }}</h2>
+        <div class="reviews-grid" schoolScrollReveal>
+          <div class="review-card">
+            <div class="review-avatar">М</div>
+            <p class="review-text">«{{ 'review1.text' | translate }}»</p>
+            <p class="review-author">{{ 'review1.name' | translate }}, {{ 'review1.child' | translate }}</p>
+          </div>
+          <div class="review-card">
+            <div class="review-avatar">О</div>
+            <p class="review-text">«{{ 'review2.text' | translate }}»</p>
+            <p class="review-author">{{ 'review2.name' | translate }}, {{ 'review2.child' | translate }}</p>
+          </div>
+          <div class="review-card">
+            <div class="review-avatar">А</div>
+            <p class="review-text">«{{ 'review3.text' | translate }}»</p>
+            <p class="review-author">{{ 'review3.name' | translate }}, {{ 'review3.child' | translate }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="safety-section">
+      <div class="container">
+        <h2 class="section-title" schoolScrollReveal>{{ 'section.safety' | translate }}</h2>
+        <ul class="safety-list" schoolScrollReveal>
+          <li>{{ 'safety.item1' | translate }}</li>
+          <li>{{ 'safety.item2' | translate }}</li>
+          <li>{{ 'safety.item3' | translate }}</li>
+        </ul>
+      </div>
+    </section>
     <section class="cta" schoolScrollReveal>
       <div class="container">
         <div class="cta-content">
           <h2>{{ 'cta.title' | translate }}</h2>
           <p>{{ 'cta.subtitle' | translate }}</p>
+          <p class="cta-free">{{ 'cta.freeTrial' | translate }}</p>
           <a routerLink="/register" class="btn-hero btn-primary btn-lg">
             <span>{{ 'cta.register' | translate }}</span>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -264,6 +334,31 @@ import { ApiService } from '../../services/api.service';
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
+    .hero-title-concrete {
+      max-width: 720px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero-benefits {
+      margin: 1.5rem auto 2rem;
+      padding: 1rem 1.5rem;
+      background: rgba(99,102,241,0.1);
+      border-radius: var(--radius);
+      max-width: 480px;
+      text-align: left;
+    }
+    .hero-benefits-label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--color-accent);
+    }
+    .hero-benefits-list {
+      margin: 0.5rem 0 0;
+      padding-left: 1.25rem;
+      color: var(--color-muted);
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
     @keyframes gradientShift {
       0%, 100% { background-position: 0% 50%; }
       50% { background-position: 100% 50%; }
@@ -322,6 +417,32 @@ import { ApiService } from '../../services/api.service';
     .btn-lg {
       padding: 1rem 2rem;
       font-size: 1.1rem;
+    }
+    .stats-section {
+      padding: 2.5rem 0;
+      background: var(--color-bg-alt);
+    }
+    .stats-grid {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .stat-num {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--color-accent);
+    }
+    .stat-item span:last-child {
+      font-size: 0.9rem;
+      color: var(--color-muted);
     }
     .directions {
       padding: 4rem 0;
@@ -539,8 +660,120 @@ import { ApiService } from '../../services/api.service';
       color: var(--color-accent);
       margin-bottom: 0.75rem;
     }
+    .age-card-link { text-decoration: none; color: inherit; }
     .age-card h3 { font-size: 1.25rem; margin: 0 0 0.5rem; }
     .age-card p { margin: 0; font-size: 0.9rem; color: var(--color-muted); line-height: 1.5; }
+    .age-projects {
+      margin-top: 0.5rem !important;
+      font-size: 0.85rem !important;
+      color: var(--color-accent) !important;
+    }
+    .student-path {
+      padding: 4rem 0;
+      background: var(--color-bg);
+    }
+    .path-timeline {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .path-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      flex: 1;
+      min-width: 120px;
+      position: relative;
+    }
+    .path-num {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .path-step h4 { font-size: 1rem; margin: 0 0 0.25rem; }
+    .path-step p { font-size: 0.85rem; color: var(--color-muted); margin: 0; }
+    .path-arrow {
+      position: absolute;
+      right: -0.5rem;
+      top: 1rem;
+      color: var(--color-muted);
+      font-size: 1.25rem;
+    }
+    .platform-scenario {
+      font-size: 0.85rem !important;
+      color: var(--color-accent) !important;
+      font-style: italic;
+      margin: 0.5rem 0 1rem !important;
+    }
+    .reviews-section {
+      padding: 4rem 0;
+      background: var(--color-bg-alt);
+    }
+    .reviews-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+    .review-card {
+      padding: 1.5rem;
+      background: var(--color-bg-card);
+      border-radius: var(--radius);
+      border: 1px solid var(--color-border);
+    }
+    .review-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .review-text { font-size: 0.95rem; line-height: 1.6; margin: 0 0 1rem; color: var(--color-muted); }
+    .review-author { font-size: 0.85rem; color: var(--color-accent); margin: 0; }
+    .safety-section {
+      padding: 3rem 0;
+      background: var(--color-bg);
+    }
+    .safety-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 auto;
+      max-width: 560px;
+    }
+    .safety-list li {
+      padding: 0.75rem 0 0.75rem 2rem;
+      position: relative;
+      color: var(--color-muted);
+      line-height: 1.6;
+    }
+    .safety-list li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: var(--color-accent);
+      font-weight: 700;
+    }
+    .cta-free {
+      font-size: 0.95rem;
+      color: var(--color-accent);
+      margin: -0.5rem 0 1.5rem !important;
+    }
     .how {
       padding: 4rem 0;
       background: var(--color-bg-alt);
@@ -684,7 +917,10 @@ import { ApiService } from '../../services/api.service';
     }
     .school-card[schoolScrollReveal].revealed { transition-delay: 0.1s; }
     @media (max-width: 768px) {
-      .directions, .about, .benefits, .ages, .how, .gallery, .cta, .platform-section { padding: 3rem 0; }
+      .directions, .about, .benefits, .ages, .how, .gallery, .cta, .platform-section, .stats-section, .reviews-section, .safety-section, .student-path { padding: 3rem 0; }
+      .stats-grid { gap: 2rem; }
+      .path-timeline { flex-direction: column; align-items: center; }
+      .path-arrow { display: none; }
       .section-title { margin-bottom: 1.5rem; }
       .about-grid { grid-template-columns: 1fr; gap: 2rem; }
       .about-image { order: -1; }
@@ -717,12 +953,24 @@ import { ApiService } from '../../services/api.service';
 })
 export class LandingComponent implements OnInit {
   schoolTypes = signal<{ id: string; title: string; description?: string }[]>([]);
+  stats = signal<{ students: number; programs: number; years: number }>({ students: 0, programs: 0, years: 3 });
 
   constructor(private api: ApiService) {}
 
   ngOnInit() {
     this.api.get<{ success: boolean; schoolTypes: { id: string; title: string; description?: string }[] }>('/programs/meta/school-types').subscribe({
       next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
+    });
+    this.api.get<{ success: boolean; stats: { students: number; programs: number; enrollments: number } }>('/stats').subscribe({
+      next: (r) => {
+        if (r.success && r.stats) {
+          this.stats.set({
+            students: r.stats.students ?? 0,
+            programs: r.stats.programs ?? 0,
+            years: 3,
+          });
+        }
+      },
     });
   }
 
@@ -736,9 +984,17 @@ export class LandingComponent implements OnInit {
     { icon: '🔧', titleKey: 'benefit4.title', textKey: 'benefit4.text' },
   ];
   ageGroups = [
-    { rangeKey: 'age1.range', titleKey: 'age1.title', descKey: 'age1.desc', img: 'tech-class.png' },
-    { rangeKey: 'age2.range', titleKey: 'age2.title', descKey: 'age2.desc', img: 'art-class.png' },
-    { rangeKey: 'age3.range', titleKey: 'age3.title', descKey: 'age3.desc', img: 'teens-coding.png' },
+    { rangeKey: 'age1.range', titleKey: 'age1.title', descKey: 'age1.desc', projectsKey: 'age1.projects', img: 'tech-class.png', queryParams: { age_min: 5, age_max: 7 } },
+    { rangeKey: 'age2.range', titleKey: 'age2.title', descKey: 'age2.desc', projectsKey: 'age2.projects', img: 'art-class.png', queryParams: { age_min: 8, age_max: 11 } },
+    { rangeKey: 'age3.range', titleKey: 'age3.title', descKey: 'age3.desc', projectsKey: 'age3.projects', img: 'teens-coding.png', queryParams: { age_min: 12, age_max: 18 } },
+  ];
+  pathSteps = [
+    { stepKey: 'path.step1', descKey: 'path.step1Desc' },
+    { stepKey: 'path.step2', descKey: 'path.step2Desc' },
+    { stepKey: 'path.step3', descKey: 'path.step3Desc' },
+    { stepKey: 'path.step4', descKey: 'path.step4Desc' },
+    { stepKey: 'path.step5', descKey: 'path.step5Desc' },
+    { stepKey: 'path.step6', descKey: 'path.step6Desc' },
   ];
   steps = [
     { titleKey: 'step1.title', textKey: 'step1.text' },

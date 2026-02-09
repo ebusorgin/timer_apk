@@ -54,8 +54,18 @@ export async function ensureSchema(pool, logger) {
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS price INTEGER`);
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS schedule TEXT`);
   await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS curriculum JSONB`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'beginner'`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS is_new BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS skills_ru TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS skills_sr TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS skills_en TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS target_audience_ru TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS target_audience_sr TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS target_audience_en TEXT`);
+  await pool.query(`ALTER TABLE ${schema('programs')} ADD COLUMN IF NOT EXISTS faq JSONB`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_age_idx ON ${schema('programs')}(age_min, age_max)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS programs_school_type_idx ON ${schema('programs')}(school_type)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS programs_level_idx ON ${schema('programs')}(level)`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${schema('enrollments')} (
@@ -100,6 +110,9 @@ function userFromRow(row) {
 function programFromRow(row, locale = 'ru') {
   if (!row) return null;
   const curriculum = pickLocale(row, locale, 'curriculum');
+  const skills = pickLocale(row, locale, 'skills');
+  const targetAudience = pickLocale(row, locale, 'target_audience');
+  const faq = row.faq && Array.isArray(row.faq) ? row.faq : [];
   return {
     id: String(row.id),
     title: pickLocale(row, locale, 'title'),
@@ -111,10 +124,15 @@ function programFromRow(row, locale = 'ru') {
     lessonsPerWeek: row.lessons_per_week ?? 1,
     format: row.format,
     schoolType: row.school_type || 'tech',
+    level: row.level || 'beginner',
+    isNew: !!row.is_new,
     imageUrl: row.image_url || null,
     price: row.price != null ? row.price : null,
     schedule: row.schedule || null,
     curriculum: Array.isArray(curriculum) ? curriculum : (row.curriculum || []),
+    skills: typeof skills === 'string' ? skills : null,
+    targetAudience: typeof targetAudience === 'string' ? targetAudience : null,
+    faq: faq.map((f) => (typeof f === 'object' && f.q ? f : { q: String(f), a: '' })),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };
@@ -230,7 +248,7 @@ export function createPostgresAdapter(poolConfig, logger) {
     },
 
     async getPrograms(filters = {}) {
-      const { ageMin, ageMax, schoolType, locale = 'ru' } = filters;
+      const { ageMin, ageMax, schoolType, level, locale = 'ru' } = filters;
       let query = `SELECT * FROM ${schema('programs')} ORDER BY age_min, COALESCE(title_ru, title)`;
       const params = [];
       const conditions = [];
@@ -247,12 +265,26 @@ export function createPostgresAdapter(poolConfig, logger) {
         params.push(schoolType);
         conditions.push(`school_type = $${params.length}`);
       }
+      if (level) {
+        params.push(level);
+        conditions.push(`COALESCE(level, 'beginner') = $${params.length}`);
+      }
       if (conditions.length) {
         query = `SELECT * FROM ${schema('programs')} WHERE ${conditions.join(' AND ')} ORDER BY age_min, COALESCE(title_ru, title)`;
       }
 
       const { rows } = await pool.query(query, params);
       return rows.map((r) => programFromRow(r, locale));
+    },
+
+    async getPopularProgramIds(limit = 5) {
+      const { rows } = await pool.query(
+        `SELECT p.id FROM ${schema('programs')} p
+         LEFT JOIN ${schema('enrollments')} e ON e.program_id = p.id AND e.status = 'active'
+         GROUP BY p.id ORDER BY COUNT(e.id) DESC LIMIT $1`,
+        [limit]
+      );
+      return rows.map((r) => String(r.id));
     },
 
     async getProgramById(id, locale = 'ru') {
@@ -354,6 +386,10 @@ export function createPostgresAdapter(poolConfig, logger) {
         imageUrl: 'image_url', image_url: 'image_url',
         price: 'price', schedule: 'schedule',
         curriculum: 'curriculum',
+        level: 'level', isNew: 'is_new',
+        skillsRu: 'skills_ru', skillsSr: 'skills_sr', skillsEn: 'skills_en',
+        targetAudienceRu: 'target_audience_ru', targetAudienceSr: 'target_audience_sr', targetAudienceEn: 'target_audience_en',
+        faq: 'faq',
       };
       const setClauses = [];
       const values = [];
@@ -362,7 +398,7 @@ export function createPostgresAdapter(poolConfig, logger) {
         const val = updates[key];
         if (val !== undefined) {
           idx++;
-          const isJsonb = col.startsWith('curriculum');
+          const isJsonb = col.startsWith('curriculum') || col === 'faq';
           setClauses.push(isJsonb ? `${col} = $${idx}::jsonb` : `${col} = $${idx}`);
           values.push(isJsonb ? JSON.stringify(val) : (Array.isArray(val) ? val : val));
         }

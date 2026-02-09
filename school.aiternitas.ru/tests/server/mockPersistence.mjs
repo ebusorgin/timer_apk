@@ -43,6 +43,7 @@ export function createMockPersistence() {
       return u;
     },
     getPrograms: async () => programs,
+    getPopularProgramIds: async () => programs.slice(0, 2).map((p) => String(p.id)),
     getProgramById: async (id) => programs.find((p) => String(p.id) === String(id)) || null,
     getSchoolTypes: async () => schoolTypes,
     getGroupsByProgramId: async (programId) => groups.filter((g) => String(g.programId) === String(programId)),

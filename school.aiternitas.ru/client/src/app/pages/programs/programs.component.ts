@@ -13,6 +13,8 @@ export interface Program {
   durationWeeks: number;
   format?: string;
   schoolType?: string;
+  level?: string;
+  isNew?: boolean;
   imageUrl?: string | null;
   price?: number | null;
   schedule?: string | null;
@@ -30,6 +32,10 @@ interface SchoolType {
   template: `
     <div class="container page">
       <h1>{{ 'programs.title' | translate }}</h1>
+      <div class="quick-anchors">
+        <a [routerLink]="['/programs']" [queryParams]="{school_type: 'tech'}" class="anchor">{{ 'programs.quickTech' | translate }}</a>
+        <a [routerLink]="['/programs']" [queryParams]="{school_type: 'art'}" class="anchor">{{ 'programs.quickArt' | translate }}</a>
+      </div>
       <div class="school-tabs">
         <a [routerLink]="['/programs']" [queryParams]="{}" [class.active]="!schoolType()" class="tab">{{ 'programs.all' | translate }}</a>
         @for (st of schoolTypes(); track st.id) {
@@ -52,11 +58,27 @@ interface SchoolType {
           @for (p of programs(); track p.id) {
             <a [routerLink]="['/programs', p.id]" class="card">
               @if (p.imageUrl) {
-                <div class="card-image"><img [src]="p.imageUrl" [alt]="p.title" /></div>
+                <div class="card-image">
+                  <img [src]="p.imageUrl" [alt]="p.title" />
+                  <div class="card-badges">
+                    @if (p.isNew) { <span class="badge badge-new">{{ 'programs.badgeNew' | translate }}</span> }
+                  </div>
+                </div>
+              }
+              @if (!p.imageUrl) {
+                <div class="card-badges-inline">
+                  @if (p.isNew) { <span class="badge badge-new">{{ 'programs.badgeNew' | translate }}</span> }
+                </div>
               }
               <div class="card-body">
                 <h3>{{ p.title }}</h3>
                 <p class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</p>
+                <div class="card-duration-format">
+                  <span>{{ p.durationWeeks }} {{ 'programDetail.weeks' | translate }}</span>
+                  @if (p.format) {
+                    <span class="format-badge">{{ (p.format === 'online' ? 'programs.formatOnline' : 'programs.formatOffline') | translate }}</span>
+                  }
+                </div>
                 <p class="desc">{{ p.description }}</p>
                 <div class="card-meta">
                   @if (p.price != null) {
@@ -171,8 +193,10 @@ export class ProgramsComponent implements OnInit {
     });
     this.route.queryParams.subscribe((qp) => {
       const st = qp['school_type'] || null;
+      const ageMin = qp['age_min'] != null ? parseInt(qp['age_min'], 10) : undefined;
+      const ageMax = qp['age_max'] != null ? parseInt(qp['age_max'], 10) : undefined;
       this.schoolType.set(st);
-      this.load(undefined, undefined, st);
+      this.load(ageMin, ageMax, st);
     });
   }
 
