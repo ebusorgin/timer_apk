@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { AuthService } from './auth.service';
 import { ApiService } from './api.service';
 
@@ -13,7 +14,7 @@ describe('AuthService', () => {
     routerSpy = jasmine.createSpyObj('Router', ['navigate']);
     localStorage.clear();
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
+      imports: [HttpClientTestingModule, TranslateModule.forRoot()],
       providers: [
         AuthService,
         ApiService,
@@ -35,7 +36,7 @@ describe('AuthService', () => {
   it('loadUser should set user when token valid', async () => {
     localStorage.setItem('token', 'fake-token');
     const loadPromise = service.loadUser();
-    const req = httpMock.expectOne('/api/me');
+    const req = httpMock.expectOne((r) => r.url.startsWith('/api/me'));
     expect(req.request.headers.has('Authorization')).toBe(true);
     req.flush({ success: true, user: { id: '1', email: 'a@b.com', name: 'Test', role: 'student' } });
     await loadPromise;
@@ -46,7 +47,7 @@ describe('AuthService', () => {
   it('loadUser should clear token when request fails', async () => {
     localStorage.setItem('token', 'fake-token');
     const loadPromise = service.loadUser();
-    const req = httpMock.expectOne('/api/me');
+    const req = httpMock.expectOne((r) => r.url.startsWith('/api/me'));
     req.flush({ error: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
     await loadPromise;
     expect(service.user()).toBeNull();

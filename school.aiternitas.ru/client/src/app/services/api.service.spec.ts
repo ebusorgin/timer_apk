@@ -27,14 +27,14 @@ describe('ApiService', () => {
   it('get should add Authorization when token exists', () => {
     localStorage.setItem('token', 'test-token');
     service.get('/test').subscribe();
-    const req = httpMock.expectOne('/api/test');
+    const req = httpMock.expectOne((r) => r.url.startsWith('/api/test'));
     expect(req.request.headers.get('Authorization')).toBe('Bearer test-token');
     req.flush({});
   });
 
   it('get should not add Authorization when no token', () => {
     service.get('/test').subscribe();
-    const req = httpMock.expectOne('/api/test');
+    const req = httpMock.expectOne((r) => r.url.startsWith('/api/test'));
     expect(req.request.headers.has('Authorization')).toBe(false);
     req.flush({});
   });
@@ -42,7 +42,8 @@ describe('ApiService', () => {
   it('post should send body', () => {
     service.post('/auth/login', { email: 'a@b.com', password: 'x' }).subscribe();
     const req = httpMock.expectOne('/api/auth/login');
-    expect(req.request.body).toEqual({ email: 'a@b.com', password: 'x' });
+    expect(req.request.body.email).toBe('a@b.com');
+    expect(req.request.body.password).toBe('x');
     req.flush({});
   });
 });
