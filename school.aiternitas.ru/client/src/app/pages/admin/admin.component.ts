@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { ApiService } from '../../services/api.service';
 
@@ -49,10 +50,20 @@ interface Student {
   role: string;
 }
 
+interface Enrollment {
+  id: string;
+  studentName: string;
+  studentEmail: string;
+  programTitle: string;
+  programId: string;
+  status: string;
+  enrolledAt: number;
+}
+
 @Component({
   selector: 'school-admin',
   standalone: true,
-  imports: [FormsModule, TranslateModule],
+  imports: [FormsModule, TranslateModule, RouterLink],
   template: `
     <div class="container page">
       <h1>{{ 'admin.title' | translate }}</h1>
@@ -61,21 +72,40 @@ interface Student {
         <button [class.active]="tab() === 'programs'" (click)="tab.set('programs'); loadPrograms(); loadSchoolTypes()">{{ 'admin.tabPrograms' | translate }}</button>
         <button [class.active]="tab() === 'schoolTypes'" (click)="tab.set('schoolTypes'); loadSchoolTypes()">{{ 'admin.tabSchoolTypes' | translate }}</button>
         <button [class.active]="tab() === 'students'" (click)="tab.set('students'); loadStudents()">{{ 'admin.tabStudents' | translate }}</button>
+        <button [class.active]="tab() === 'enrollments'" (click)="tab.set('enrollments'); loadEnrollments()">{{ 'admin.tabEnrollments' | translate }}</button>
       </div>
 
       @if (tab() === 'stats') {
-        @if (stats(); as s) {
-          <div class="stats-grid">
-            <div class="stat-card"><span class="num">{{ s.students }}</span><span>{{ 'admin.students' | translate }}</span></div>
-            <div class="stat-card"><span class="num">{{ s.enrollments }}</span><span>{{ 'admin.enrollments' | translate }}</span></div>
-            <div class="stat-card"><span class="num">{{ s.programs }}</span><span>{{ 'admin.programs' | translate }}</span></div>
+        @if (loadingStats()) {
+          <div class="loading-skeleton">
+            <div class="stats-grid">
+              <div class="stat-card skeleton"></div>
+              <div class="stat-card skeleton"></div>
+              <div class="stat-card skeleton"></div>
+            </div>
+            <p class="loading-text">{{ 'admin.loading' | translate }}</p>
           </div>
-          <h3>{{ 'admin.popularPrograms' | translate }}</h3>
-          <ul>
-            @for (p of s.popularPrograms; track p.id) {
-              <li>{{ p.title }} — {{ p.count }} {{ 'admin.enrollments' | translate }}</li>
+        } @else {
+          @if (stats(); as s) {
+            <div class="stats-grid">
+              <div class="stat-card"><span class="num">{{ s.students }}</span><span>{{ 'admin.students' | translate }}</span></div>
+              <div class="stat-card"><span class="num">{{ s.enrollments }}</span><span>{{ 'admin.enrollments' | translate }}</span></div>
+              <div class="stat-card"><span class="num">{{ s.programs }}</span><span>{{ 'admin.programs' | translate }}</span></div>
+            </div>
+            <h3>{{ 'admin.popularPrograms' | translate }}</h3>
+            @if (s.popularPrograms.length === 0) {
+              <p class="empty-state">{{ 'admin.noPopularPrograms' | translate }}</p>
+            } @else {
+              <div class="popular-grid">
+                @for (p of s.popularPrograms; track p.id) {
+                  <a [routerLink]="['/programs', p.id]" class="popular-card">
+                    <strong>{{ p.title }}</strong>
+                    <span class="popular-count">{{ p.count }} {{ 'admin.enrollments' | translate }}</span>
+                  </a>
+                }
+              </div>
             }
-          </ul>
+          }
         }
       }
 
@@ -89,21 +119,35 @@ interface Student {
           </select>
           <button (click)="openProgramForm()" class="btn-add">{{ 'admin.addProgram' | translate }}</button>
         </div>
-        <div class="list">
-          @for (p of filteredPrograms(); track p.id) {
-            <div class="row">
-              <div class="row-content">
-                <strong>{{ p.title }}</strong>
-                <span class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</span>
-                <span>{{ getSchoolTypeTitle(p.schoolType || '') }}</span>
+        @if (loadingPrograms()) {
+          <p class="loading-text">{{ 'admin.loading' | translate }}</p>
+        } @else if (filteredPrograms().length === 0) {
+          <div class="empty-state">
+            <p>{{ 'admin.noPrograms' | translate }}</p>
+            <button (click)="openProgramForm()" class="btn-add">{{ 'admin.addProgram' | translate }}</button>
+          </div>
+        } @else {
+          <div class="list">
+            @for (p of filteredPrograms(); track p.id) {
+              <div class="row">
+                <div class="row-content">
+                  @if (p.imageUrl) {
+                    <img [src]="p.imageUrl" [alt]="p.title" class="row-thumb" />
+                  }
+                  <div class="row-info">
+                    <strong>{{ p.title }}</strong>
+                    <span class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</span>
+                    <span>{{ getSchoolTypeTitle(p.schoolType || '') }}</span>
+                  </div>
+                </div>
+                <div class="row-actions">
+                  <button (click)="editProgram(p)">{{ 'admin.edit' | translate }}</button>
+                  <button (click)="deleteProgram(p)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
+                </div>
               </div>
-              <div class="row-actions">
-                <button (click)="editProgram(p)">{{ 'admin.edit' | translate }}</button>
-                <button (click)="deleteProgram(p)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
-              </div>
-            </div>
-          }
-        </div>
+            }
+          </div>
+        }
         @if (showProgramForm()) {
           <div class="modal-overlay" (click)="closeProgramForm()">
             <div class="modal modal-program" (click)="$event.stopPropagation()">
@@ -215,26 +259,43 @@ interface Student {
       }
 
       @if (tab() === 'schoolTypes') {
-        <div class="list">
-          @for (st of adminSchoolTypes(); track st.id) {
-            <div class="row">
-              <div class="row-content">
-                <strong>{{ st.title }}</strong>
-                @if (st.description) {
-                  <span class="muted">{{ st.description }}</span>
-                }
-              </div>
-              <div class="row-actions">
-                <button (click)="editSchoolType(st)">{{ 'admin.edit' | translate }}</button>
-              </div>
-            </div>
-          }
+        <div class="school-types-toolbar">
+          <button (click)="openSchoolTypeForm()" class="btn-add">{{ 'admin.addSchoolType' | translate }}</button>
         </div>
+        @if (loadingSchoolTypes()) {
+          <p class="loading-text">{{ 'admin.loading' | translate }}</p>
+        } @else if (adminSchoolTypes().length === 0) {
+          <div class="empty-state">
+            <p>{{ 'admin.noSchoolTypes' | translate }}</p>
+            <button (click)="openSchoolTypeForm()" class="btn-add">{{ 'admin.addSchoolType' | translate }}</button>
+          </div>
+        } @else {
+          <div class="list">
+            @for (st of adminSchoolTypes(); track st.id) {
+              <div class="row">
+                <div class="row-content">
+                  @if (st.sortOrder != null) {
+                    <span class="row-order">{{ st.sortOrder }}</span>
+                  }
+                  <div class="row-info">
+                    <strong>{{ st.title }}</strong>
+                    @if (st.description) {
+                      <span class="muted">{{ st.description }}</span>
+                    }
+                  </div>
+                </div>
+                <div class="row-actions">
+                  <button (click)="editSchoolType(st)">{{ 'admin.edit' | translate }}</button>
+                </div>
+              </div>
+            }
+          </div>
+        }
         @if (showSchoolTypeForm()) {
           <div class="modal-overlay" (click)="closeSchoolTypeForm()">
             <div class="modal modal-school-type" (click)="$event.stopPropagation()">
               <div class="modal-header">
-                <h3>{{ 'admin.editSchoolType' | translate }}</h3>
+                <h3>{{ (editingSchoolType() ? 'admin.editSchoolType' : 'admin.newSchoolType') | translate }}</h3>
                 <button type="button" class="modal-close" (click)="closeSchoolTypeForm()" aria-label="Close">×</button>
               </div>
               <div class="modal-body">
@@ -270,6 +331,11 @@ interface Student {
                     <textarea [(ngModel)]="schoolTypeForm.descriptionEn" name="descEn" rows="4" class="form-input form-textarea" [placeholder]="'admin.descriptionPlaceholder' | translate"></textarea>
                   }
                 </div>
+                <hr class="form-divider" />
+                <div class="form-section">
+                  <label class="form-label">{{ 'admin.sortOrder' | translate }}</label>
+                  <input type="number" [(ngModel)]="schoolTypeForm.sortOrder" name="sortOrder" class="form-input form-input-sm" style="max-width:100px" />
+                </div>
                 <div class="modal-actions">
                   <button type="button" (click)="closeSchoolTypeForm()" class="btn-secondary">{{ 'admin.cancel' | translate }}</button>
                   <button type="submit" class="btn-primary">{{ 'admin.save' | translate }}</button>
@@ -282,15 +348,56 @@ interface Student {
       }
 
       @if (tab() === 'students') {
-        <input type="search" [placeholder]="'admin.searchStudents' | translate" (input)="onSearch($event)" />
-        <div class="students-list">
-          @for (s of adminStudents(); track s.id) {
-            <div class="student-row">
-              <span>{{ s.name }}</span>
-              <span>{{ s.email }}</span>
+        <input type="search" [placeholder]="'admin.searchStudents' | translate" (input)="onSearch($event)" class="search-input" />
+        @if (loadingStudents()) {
+          <p class="loading-text">{{ 'admin.loading' | translate }}</p>
+        } @else if (adminStudents().length === 0) {
+          <p class="empty-state">{{ 'admin.noStudents' | translate }}</p>
+        } @else {
+          <div class="students-list">
+            <div class="students-header">
+              <span>{{ 'admin.enrollmentStudent' | translate }}</span>
+              <span>Email</span>
             </div>
-          }
-        </div>
+            @for (s of adminStudents(); track s.id) {
+              <div class="student-row">
+                <div class="student-avatar"></div>
+                <div class="student-info">
+                  <span class="student-name">{{ s.name }}</span>
+                  <span class="student-email">{{ s.email }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      }
+
+      @if (tab() === 'enrollments') {
+        @if (loadingEnrollments()) {
+          <p class="loading-text">{{ 'admin.loading' | translate }}</p>
+        } @else if (adminEnrollments().length === 0) {
+          <p class="empty-state">{{ 'admin.noEnrollments' | translate }}</p>
+        } @else {
+          <div class="enrollments-list">
+            <div class="enrollments-header">
+              <span>{{ 'admin.enrollmentStudent' | translate }}</span>
+              <span>{{ 'admin.enrollmentProgram' | translate }}</span>
+              <span>{{ 'admin.enrollmentDate' | translate }}</span>
+              <span>{{ 'admin.status' | translate }}</span>
+            </div>
+            @for (e of adminEnrollments(); track e.id) {
+              <div class="enrollment-row">
+                <div class="enrollment-student">
+                  <span class="enrollment-name">{{ e.studentName }}</span>
+                  <span class="enrollment-email">{{ e.studentEmail }}</span>
+                </div>
+                <a [routerLink]="['/programs', e.programId]" class="enrollment-program">{{ e.programTitle }}</a>
+                <span class="enrollment-date">{{ formatDate(e.enrolledAt) }}</span>
+                <span class="enrollment-status">{{ e.status }}</span>
+              </div>
+            }
+          </div>
+        }
       }
     </div>
   `,
@@ -331,6 +438,34 @@ interface Student {
       border-radius: var(--radius);
     }
     .row-content { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .row-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: var(--radius); }
+    .row-info { display: flex; flex-direction: column; gap: 0.15rem; }
+    .row-order { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; background: var(--color-bg); border-radius: 6px; font-size: 0.85rem; color: var(--color-muted); }
+    .school-types-toolbar { margin-bottom: 1rem; }
+    .loading-text, .empty-state { color: var(--color-muted); margin: 1rem 0; }
+    .empty-state { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; }
+    .loading-skeleton .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+    .popular-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+    .popular-card { display: flex; flex-direction: column; padding: 1rem; background: var(--color-bg-alt); border-radius: var(--radius); text-decoration: none; color: inherit; transition: background var(--transition), transform var(--transition); }
+    .popular-card:hover { background: var(--color-bg-card); transform: translateY(-2px); }
+    .popular-count { font-size: 0.9rem; color: var(--color-primary); font-weight: 600; margin-top: 0.25rem; }
+    .students-header { display: none; }
+    .student-row { display: flex; align-items: center; gap: 1rem; }
+    .student-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--color-bg); flex-shrink: 0; }
+    .student-info { display: flex; flex-direction: column; gap: 0.1rem; }
+    .student-name { font-weight: 600; }
+    .student-email { font-size: 0.9rem; color: var(--color-muted); }
+    .search-input { margin-bottom: 1rem; }
+    .enrollments-header { display: grid; grid-template-columns: 1fr 1fr minmax(80px,auto) minmax(70px,auto); gap: 1rem; padding: 0.75rem 1rem; background: var(--color-bg); border-radius: var(--radius); margin-bottom: 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-muted); }
+    .enrollment-row { display: grid; grid-template-columns: 1fr 1fr minmax(80px,auto) minmax(70px,auto); gap: 1rem; padding: 0.75rem 1rem; background: var(--color-bg-alt); border-radius: var(--radius); align-items: center; margin-bottom: 0.5rem; }
+    .enrollment-student { display: flex; flex-direction: column; gap: 0.1rem; }
+    .enrollment-name { font-weight: 600; }
+    .enrollment-email { font-size: 0.85rem; color: var(--color-muted); }
+    .enrollment-program { color: var(--color-primary); text-decoration: none; }
+    .enrollment-program:hover { text-decoration: underline; }
+    .enrollment-date { font-size: 0.9rem; color: var(--color-muted); }
+    .enrollment-status { font-size: 0.85rem; }
+    @keyframes pulse { 50% { opacity: 0.5; } }
     .row-actions { display: flex; gap: 0.5rem; }
     .row-actions button { min-height: 38px; padding: 0.4rem 0.9rem; }
     .age, .muted { color: var(--color-muted); font-size: 0.9rem; }
@@ -477,13 +612,19 @@ interface Student {
   `],
 })
 export class AdminComponent implements OnInit {
-  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'students'>('stats');
+  tab = signal<'stats' | 'programs' | 'schoolTypes' | 'students' | 'enrollments'>('stats');
   stats = signal<Stats | null>(null);
+  loadingStats = signal(true);
+  loadingPrograms = signal(false);
+  loadingSchoolTypes = signal(false);
+  loadingStudents = signal(false);
+  loadingEnrollments = signal(false);
   adminPrograms = signal<Program[]>([]);
   programFilter = signal<string>('');
   schoolTypes = signal<SchoolType[]>([]);
   adminSchoolTypes = signal<SchoolType[]>([]);
   adminStudents = signal<Student[]>([]);
+  adminEnrollments = signal<Enrollment[]>([]);
   showProgramForm = signal(false);
   showSchoolTypeForm = signal(false);
   editingProgram = signal<Program | null>(null);
@@ -513,7 +654,7 @@ export class AdminComponent implements OnInit {
     curriculumSrJson: '',
     curriculumEnJson: '',
   };
-  schoolTypeForm = { titleRu: '', titleSr: '', titleEn: '', descriptionRu: '', descriptionSr: '', descriptionEn: '' };
+  schoolTypeForm = { titleRu: '', titleSr: '', titleEn: '', descriptionRu: '', descriptionSr: '', descriptionEn: '', sortOrder: 0 };
   programFormLang = signal<'ru' | 'sr' | 'en'>('ru');
   schoolTypeFormLang = signal<'ru' | 'sr' | 'en'>('ru');
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -530,26 +671,44 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  loadStats() {
+    this.loadingStats.set(true);
+    this.api.get<{ success: boolean; stats: Stats }>('/admin/stats').subscribe({
+      next: (res) => {
+        if (res.success) this.stats.set(res.stats);
+        this.loadingStats.set(false);
+      },
+      error: () => this.loadingStats.set(false),
+    });
+  }
+
   loadSchoolTypes() {
+    this.loadingSchoolTypes.set(true);
     this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/admin/school-types').subscribe({
-      next: (r) => { if (r.success) this.adminSchoolTypes.set(r.schoolTypes); },
+      next: (r) => {
+        if (r.success) this.adminSchoolTypes.set(r.schoolTypes);
+        this.loadingSchoolTypes.set(false);
+      },
       error: () => {
         this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
-          next: (res) => { if (res.success) this.adminSchoolTypes.set(res.schoolTypes); },
+          next: (res) => {
+            if (res.success) this.adminSchoolTypes.set(res.schoolTypes);
+            this.loadingSchoolTypes.set(false);
+          },
+          error: () => this.loadingSchoolTypes.set(false),
         });
       },
     });
   }
 
-  loadStats() {
-    this.api.get<{ success: boolean; stats: Stats }>('/admin/stats').subscribe({
-      next: (res) => { if (res.success) this.stats.set(res.stats); },
-    });
-  }
-
   loadPrograms() {
+    this.loadingPrograms.set(true);
     this.api.get<{ success: boolean; programs: Program[] }>('/admin/programs').subscribe({
-      next: (res) => { if (res.success) this.adminPrograms.set(res.programs); },
+      next: (res) => {
+        if (res.success) this.adminPrograms.set(res.programs);
+        this.loadingPrograms.set(false);
+      },
+      error: () => this.loadingPrograms.set(false),
     });
   }
 
@@ -571,11 +730,42 @@ export class AdminComponent implements OnInit {
   }
 
   loadStudents(search?: string) {
+    this.loadingStudents.set(true);
     let path = '/admin/students';
     if (search) path += '?search=' + encodeURIComponent(search);
     this.api.get<{ success: boolean; students: Student[] }>(path).subscribe({
-      next: (res) => { if (res.success) this.adminStudents.set(res.students); },
+      next: (res) => {
+        if (res.success) this.adminStudents.set(res.students);
+        this.loadingStudents.set(false);
+      },
+      error: () => this.loadingStudents.set(false),
     });
+  }
+
+  loadEnrollments() {
+    this.loadingEnrollments.set(true);
+    this.api.get<{ success: boolean; enrollments: Enrollment[] }>('/admin/enrollments').subscribe({
+      next: (res) => {
+        if (res.success) this.adminEnrollments.set(res.enrollments);
+        this.loadingEnrollments.set(false);
+      },
+      error: () => this.loadingEnrollments.set(false),
+    });
+  }
+
+  formatDate(ts: number): string {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  openSchoolTypeForm() {
+    this.editingSchoolType.set(null);
+    this.schoolTypeError.set(null);
+    this.schoolTypeSuccess.set(null);
+    this.schoolTypeFormLang.set('ru');
+    this.schoolTypeForm = { titleRu: '', titleSr: '', titleEn: '', descriptionRu: '', descriptionSr: '', descriptionEn: '', sortOrder: 0 };
+    this.showSchoolTypeForm.set(true);
   }
 
   openProgramForm() {
@@ -766,7 +956,7 @@ export class AdminComponent implements OnInit {
     this.schoolTypeError.set(null);
     this.schoolTypeSuccess.set(null);
     this.schoolTypeFormLang.set('ru');
-    this.api.get<{ success: boolean; schoolType: { titleRu?: string; titleSr?: string; titleEn?: string; descriptionRu?: string; descriptionSr?: string; descriptionEn?: string } }>(`/admin/school-types/raw/${st.id}`).subscribe({
+    this.api.get<{ success: boolean; schoolType: { titleRu?: string; titleSr?: string; titleEn?: string; descriptionRu?: string; descriptionSr?: string; descriptionEn?: string; sortOrder?: number } }>(`/admin/school-types/raw/${st.id}`).subscribe({
       next: (res) => {
         if (res.success && res.schoolType) {
           const s = res.schoolType as any;
@@ -777,12 +967,13 @@ export class AdminComponent implements OnInit {
             descriptionRu: s.descriptionRu ?? st.description ?? '',
             descriptionSr: s.descriptionSr ?? '',
             descriptionEn: s.descriptionEn ?? '',
+            sortOrder: s.sortOrder ?? st.sortOrder ?? 0,
           };
         }
         this.showSchoolTypeForm.set(true);
       },
       error: () => {
-        this.schoolTypeForm = { titleRu: st.title ?? '', titleSr: '', titleEn: '', descriptionRu: st.description ?? '', descriptionSr: '', descriptionEn: '' };
+        this.schoolTypeForm = { titleRu: st.title ?? '', titleSr: '', titleEn: '', descriptionRu: st.description ?? '', descriptionSr: '', descriptionEn: '', sortOrder: st.sortOrder ?? 0 };
         this.showSchoolTypeForm.set(true);
       },
     });
@@ -797,21 +988,23 @@ export class AdminComponent implements OnInit {
 
   saveSchoolType() {
     const st = this.editingSchoolType();
-    if (!st) return;
     this.schoolTypeError.set(null);
     const titleRu = this.schoolTypeForm.titleRu?.trim() ?? '';
     if (!titleRu) {
       this.schoolTypeError.set(this.translate.instant('admin.titleRequired'));
       return;
     }
-    this.api.put<{ success: boolean; schoolType: SchoolType }>(`/admin/school-types/${st.id}`, {
+    const body = {
       titleRu,
       titleSr: this.schoolTypeForm.titleSr?.trim() ?? titleRu,
       titleEn: this.schoolTypeForm.titleEn?.trim() ?? titleRu,
       descriptionRu: this.schoolTypeForm.descriptionRu?.trim() ?? '',
       descriptionSr: this.schoolTypeForm.descriptionSr?.trim() ?? this.schoolTypeForm.descriptionRu?.trim() ?? '',
       descriptionEn: this.schoolTypeForm.descriptionEn?.trim() ?? this.schoolTypeForm.descriptionRu?.trim() ?? '',
-    }).subscribe({
+      sortOrder: this.schoolTypeForm.sortOrder ?? 0,
+    };
+    if (st) {
+      this.api.put<{ success: boolean; schoolType: SchoolType }>(`/admin/school-types/${st.id}`, body).subscribe({
       next: () => {
         this.schoolTypeSuccess.set(this.translate.instant('admin.saved'));
         this.loadSchoolTypes();
@@ -822,6 +1015,20 @@ export class AdminComponent implements OnInit {
       },
       error: (err) => this.schoolTypeError.set(err.error?.error || this.translate.instant('admin.saveError')),
     });
+    } else {
+      const id = titleRu.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, '') || 'school-' + Date.now();
+      this.api.post<{ success: boolean; schoolType: SchoolType }>('/admin/school-types', { ...body, id }).subscribe({
+        next: () => {
+          this.schoolTypeSuccess.set(this.translate.instant('admin.saved'));
+          this.loadSchoolTypes();
+          this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
+            next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
+          });
+          setTimeout(() => this.closeSchoolTypeForm(), 800);
+        },
+        error: (err) => this.schoolTypeError.set(err.error?.error || this.translate.instant('admin.saveError')),
+      });
+    }
   }
 
   onSearch(e: Event) {

@@ -417,6 +417,44 @@ export function createPostgresAdapter(poolConfig, logger) {
       return Number(rows[0]?.c ?? 0);
     },
 
+    async getAllEnrollments(filters = {}) {
+      const { limit = 100, offset = 0, programId, userId } = filters;
+      let query = `
+        SELECT e.id, e.user_id, e.program_id, e.status, e.progress, e.enrolled_at,
+               u.name as user_name, u.email as user_email,
+               p.title_ru as program_title_ru, p.title_sr as program_title_sr, p.title_en as program_title_en
+        FROM ${schema('enrollments')} e
+        JOIN ${schema('users')} u ON u.id = e.user_id
+        JOIN ${schema('programs')} p ON p.id = e.program_id
+        WHERE 1=1`;
+      const params = [];
+      let idx = 1;
+      if (programId) {
+        query += ` AND e.program_id = $${idx}`;
+        params.push(normalizeId(programId));
+        idx++;
+      }
+      if (userId) {
+        query += ` AND e.user_id = $${idx}`;
+        params.push(normalizeId(userId));
+        idx++;
+      }
+      query += ` ORDER BY e.enrolled_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+      params.push(limit, offset);
+      const { rows } = await pool.query(query, params);
+      return rows.map((r) => ({
+        id: String(r.id),
+        userId: String(r.user_id),
+        programId: String(r.program_id),
+        status: r.status || 'active',
+        progress: r.progress ?? 0,
+        enrolledAt: Number(r.enrolled_at),
+        studentName: r.user_name || '',
+        studentEmail: r.user_email || '',
+        programTitle: r.program_title_ru || r.program_title_sr || r.program_title_en || '',
+      }));
+    },
+
     async getEnrollmentsByProgramId(programId) {
       const pid = normalizeId(programId);
       if (pid == null) return [];

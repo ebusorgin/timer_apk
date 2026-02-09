@@ -144,6 +144,20 @@
   "admin.curriculumJsonError": "Invalid JSON in curriculum",
   "admin.deleteProgramConfirm": "Delete program «{{title}}»?",
   "admin.editSchoolType": "Edit school type",
+  "admin.newSchoolType": "New school type",
+  "admin.addSchoolType": "+ Add school type",
+  "admin.sortOrder": "Sort order",
   "admin.saveError": "Save error",
-  "admin.searchStudents": "Search by name or email"
+  "admin.searchStudents": "Search by name or email",
+  "admin.loading": "Loading...",
+  "admin.noPopularPrograms": "No enrollments yet",
+  "admin.noPrograms": "No programs found. Add the first program.",
+  "admin.noSchoolTypes": "Add a school type",
+  "admin.noStudents": "No students found",
+  "admin.tabEnrollments": "Enrollments",
+  "admin.enrollmentStudent": "Student",
+  "admin.enrollmentProgram": "Program",
+  "admin.enrollmentDate": "Date",
+  "admin.status": "Status",
+  "admin.noEnrollments": "No enrollments yet"
 }

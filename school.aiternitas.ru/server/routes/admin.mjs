@@ -11,6 +11,26 @@ export function registerAdminRoutes({ app, persistence, logger }) {
   const log = logger?.child?.({ scope: 'admin' }) || logger || console;
   const adminAuth = createAdminAuthMiddleware(persistence);
 
+  app.get('/api/admin/enrollments', adminAuth, async (req, res) => {
+    try {
+      const { limit, offset, programId, userId } = req.query || {};
+      const enrollments = await persistence.getAllEnrollments?.({
+        limit: limit ? parseInt(limit, 10) : 100,
+        offset: offset ? parseInt(offset, 10) : 0,
+        programId: programId || undefined,
+        userId: userId || undefined,
+      });
+      if (!enrollments) {
+        res.status(501).json({ success: false, error: 'Not implemented' });
+        return;
+      }
+      res.json({ success: true, enrollments });
+    } catch (err) {
+      log.error?.('Ошибка getAllEnrollments', { error: err?.message });
+      res.status(500).json({ success: false, error: 'Ошибка' });
+    }
+  });
+
   app.get('/api/admin/students', adminAuth, async (req, res) => {
     try {
       const { search, limit, offset } = req.query || {};

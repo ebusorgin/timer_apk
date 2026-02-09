@@ -144,6 +144,20 @@
   "admin.curriculumJsonError": "Неисправан JSON у програму часова",
   "admin.deleteProgramConfirm": "Обрисати програм «{{title}}»?",
   "admin.editSchoolType": "Измени тип школе",
+  "admin.newSchoolType": "Нови тип школе",
+  "admin.addSchoolType": "+ Додај тип школе",
+  "admin.sortOrder": "Редослед сортирања",
   "admin.saveError": "Грешка при чувању",
-  "admin.searchStudents": "Претрага по имену или email-у"
+  "admin.searchStudents": "Претрага по имену или email-у",
+  "admin.loading": "Учитавање...",
+  "admin.noPopularPrograms": "Још нема уписа",
+  "admin.noPrograms": "Нема програма. Додајте први програм.",
+  "admin.noSchoolTypes": "Додајте тип школе",
+  "admin.noStudents": "Нема ученика",
+  "admin.tabEnrollments": "Уписи",
+  "admin.enrollmentStudent": "Ученик",
+  "admin.enrollmentProgram": "Програм",
+  "admin.enrollmentDate": "Датум",
+  "admin.status": "Статус",
+  "admin.noEnrollments": "Још нема уписа"
 }

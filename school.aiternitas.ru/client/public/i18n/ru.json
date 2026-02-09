@@ -144,6 +144,20 @@
   "admin.curriculumJsonError": "Неверный JSON в программе занятий",
   "admin.deleteProgramConfirm": "Удалить программу «{{title}}»?",
   "admin.editSchoolType": "Редактировать тип школы",
+  "admin.newSchoolType": "Новый тип школы",
+  "admin.addSchoolType": "+ Добавить тип школы",
+  "admin.sortOrder": "Порядок сортировки",
   "admin.saveError": "Ошибка сохранения",
-  "admin.searchStudents": "Поиск по имени или email"
+  "admin.searchStudents": "Поиск по имени или email",
+  "admin.loading": "Загрузка...",
+  "admin.noPopularPrograms": "Пока нет записей",
+  "admin.noPrograms": "Программы не найдены. Добавьте первую программу.",
+  "admin.noSchoolTypes": "Добавьте тип школы",
+  "admin.noStudents": "Ученики не найдены",
+  "admin.tabEnrollments": "Записи",
+  "admin.enrollmentStudent": "Студент",
+  "admin.enrollmentProgram": "Программа",
+  "admin.enrollmentDate": "Дата",
+  "admin.status": "Статус",
+  "admin.noEnrollments": "Записей пока нет"
 }
