@@ -66,23 +66,46 @@ interface Program {
         </div>
         <p class="desc">{{ p.description }}</p>
         @if (p.curriculum && p.curriculum.length > 0) {
-          <div class="curriculum">
-            <h3>{{ 'programDetail.curriculum' | translate }}</h3>
-            @for (lesson of p.curriculum; track lesson.n) {
-              <div class="lesson-card">
-                <div class="lesson-num">{{ 'programDetail.lesson' | translate }} {{ lesson.n }}</div>
-                <h4>{{ lesson.topic }}</h4>
-                @if (lesson.description) {
-                  <p><strong>{{ 'programDetail.onLesson' | translate }}:</strong> {{ lesson.description }}</p>
-                }
-                @if (lesson.conclusions) {
-                  <p><strong>{{ 'programDetail.conclusions' | translate }}:</strong> {{ lesson.conclusions }}</p>
-                }
-                @if (lesson.result) {
-                  <p><strong>{{ 'programDetail.result' | translate }}:</strong> {{ lesson.result }}</p>
-                }
-              </div>
-            }
+          <div class="curriculum-section">
+            <h2 class="section-title">{{ 'programDetail.curriculum' | translate }}</h2>
+            <div class="timeline">
+              @for (lesson of p.curriculum; track lesson.n) {
+                <div class="timeline-item">
+                  <div class="timeline-marker">
+                    <div class="marker-disk"></div>
+                    @if (!$last) { <div class="marker-line"></div> }
+                  </div>
+                  <div class="lesson-card">
+                    <div class="lesson-header">
+                      <span class="lesson-n">{{ lesson.n < 10 ? '0' + lesson.n : lesson.n }}</span>
+                      <h4>{{ lesson.topic }}</h4>
+                    </div>
+                    <div class="lesson-body">
+                      @if (lesson.description) {
+                        <div class="detail-block">
+                          <label>{{ 'programDetail.onLesson' | translate }}</label>
+                          <p>{{ lesson.description }}</p>
+                        </div>
+                      }
+                      <div class="detail-row">
+                        @if (lesson.conclusions) {
+                          <div class="detail-block">
+                            <label>{{ 'programDetail.conclusions' | translate }}</label>
+                            <p>{{ lesson.conclusions }}</p>
+                          </div>
+                        }
+                        @if (lesson.result) {
+                          <div class="detail-block">
+                            <label>{{ 'programDetail.result' | translate }}</label>
+                            <p>{{ lesson.result }}</p>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
           </div>
         }
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
@@ -153,26 +176,36 @@ interface Program {
     
     .desc { font-size: 1.15rem; line-height: 1.7; color: var(--color-text); opacity: 0.9; max-width: 800px; margin-bottom: 4rem; }
     
-    .curriculum { margin-bottom: 4rem; }
-    .curriculum h3 { margin-bottom: 2rem; font-size: 1.75rem; font-weight: 700; }
+    .curriculum-section { margin-top: 5rem; margin-bottom: 5rem; }
+    .section-title { font-size: 2.25rem; font-weight: 800; margin-bottom: 3rem; background: linear-gradient(135deg, #fff 0%, var(--color-muted) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    .timeline { display: flex; flex-direction: column; gap: 0; padding-left: 1rem; }
+    .timeline-item { display: grid; grid-template-columns: 40px 1fr; gap: 2rem; position: relative; }
+    
+    .timeline-marker { display: flex; flex-direction: column; align-items: center; padding-top: 1.5rem; }
+    .marker-disk { width: 12px; height: 12px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 15px var(--color-primary); z-index: 2; }
+    .marker-line { width: 2px; flex: 1; background: linear-gradient(to bottom, var(--color-primary), var(--color-border)); opacity: 0.3; margin-top: 0.5rem; }
     
     .lesson-card {
-      background: var(--color-bg-alt);
-      padding: 1.75rem 2rem;
-      border-radius: var(--radius-lg);
-      margin-bottom: 1rem;
+      background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--color-border);
-      transition: border-color var(--transition), transform var(--transition);
-      display: grid;
-      grid-template-columns: 80px 1fr;
-      gap: 2rem;
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      margin-bottom: 2rem;
+      transition: all var(--transition);
+      backdrop-filter: blur(10px);
     }
-    .lesson-card:hover { border-color: var(--color-primary); transform: translateX(8px); }
-    .lesson-num { font-size: 2rem; font-weight: 800; color: rgba(99,102,241,0.2); }
-    .lesson-content h4 { font-size: 1.25rem; margin-bottom: 1rem; color: var(--color-text); }
-    .lesson-details { display: flex; flex-direction: column; gap: 0.75rem; }
-    .lesson-details p { font-size: 0.95rem; margin: 0; }
-    .lesson-details strong { color: var(--color-accent); font-weight: 500; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.15rem; }
+    .lesson-card:hover { transform: translateX(10px); background: rgba(255, 255, 255, 0.05); border-color: var(--color-primary); }
+    
+    .lesson-header { display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .lesson-n { font-size: 1.25rem; font-weight: 900; color: var(--color-primary); opacity: 0.5; font-family: monospace; }
+    .lesson-header h4 { font-size: 1.5rem; margin: 0; color: var(--color-text); }
+    
+    .lesson-body { display: flex; flex-direction: column; gap: 1.5rem; }
+    .detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .detail-block { display: flex; flex-direction: column; gap: 0.5rem; }
+    .detail-block label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-accent); opacity: 0.8; }
+    .detail-block p { font-size: 1rem; margin: 0; color: var(--color-text); line-height: 1.6; }
 
     .enroll-section { background: var(--color-bg-alt); padding: 3rem; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: var(--shadow); }
     .enroll-section h3 { margin-bottom: 2rem; font-size: 1.5rem; }
