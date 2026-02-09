@@ -48,6 +48,7 @@ import { LocaleService } from '../../services/locale.service';
       justify-content: space-between;
       padding: 1rem 2rem;
       background: var(--color-bg-alt);
+      color: var(--color-text);
       border-bottom: 1px solid var(--color-border);
       box-shadow: var(--shadow);
     }
@@ -181,7 +182,7 @@ export class HeaderComponent {
     public auth: AuthService,
     public locale: LocaleService,
     private translate: TranslateService,
-  ) {}
+  ) { }
 
   onLangChange(e: Event) {
     const v = (e.target as HTMLSelectElement).value as 'ru' | 'sr' | 'en';
