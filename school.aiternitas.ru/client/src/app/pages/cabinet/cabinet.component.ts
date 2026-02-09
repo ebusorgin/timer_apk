@@ -56,6 +56,10 @@ interface Enrollment {
     }
     .card h3 { margin: 0 0 0.5rem; }
     .card p { margin: 0; font-size: 0.9rem; color: var(--color-muted); }
+    @media (max-width: 600px) {
+      .page { padding: 1.5rem 0; }
+      .card { padding: 1rem; min-height: 60px; display: flex; flex-direction: column; justify-content: center; }
+    }
   `],
 })
 export class CabinetComponent implements OnInit {

@@ -278,26 +278,26 @@ import { ApiService } from '../../services/api.service';
       font-size: 1.1rem;
     }
     .directions {
-      padding: 6rem 0;
+      padding: 4rem 0;
       background: var(--color-bg-alt);
     }
     .section-title {
       font-family: var(--font-display);
-      font-size: 2.25rem;
+      font-size: clamp(1.5rem, 4vw, 2.25rem);
       font-weight: 700;
       text-align: center;
-      margin: 0 0 3rem;
+      margin: 0 0 2rem;
       color: var(--color-text);
     }
     .school-types {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 2rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
       margin-bottom: 3rem;
     }
     .school-card {
       position: relative;
-      min-height: 320px;
+      min-height: 280px;
       border-radius: var(--radius-lg);
       text-decoration: none;
       color: inherit;
@@ -336,7 +336,7 @@ import { ApiService } from '../../services/api.service';
     .school-card-body {
       position: relative;
       z-index: 1;
-      padding: 2.5rem;
+      padding: 2rem;
       width: 100%;
       color: #fff;
       text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.6);
@@ -379,7 +379,7 @@ import { ApiService } from '../../services/api.service';
       transform: translateX(6px);
     }
     .cta {
-      padding: 6rem 0;
+      padding: 4rem 0;
       text-align: center;
     }
     .cta-content {
@@ -396,7 +396,7 @@ import { ApiService } from '../../services/api.service';
       margin: 0 0 2rem;
     }
     .about {
-      padding: 6rem 0;
+      padding: 4rem 0;
       background: var(--color-bg);
     }
     .about-grid {
@@ -436,7 +436,7 @@ import { ApiService } from '../../services/api.service';
       font-weight: 700;
     }
     .benefits {
-      padding: 6rem 0;
+      padding: 4rem 0;
       background: var(--color-bg-alt);
     }
     .benefits-grid {
@@ -459,7 +459,7 @@ import { ApiService } from '../../services/api.service';
     .benefit-card h3 { font-size: 1.1rem; margin: 0 0 0.5rem; }
     .benefit-card p { margin: 0; font-size: 0.95rem; color: var(--color-muted); line-height: 1.6; }
     .ages {
-      padding: 6rem 0;
+      padding: 4rem 0;
       background: var(--color-bg);
     }
     .ages-grid {
@@ -496,7 +496,7 @@ import { ApiService } from '../../services/api.service';
     .age-card h3 { font-size: 1.25rem; margin: 0 0 0.5rem; }
     .age-card p { margin: 0; font-size: 0.9rem; color: var(--color-muted); line-height: 1.5; }
     .how {
-      padding: 6rem 0;
+      padding: 4rem 0;
       background: var(--color-bg-alt);
     }
     .steps {
@@ -526,7 +526,7 @@ import { ApiService } from '../../services/api.service';
     .step h3 { font-size: 1.1rem; margin: 0 0 0.5rem; }
     .step p { margin: 0; font-size: 0.95rem; color: var(--color-muted); line-height: 1.6; }
     .gallery {
-      padding: 6rem 0;
+      padding: 4rem 0;
       background: var(--color-bg);
     }
     .gallery-grid {
@@ -561,18 +561,31 @@ import { ApiService } from '../../services/api.service';
     }
     .school-card[schoolScrollReveal].revealed { transition-delay: 0.1s; }
     @media (max-width: 768px) {
-      .about-grid { grid-template-columns: 1fr; }
+      .directions, .about, .benefits, .ages, .how, .gallery, .cta { padding: 3rem 0; }
+      .section-title { margin-bottom: 1.5rem; }
+      .about-grid { grid-template-columns: 1fr; gap: 2rem; }
       .about-image { order: -1; }
+      .school-card-body { padding: 1.5rem; }
+      .school-card-icon { font-size: 2rem; }
       .ages-grid { grid-template-columns: 1fr; }
-      .steps { grid-template-columns: 1fr; }
-      .gallery-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 1.5rem; }
+      .gallery-grid { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+      .benefit-card { padding: 1.5rem; }
     }
     @media (max-width: 600px) {
-      .hero { min-height: 70vh; }
-      .hero-title { font-size: 2rem; }
-      .hero-subtitle { font-size: 1rem; }
-      .hero-actions { flex-direction: column; }
-      .btn-hero { justify-content: center; }
+      .hero { min-height: 65vh; }
+      .hero-content { padding: 2.5rem 1rem; }
+      .hero-title { font-size: clamp(1.75rem, 8vw, 2.5rem); }
+      .hero-subtitle { font-size: 0.95rem; margin-bottom: 1.5rem; }
+      .hero-actions { flex-direction: column; gap: 0.75rem; }
+      .btn-hero { justify-content: center; width: 100%; min-height: var(--touch-min); }
+      .school-types { grid-template-columns: 1fr; gap: 1rem; margin-bottom: 2rem; }
+      .school-card { min-height: 240px; }
+      .school-card-body { padding: 1.25rem; }
+      .school-card-arrow { bottom: 1.25rem; right: 1.25rem; }
+      .gallery-grid { grid-template-columns: 1fr; }
+      .cta h2 { font-size: 1.5rem; }
+      .cta p { margin-bottom: 1.5rem; }
     }
   `],
 })

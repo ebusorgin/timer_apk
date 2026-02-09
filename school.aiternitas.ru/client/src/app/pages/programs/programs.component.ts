@@ -72,9 +72,21 @@ interface SchoolType {
   `,
   styles: [`
     .page { padding: 2rem 0; }
-    .school-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .school-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      overflow-x: auto;
+      padding-bottom: 0.25rem;
+      -webkit-overflow-scrolling: touch;
+    }
     .school-tabs .tab {
       padding: 0.5rem 1rem;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
       border-radius: var(--radius);
       background: var(--color-bg-alt);
       text-decoration: none;
@@ -90,8 +102,10 @@ interface SchoolType {
     .filters { display: flex; gap: 1rem; margin-bottom: 2rem; }
     .filters select {
       padding: 0.5rem 1rem;
+      min-height: 44px;
       border-radius: var(--radius);
       border: 1px solid var(--color-border);
+      background: var(--color-bg-alt);
     }
     .grid {
       display: grid;

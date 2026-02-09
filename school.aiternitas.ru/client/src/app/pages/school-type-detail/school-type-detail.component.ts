@@ -105,7 +105,9 @@ interface SchoolType {
     .desc { margin: 0 0 1rem; font-size: 0.95rem; }
     .price { color: var(--color-accent); font-weight: 600; }
     @media (max-width: 600px) {
-      .grid { grid-template-columns: 1fr; }
+      .page { padding: 1.5rem 0; }
+      .grid { grid-template-columns: 1fr; gap: 1rem; }
+      .card-body { padding: 1rem; }
     }
   `],
 })

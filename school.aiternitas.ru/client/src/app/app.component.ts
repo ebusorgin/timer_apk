@@ -20,8 +20,12 @@ import { HeaderComponent } from './components/header/header.component';
     .footer {
       text-align: center;
       padding: 1rem;
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
       color: var(--color-muted);
       font-size: 0.9rem;
+    }
+    @media (max-width: 600px) {
+      .main { min-height: calc(100dvh - 120px); }
     }
   `],
 })

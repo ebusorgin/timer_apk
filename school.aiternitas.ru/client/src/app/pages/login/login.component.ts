@@ -28,12 +28,14 @@ import { TranslateService } from '@ngx-translate/core';
     .auth-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0,0,0,0.7);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
       padding: 1rem;
+      padding-top: max(1rem, env(safe-area-inset-top));
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
       cursor: pointer;
     }
     .auth-card {
@@ -42,7 +44,7 @@ import { TranslateService } from '@ngx-translate/core';
       max-width: 400px;
       padding: 2rem;
       background: var(--color-bg-alt);
-      border-radius: var(--radius);
+      border-radius: var(--radius-lg);
       box-shadow: var(--shadow-lg);
       cursor: default;
     }
@@ -50,28 +52,34 @@ import { TranslateService } from '@ngx-translate/core';
       position: absolute;
       top: 0.75rem;
       right: 0.75rem;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       background: none;
       border: none;
-      font-size: 1.75rem;
+      font-size: 2rem;
       line-height: 1;
       color: var(--color-muted);
       cursor: pointer;
-      padding: 0.25rem;
       transition: color var(--transition);
     }
     .auth-close:hover { color: var(--color-text); }
-    .auth-card h1 { text-align: center; margin-bottom: 1.5rem; }
+    .auth-card h1 { text-align: center; margin-bottom: 1.5rem; font-size: 1.5rem; }
     input {
       width: 100%;
-      padding: 0.75rem;
+      padding: 0.875rem 1rem;
       margin-bottom: 1rem;
       border: 1px solid var(--color-border);
       border-radius: var(--radius);
       font-size: 1rem;
+      min-height: 48px;
     }
-    button {
+    button[type="submit"] {
       width: 100%;
-      padding: 0.75rem;
+      padding: 0.875rem;
+      min-height: 48px;
       background: var(--color-primary);
       color: white;
       border: none;

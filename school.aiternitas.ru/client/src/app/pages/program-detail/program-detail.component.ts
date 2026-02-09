@@ -92,6 +92,12 @@ interface Program {
   `,
   styles: [`
     .page { padding: 2rem 0; }
+    @media (max-width: 600px) {
+      .page { padding: 1.5rem 0; }
+      .meta { flex-direction: column; gap: 0.5rem; }
+      .program-image { max-width: 100%; }
+      button, .btn-register { min-height: 48px; padding: 0.75rem 1.5rem; }
+    }
     .back { display: inline-block; margin-bottom: 1rem; color: var(--color-muted); text-decoration: none; }
     .program-image {
       max-width: 500px;
