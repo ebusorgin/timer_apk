@@ -86,24 +86,34 @@ interface Program {
           </div>
         }
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
-          <div class="enroll-block">
+          <div class="enroll-section">
+            <h3>{{ 'programDetail.selectGroup' | translate }}</h3>
             @if (groups().length > 0) {
-              <div class="group-select">
-                <label for="group">{{ 'programDetail.selectGroup' | translate }}</label>
-                <select id="group" class="form-input" [(ngModel)]="selectedGroupId">
-                  <option value="">—</option>
-                  @for (g of groups(); track g.id) {
-                    <option [value]="g.id">{{ g.title || g.schedule }}</option>
-                  }
-                </select>
+              <div class="groups-grid">
+                @for (g of groups(); track g.id) {
+                  <div class="group-card" [class.selected]="selectedGroupId === g.id" (click)="selectedGroupId = g.id">
+                    <div class="group-card-icon">🕒</div>
+                    <div class="group-card-info">
+                      <span class="group-title">{{ g.title || g.schedule }}</span>
+                      <span class="group-schedule">{{ g.schedule }}</span>
+                    </div>
+                    <div class="group-card-radio"></div>
+                  </div>
+                }
               </div>
+            } @else {
+              <p class="muted">{{ 'admin.noGroups' | translate }}</p>
             }
-            <button (click)="enroll()" [disabled]="enrolling()">
-              {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
-            </button>
+            <div class="enroll-actions">
+              <button class="btn-enroll-main" (click)="enroll()" [disabled]="enrolling() || !selectedGroupId">
+                {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
+              </button>
+            </div>
           </div>
         } @else if (!auth.isLoggedIn()) {
-          <a routerLink="/register" class="btn-register">{{ 'programDetail.registerToEnroll' | translate }}</a>
+          <div class="enroll-cta-simple">
+            <a routerLink="/register" class="btn-register-lg">{{ 'programDetail.registerToEnroll' | translate }}</a>
+          </div>
         }
       } @else {
         <p>{{ 'programDetail.notFound' | translate }}</p>
@@ -111,58 +121,110 @@ interface Program {
     </div>
   `,
   styles: [`
-    .page { padding: 2rem 0; }
-    @media (max-width: 600px) {
-      .page { padding: 1.5rem 0; }
-      .meta { flex-direction: column; gap: 0.5rem; }
-      .program-image { max-width: 100%; }
-      button, .btn-register { min-height: 48px; padding: 0.75rem 1.5rem; }
-    }
-    .back { display: inline-block; margin-bottom: 1rem; color: var(--color-muted); text-decoration: none; }
+    .page { padding: 3rem 0; }
+    
+    .back { display: inline-block; margin-bottom: 2rem; color: var(--color-muted); text-decoration: none; font-weight: 500; transition: color var(--transition); }
+    .back:hover { color: var(--color-primary); }
+    
     .program-image {
-      max-width: 500px;
-      border-radius: var(--radius);
+      max-width: 800px;
+      aspect-ratio: 21/9;
+      border-radius: var(--radius-lg);
       overflow: hidden;
-      margin-bottom: 1.5rem;
+      margin-bottom: 2.5rem;
+      box-shadow: var(--shadow-lg);
     }
-    .program-image img { width: 100%; height: auto; object-fit: cover; }
-    .meta { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-    .price { color: var(--color-accent); font-weight: 600; }
-    .schedule { color: var(--color-muted); }
+    .program-image img { width: 100%; height: 100%; object-fit: cover; }
+    
+    h1 { font-size: 3rem; font-weight: 800; margin-bottom: 1.5rem; }
+    
+    .meta { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; align-items: center; }
+    .meta > span { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--color-muted); }
+    .price { color: var(--color-accent) !important; font-weight: 700; font-size: 1.25rem !important; }
+    
     .badge {
       background: var(--color-primary);
       color: white;
-      padding: 0.2rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.9rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 2rem;
+      font-size: 0.85rem;
+      font-weight: 600;
     }
-    .desc { margin-bottom: 2rem; }
-    .curriculum { margin-bottom: 2rem; }
-    .curriculum h3 { margin: 0 0 1rem; font-size: 1.15rem; }
+    
+    .desc { font-size: 1.15rem; line-height: 1.7; color: var(--color-text); opacity: 0.9; max-width: 800px; margin-bottom: 4rem; }
+    
+    .curriculum { margin-bottom: 4rem; }
+    .curriculum h3 { margin-bottom: 2rem; font-size: 1.75rem; font-weight: 700; }
+    
     .lesson-card {
       background: var(--color-bg-alt);
-      padding: 1rem 1.25rem;
-      border-radius: var(--radius);
-      margin-bottom: 0.75rem;
-      border-left: 4px solid var(--color-primary);
+      padding: 1.75rem 2rem;
+      border-radius: var(--radius-lg);
+      margin-bottom: 1rem;
+      border: 1px solid var(--color-border);
+      transition: border-color var(--transition), transform var(--transition);
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 2rem;
     }
-    .lesson-num { font-size: 0.85rem; color: var(--color-muted); margin-bottom: 0.25rem; }
-    .lesson-card h4 { margin: 0 0 0.5rem; font-size: 1rem; }
-    .lesson-card p { margin: 0.25rem 0; font-size: 0.9rem; }
-    button, .btn-register {
-      background: var(--color-primary);
-      color: white;
-      padding: 0.6rem 1.2rem;
-      border: none;
+    .lesson-card:hover { border-color: var(--color-primary); transform: translateX(8px); }
+    .lesson-num { font-size: 2rem; font-weight: 800; color: rgba(99,102,241,0.2); }
+    .lesson-content h4 { font-size: 1.25rem; margin-bottom: 1rem; color: var(--color-text); }
+    .lesson-details { display: flex; flex-direction: column; gap: 0.75rem; }
+    .lesson-details p { font-size: 0.95rem; margin: 0; }
+    .lesson-details strong { color: var(--color-accent); font-weight: 500; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.15rem; }
+
+    .enroll-section { background: var(--color-bg-alt); padding: 3rem; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: var(--shadow); }
+    .enroll-section h3 { margin-bottom: 2rem; font-size: 1.5rem; }
+    
+    .groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2.5rem; }
+    .group-card {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      padding: 1.25rem;
       border-radius: var(--radius);
       cursor: pointer;
-      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      transition: all var(--transition);
+      position: relative;
     }
-    .btn-register { text-decoration: none; display: inline-block; }
-    .enroll-block { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
-    .group-select { display: flex; flex-direction: column; gap: 0.5rem; max-width: 280px; }
-    .group-select label { font-size: 0.9rem; color: var(--color-muted); }
-    .form-input { padding: 0.5rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--color-border); font-size: 1rem; }
+    .group-card:hover { border-color: var(--color-primary); }
+    .group-card.selected { border-color: var(--color-primary); background: rgba(99,102,241,0.1); }
+    .group-card-icon { font-size: 1.5rem; opacity: 0.5; }
+    .group-card-info { flex: 1; display: flex; flex-direction: column; }
+    .group-title { font-weight: 600; font-size: 1rem; }
+    .group-schedule { font-size: 0.85rem; color: var(--color-muted); }
+    .group-card-radio { width: 20px; height: 20px; border: 2px solid var(--color-border); border-radius: 50%; position: relative; }
+    .group-card.selected .group-card-radio { border-color: var(--color-primary); }
+    .group-card.selected .group-card-radio::after { content: ''; position: absolute; inset: 4px; background: var(--color-primary); border-radius: 50%; }
+
+    .btn-enroll-main {
+      width: 100%;
+      max-width: 400px;
+      padding: 1rem 2rem;
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition);
+      box-shadow: 0 10px 30px rgba(99,102,241,0.3);
+    }
+    .btn-enroll-main:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 15px 40px rgba(99,102,241,0.4); }
+    .btn-enroll-main:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .enroll-cta-simple { text-align: center; padding: 3rem; background: var(--color-bg-alt); border-radius: var(--radius-lg); }
+    .btn-register-lg { display: inline-block; padding: 1rem 2.5rem; background: var(--color-primary); color: white; border-radius: var(--radius); font-weight: 700; text-decoration: none; }
+
+    @media (max-width: 800px) {
+      h1 { font-size: 2.25rem; }
+      .lesson-card { grid-template-columns: 1fr; gap: 0.5rem; }
+      .enroll-section { padding: 1.5rem; }
+    }
   `],
 })
 export class ProgramDetailComponent implements OnInit {
@@ -189,7 +251,7 @@ export class ProgramDetailComponent implements OnInit {
     private api: ApiService,
     public auth: AuthService,
     private translate: TranslateService,
-  ) {}
+  ) { }
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');

@@ -55,7 +55,7 @@ import { ApiService } from '../../services/api.service';
         <h2 class="section-title" schoolScrollReveal>{{ 'section.schoolType' | translate }}</h2>
         <div class="school-types">
           @for (st of schoolTypes(); track st.id) {
-            <a [routerLink]="['/school-types', st.id]" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>
+            <a [routerLink]="['/programs']" [queryParams]="{school_type: st.id}" class="school-card" [class.tech]="st.id === 'tech'" [class.art]="st.id === 'art'" schoolScrollReveal>
               <div class="school-card-bg" [style.background-image]="'url(' + getBg(st.id) + ')'"></div>
               <div class="school-card-body">
                 <div class="school-card-icon">{{ st.id === 'tech' ? '⚡' : '🎨' }}</div>
@@ -955,7 +955,7 @@ export class LandingComponent implements OnInit {
   schoolTypes = signal<{ id: string; title: string; description?: string }[]>([]);
   stats = signal<{ students: number; programs: number; years: number }>({ students: 0, programs: 0, years: 3 });
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService) { }
 
   ngOnInit() {
     this.api.get<{ success: boolean; schoolTypes: { id: string; title: string; description?: string }[] }>('/programs/meta/school-types').subscribe({

@@ -26,7 +26,8 @@ import { LocaleService } from '../../services/locale.service';
           </select>
         </div>
         <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">{{ 'nav.home' | translate }}</a>
-        <a routerLink="/programs" routerLinkActive="active">{{ 'nav.programs' | translate }}</a>
+        <a routerLink="/programs" [queryParams]="{}" routerLinkActive="active">{{ 'nav.schools' | translate }}</a>
+        <a routerLink="/programs" [queryParams]="{all: true}" routerLinkActive="active" class="nav-secondary">{{ 'nav.programs' | translate }}</a>
         @if (auth.user(); as u) {
           <a routerLink="/cabinet" routerLinkActive="active">{{ 'nav.cabinet' | translate }}</a>
           @if (auth.isAdmin()) {
@@ -72,6 +73,8 @@ import { LocaleService } from '../../services/locale.service';
       transition: color var(--transition);
     }
     .nav a:hover, .nav a.active { color: var(--color-primary); }
+    .nav-secondary { font-size: 0.9rem; opacity: 0.8; }
+    .nav-secondary:hover { opacity: 1; }
     .btn-register {
       background: var(--color-primary);
       color: white;
