@@ -116,7 +116,7 @@ export function createServerApp(options = {}) {
   const persistenceDriver = (
     persistenceOptions.driver ||
     config.persistence?.driver ||
-    'file'
+    'postgres'
   ).toLowerCase();
 
   const persistenceConfig = {
@@ -214,8 +214,8 @@ export function createServerApp(options = {}) {
         typeof exposeEndpoint === 'string'
           ? exposeEndpoint
           : typeof metricsOptions.endpoint === 'string'
-          ? metricsOptions.endpoint
-          : '/api/metrics';
+            ? metricsOptions.endpoint
+            : '/api/metrics';
 
       const metricsAuthOptions = metricsOptions.auth;
       let metricsAuthConfig = null;

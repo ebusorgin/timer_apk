@@ -66,77 +66,44 @@ interface Program {
         </div>
         <p class="desc">{{ p.description }}</p>
         @if (p.curriculum && p.curriculum.length > 0) {
-          <div class="curriculum-section">
-            <h2 class="section-title">{{ 'programDetail.curriculum' | translate }}</h2>
-            <div class="timeline">
-              @for (lesson of p.curriculum; track lesson.n) {
-                <div class="timeline-item">
-                  <div class="timeline-marker">
-                    <div class="marker-disk"></div>
-                    @if (!$last) { <div class="marker-line"></div> }
-                  </div>
-                  <div class="lesson-card">
-                    <div class="lesson-header">
-                      <span class="lesson-n">{{ lesson.n < 10 ? '0' + lesson.n : lesson.n }}</span>
-                      <h4>{{ lesson.topic }}</h4>
-                    </div>
-                    <div class="lesson-body">
-                      @if (lesson.description) {
-                        <div class="detail-block">
-                          <label>{{ 'programDetail.onLesson' | translate }}</label>
-                          <p>{{ lesson.description }}</p>
-                        </div>
-                      }
-                      <div class="detail-row">
-                        @if (lesson.conclusions) {
-                          <div class="detail-block">
-                            <label>{{ 'programDetail.conclusions' | translate }}</label>
-                            <p>{{ lesson.conclusions }}</p>
-                          </div>
-                        }
-                        @if (lesson.result) {
-                          <div class="detail-block">
-                            <label>{{ 'programDetail.result' | translate }}</label>
-                            <p>{{ lesson.result }}</p>
-                          </div>
-                        }
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              }
-            </div>
+          <div class="curriculum">
+            <h3>{{ 'programDetail.curriculum' | translate }}</h3>
+            @for (lesson of p.curriculum; track lesson.n) {
+              <div class="lesson-card">
+                <div class="lesson-num">{{ 'programDetail.lesson' | translate }} {{ lesson.n }}</div>
+                <h4>{{ lesson.topic }}</h4>
+                @if (lesson.description) {
+                  <p><strong>{{ 'programDetail.onLesson' | translate }}:</strong> {{ lesson.description }}</p>
+                }
+                @if (lesson.conclusions) {
+                  <p><strong>{{ 'programDetail.conclusions' | translate }}:</strong> {{ lesson.conclusions }}</p>
+                }
+                @if (lesson.result) {
+                  <p><strong>{{ 'programDetail.result' | translate }}:</strong> {{ lesson.result }}</p>
+                }
+              </div>
+            }
           </div>
         }
         @if (auth.isLoggedIn() && auth.user()?.role === 'student') {
-          <div class="enroll-section">
-            <h3>{{ 'programDetail.selectGroup' | translate }}</h3>
+          <div class="enroll-block">
             @if (groups().length > 0) {
-              <div class="groups-grid">
-                @for (g of groups(); track g.id) {
-                  <div class="group-card" [class.selected]="selectedGroupId === g.id" (click)="selectedGroupId = g.id">
-                    <div class="group-card-icon">🕒</div>
-                    <div class="group-card-info">
-                      <span class="group-title">{{ g.title || g.schedule }}</span>
-                      <span class="group-schedule">{{ g.schedule }}</span>
-                    </div>
-                    <div class="group-card-radio"></div>
-                  </div>
-                }
+              <div class="group-select">
+                <label for="group">{{ 'programDetail.selectGroup' | translate }}</label>
+                <select id="group" class="form-input" [(ngModel)]="selectedGroupId">
+                  <option value="">—</option>
+                  @for (g of groups(); track g.id) {
+                    <option [value]="g.id">{{ g.title || g.schedule }}</option>
+                  }
+                </select>
               </div>
-            } @else {
-              <p class="muted">{{ 'admin.noGroups' | translate }}</p>
             }
-            <div class="enroll-actions">
-              <button class="btn-enroll-main" (click)="enroll()" [disabled]="enrolling() || !selectedGroupId">
-                {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
-              </button>
-            </div>
+            <button (click)="enroll()" [disabled]="enrolling()">
+              {{ (enrolling() ? 'programDetail.enrolling' : 'programDetail.enroll') | translate }}
+            </button>
           </div>
         } @else if (!auth.isLoggedIn()) {
-          <div class="enroll-cta-simple">
-            <a routerLink="/register" class="btn-register-lg">{{ 'programDetail.registerToEnroll' | translate }}</a>
-          </div>
+          <a routerLink="/register" class="btn-register">{{ 'programDetail.registerToEnroll' | translate }}</a>
         }
       } @else {
         <p>{{ 'programDetail.notFound' | translate }}</p>
@@ -144,120 +111,58 @@ interface Program {
     </div>
   `,
   styles: [`
-    .page { padding: 3rem 0; }
-    
-    .back { display: inline-block; margin-bottom: 2rem; color: var(--color-muted); text-decoration: none; font-weight: 500; transition: color var(--transition); }
-    .back:hover { color: var(--color-primary); }
-    
-    .program-image {
-      max-width: 800px;
-      aspect-ratio: 21/9;
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-      margin-bottom: 2.5rem;
-      box-shadow: var(--shadow-lg);
+    .page { padding: 2rem 0; }
+    @media (max-width: 600px) {
+      .page { padding: 1.5rem 0; }
+      .meta { flex-direction: column; gap: 0.5rem; }
+      .program-image { max-width: 100%; }
+      button, .btn-register { min-height: 48px; padding: 0.75rem 1.5rem; }
     }
-    .program-image img { width: 100%; height: 100%; object-fit: cover; }
-    
-    h1 { font-size: 3rem; font-weight: 800; margin-bottom: 1.5rem; }
-    
-    .meta { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; align-items: center; }
-    .meta > span { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; color: var(--color-muted); }
-    .price { color: var(--color-accent) !important; font-weight: 700; font-size: 1.25rem !important; }
-    
+    .back { display: inline-block; margin-bottom: 1rem; color: var(--color-muted); text-decoration: none; }
+    .program-image {
+      max-width: 500px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .program-image img { width: 100%; height: auto; object-fit: cover; }
+    .meta { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .price { color: var(--color-accent); font-weight: 600; }
+    .schedule { color: var(--color-muted); }
     .badge {
       background: var(--color-primary);
       color: white;
-      padding: 0.35rem 0.85rem;
-      border-radius: 2rem;
-      font-size: 0.85rem;
-      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
     }
-    
-    .desc { font-size: 1.15rem; line-height: 1.7; color: var(--color-text); opacity: 0.9; max-width: 800px; margin-bottom: 4rem; }
-    
-    .curriculum-section { margin-top: 5rem; margin-bottom: 5rem; }
-    .section-title { font-size: 2.25rem; font-weight: 800; margin-bottom: 3rem; background: linear-gradient(135deg, #fff 0%, var(--color-muted) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    
-    .timeline { display: flex; flex-direction: column; gap: 0; padding-left: 1rem; }
-    .timeline-item { display: grid; grid-template-columns: 40px 1fr; gap: 2rem; position: relative; }
-    
-    .timeline-marker { display: flex; flex-direction: column; align-items: center; padding-top: 1.5rem; }
-    .marker-disk { width: 12px; height: 12px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 15px var(--color-primary); z-index: 2; }
-    .marker-line { width: 2px; flex: 1; background: linear-gradient(to bottom, var(--color-primary), var(--color-border)); opacity: 0.3; margin-top: 0.5rem; }
-    
+    .desc { margin-bottom: 2rem; }
+    .curriculum { margin-bottom: 2rem; }
+    .curriculum h3 { margin: 0 0 1rem; font-size: 1.15rem; }
     .lesson-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: 2rem;
-      margin-bottom: 2rem;
-      transition: all var(--transition);
-      backdrop-filter: blur(10px);
-    }
-    .lesson-card:hover { transform: translateX(10px); background: rgba(255, 255, 255, 0.05); border-color: var(--color-primary); }
-    
-    .lesson-header { display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 1.5rem; }
-    .lesson-n { font-size: 1.25rem; font-weight: 900; color: var(--color-primary); opacity: 0.5; font-family: monospace; }
-    .lesson-header h4 { font-size: 1.5rem; margin: 0; color: var(--color-text); }
-    
-    .lesson-body { display: flex; flex-direction: column; gap: 1.5rem; }
-    .detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-    .detail-block { display: flex; flex-direction: column; gap: 0.5rem; }
-    .detail-block label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-accent); opacity: 0.8; }
-    .detail-block p { font-size: 1rem; margin: 0; color: var(--color-text); line-height: 1.6; }
-
-    .enroll-section { background: var(--color-bg-alt); padding: 3rem; border-radius: var(--radius-lg); border: 1px solid var(--color-border); box-shadow: var(--shadow); }
-    .enroll-section h3 { margin-bottom: 2rem; font-size: 1.5rem; }
-    
-    .groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2.5rem; }
-    .group-card {
-      background: var(--color-bg);
-      border: 1px solid var(--color-border);
-      padding: 1.25rem;
+      background: var(--color-bg-alt);
+      padding: 1rem 1.25rem;
       border-radius: var(--radius);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      transition: all var(--transition);
-      position: relative;
+      margin-bottom: 0.75rem;
+      border-left: 4px solid var(--color-primary);
     }
-    .group-card:hover { border-color: var(--color-primary); }
-    .group-card.selected { border-color: var(--color-primary); background: rgba(99,102,241,0.1); }
-    .group-card-icon { font-size: 1.5rem; opacity: 0.5; }
-    .group-card-info { flex: 1; display: flex; flex-direction: column; }
-    .group-title { font-weight: 600; font-size: 1rem; }
-    .group-schedule { font-size: 0.85rem; color: var(--color-muted); }
-    .group-card-radio { width: 20px; height: 20px; border: 2px solid var(--color-border); border-radius: 50%; position: relative; }
-    .group-card.selected .group-card-radio { border-color: var(--color-primary); }
-    .group-card.selected .group-card-radio::after { content: ''; position: absolute; inset: 4px; background: var(--color-primary); border-radius: 50%; }
-
-    .btn-enroll-main {
-      width: 100%;
-      max-width: 400px;
-      padding: 1rem 2rem;
+    .lesson-num { font-size: 0.85rem; color: var(--color-muted); margin-bottom: 0.25rem; }
+    .lesson-card h4 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .lesson-card p { margin: 0.25rem 0; font-size: 0.9rem; }
+    button, .btn-register {
       background: var(--color-primary);
       color: white;
+      padding: 0.6rem 1.2rem;
       border: none;
       border-radius: var(--radius);
-      font-size: 1.1rem;
-      font-weight: 700;
       cursor: pointer;
-      transition: all var(--transition);
-      box-shadow: 0 10px 30px rgba(99,102,241,0.3);
+      font-size: 1rem;
     }
-    .btn-enroll-main:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 15px 40px rgba(99,102,241,0.4); }
-    .btn-enroll-main:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .enroll-cta-simple { text-align: center; padding: 3rem; background: var(--color-bg-alt); border-radius: var(--radius-lg); }
-    .btn-register-lg { display: inline-block; padding: 1rem 2.5rem; background: var(--color-primary); color: white; border-radius: var(--radius); font-weight: 700; text-decoration: none; }
-
-    @media (max-width: 800px) {
-      h1 { font-size: 2.25rem; }
-      .lesson-card { grid-template-columns: 1fr; gap: 0.5rem; }
-      .enroll-section { padding: 1.5rem; }
-    }
+    .btn-register { text-decoration: none; display: inline-block; }
+    .enroll-block { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+    .group-select { display: flex; flex-direction: column; gap: 0.5rem; max-width: 280px; }
+    .group-select label { font-size: 0.9rem; color: var(--color-muted); }
+    .form-input { padding: 0.5rem 0.75rem; border-radius: var(--radius); border: 1px solid var(--color-border); font-size: 1rem; }
   `],
 })
 export class ProgramDetailComponent implements OnInit {
@@ -284,7 +189,7 @@ export class ProgramDetailComponent implements OnInit {
     private api: ApiService,
     public auth: AuthService,
     private translate: TranslateService,
-  ) { }
+  ) {}
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');

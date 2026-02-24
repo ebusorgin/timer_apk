@@ -135,3 +135,14 @@ VAPID_MAILTO=mailto:conference@aiternitas.ru" > /opt/conference/.env
         run: |
           echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
 
+              echo "✅ Conference service is responding"
+            else
+              echo "⚠️ Conference service may not be responding correctly"
+            fi
+          EOSSH
+
+      - name: Skip notice
+        if: steps.secrets_check.outputs.skip_deploy == 'true'
+        run: |
+          echo "🔕 Deployment skipped because SSH_PRIVATE_KEY secret is not configured."
+

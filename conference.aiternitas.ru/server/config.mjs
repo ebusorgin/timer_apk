@@ -9,14 +9,8 @@ const toPositiveInteger = (value) => {
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : undefined;
 };
 
-const normalizeDriver = (driverCandidate, hasConnectionString) => {
-  if (typeof driverCandidate === 'string') {
-    const lowered = driverCandidate.trim().toLowerCase();
-    if (lowered === 'postgres' || lowered === 'file') {
-      return lowered;
-    }
-  }
-  return hasConnectionString ? 'postgres' : 'file';
+const normalizeDriver = () => {
+  return 'postgres';
 };
 
 const resolveSslConfig = (override) => {

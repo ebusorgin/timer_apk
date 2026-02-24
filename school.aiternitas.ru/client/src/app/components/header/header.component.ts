@@ -17,7 +17,7 @@ import { LocaleService } from '../../services/locale.service';
         <span class="nav-toggle-bar"></span>
       </button>
       <nav class="nav" [class.nav-open]="menuOpen()" (click)="menuOpen.set(false)">
-        <div class="lang-wrap">
+        <div class="lang-wrap" (click)="$event.stopPropagation()">
           <span class="lang-label">{{ 'nav.language' | translate }}</span>
           <select class="lang-select" [value]="locale.locale()" (change)="onLangChange($event)" [attr.aria-label]="'nav.language' | translate">
             @for (l of locale.getLocales(); track l) {
@@ -26,8 +26,7 @@ import { LocaleService } from '../../services/locale.service';
           </select>
         </div>
         <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">{{ 'nav.home' | translate }}</a>
-        <a routerLink="/programs" [queryParams]="{}" routerLinkActive="active">{{ 'nav.schools' | translate }}</a>
-        <a routerLink="/programs" [queryParams]="{all: true}" routerLinkActive="active" class="nav-secondary">{{ 'nav.programs' | translate }}</a>
+        <a routerLink="/programs" routerLinkActive="active">{{ 'nav.programs' | translate }}</a>
         @if (auth.user(); as u) {
           <a routerLink="/cabinet" routerLinkActive="active">{{ 'nav.cabinet' | translate }}</a>
           @if (auth.isAdmin()) {
@@ -49,7 +48,6 @@ import { LocaleService } from '../../services/locale.service';
       justify-content: space-between;
       padding: 1rem 2rem;
       background: var(--color-bg-alt);
-      color: var(--color-text);
       border-bottom: 1px solid var(--color-border);
       box-shadow: var(--shadow);
     }
@@ -73,8 +71,6 @@ import { LocaleService } from '../../services/locale.service';
       transition: color var(--transition);
     }
     .nav a:hover, .nav a.active { color: var(--color-primary); }
-    .nav-secondary { font-size: 0.9rem; opacity: 0.8; }
-    .nav-secondary:hover { opacity: 1; }
     .btn-register {
       background: var(--color-primary);
       color: white;
@@ -191,5 +187,6 @@ export class HeaderComponent {
     const v = (e.target as HTMLSelectElement).value as 'ru' | 'sr' | 'en';
     this.locale.setLocale(v);
     this.translate.use(v);
+    this.menuOpen.set(false);
   }
 }

@@ -47,9 +47,9 @@ const ensureSchema = (pool, logger) => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS calls (
           id BIGSERIAL PRIMARY KEY,
-          from_id BIGINT NOT NULL REFERENCES users(id),
+          from_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           from_name TEXT NOT NULL,
-          to_id BIGINT NOT NULL REFERENCES users(id),
+          to_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           to_name TEXT NOT NULL,
           call_type TEXT NOT NULL DEFAULT 'audio',
           status TEXT NOT NULL,
@@ -64,8 +64,8 @@ const ensureSchema = (pool, logger) => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS chat_messages (
           id BIGSERIAL PRIMARY KEY,
-          from_id BIGINT NOT NULL REFERENCES users(id),
-          to_id BIGINT NOT NULL REFERENCES users(id),
+          from_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          to_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           body TEXT NOT NULL,
           created_at BIGINT NOT NULL
         )
@@ -76,9 +76,9 @@ const ensureSchema = (pool, logger) => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS contact_requests (
           id BIGSERIAL PRIMARY KEY,
-          from_id BIGINT NOT NULL REFERENCES users(id),
+          from_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           from_name TEXT NOT NULL,
-          to_id BIGINT NOT NULL REFERENCES users(id),
+          to_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           to_name TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'pending',
           created_at BIGINT NOT NULL,
@@ -158,6 +158,20 @@ export function createPostgresAdapter(options = {}) {
     return rows.map(subscriberFromRow);
   };
 
+  const listSubscribersPaged = async (offset = 0, limit = 50) => {
+    await ensure();
+    const { rows: countRows } = await resolvedPool.query(`SELECT COUNT(*) as total FROM users`);
+    const total = parseInt(countRows[0].total, 10);
+    const { rows } = await resolvedPool.query(
+      `SELECT * FROM users ORDER BY LOWER(name) ASC, created_at ASC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return {
+      items: rows.map(subscriberFromRow),
+      total,
+    };
+  };
+
   const getSubscriberById = async (id) => {
     const nid = normalizeId(id);
     if (nid == null) return null;
@@ -194,28 +208,33 @@ export function createPostgresAdapter(options = {}) {
     const avatarUrl = record.avatarUrl || null;
     const role = record.role || 'user';
 
-    const existingId = normalizeId(record.id);
-    if (existingId != null) {
-    const { rows } = await resolvedPool.query(
-      `UPDATE users SET name = $2,
-         password_hash = CASE WHEN $3::TEXT IS NOT NULL AND $3::TEXT <> '' THEN $3::TEXT ELSE password_hash END,
-         avatar_url = COALESCE($4, avatar_url), role = $5, updated_at = $6
-         WHERE id = $1 RETURNING *`,
-      [existingId, name, passwordHash, avatarUrl, role, ts.updated]
-    );
-      if (rows.length) return subscriberFromRow(rows[0]);
-    }
+    try {
+      const existingId = normalizeId(record.id);
+      if (existingId != null) {
+        const { rows } = await resolvedPool.query(
+          `UPDATE users SET name = $2,
+             password_hash = CASE WHEN $3::TEXT IS NOT NULL AND $3::TEXT <> '' THEN $3::TEXT ELSE password_hash END,
+             avatar_url = COALESCE($4, avatar_url), role = $5, updated_at = $6
+             WHERE id = $1 RETURNING *`,
+          [existingId, name, passwordHash, avatarUrl, role, ts.updated]
+        );
+        if (rows.length) return subscriberFromRow(rows[0]);
+      }
 
-    const { rows } = await resolvedPool.query(
-      `INSERT INTO users (login, name, password_hash, avatar_url, role, created_at, updated_at)
-       VALUES ($1, $2, $3::TEXT, $4, $5, $6, $7)
-       ON CONFLICT (login) DO UPDATE SET name = EXCLUDED.name,
-         password_hash = CASE WHEN EXCLUDED.password_hash IS NOT NULL AND EXCLUDED.password_hash <> '' THEN EXCLUDED.password_hash ELSE users.password_hash END,
-         avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url), updated_at = EXCLUDED.updated_at
-       RETURNING *`,
-      [login, name, passwordHash, avatarUrl, role, ts.created, ts.updated]
-    );
-    return subscriberFromRow(rows[0]);
+      const { rows } = await resolvedPool.query(
+        `INSERT INTO users (login, name, password_hash, avatar_url, role, created_at, updated_at)
+         VALUES ($1, $2, $3::TEXT, $4, $5, $6, $7)
+         ON CONFLICT (login) DO UPDATE SET name = EXCLUDED.name,
+           password_hash = CASE WHEN EXCLUDED.password_hash IS NOT NULL AND EXCLUDED.password_hash <> '' THEN EXCLUDED.password_hash ELSE users.password_hash END,
+           avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url), updated_at = EXCLUDED.updated_at
+         RETURNING *`,
+        [login, name, passwordHash, avatarUrl, role, ts.created, ts.updated]
+      );
+      return subscriberFromRow(rows[0]);
+    } catch (err) {
+      if (err.code === '23505') throw new Error('DUPLICATE_LOGIN');
+      throw err;
+    }
   };
 
   const insertSubscriber = async (record) => {
@@ -227,12 +246,18 @@ export function createPostgresAdapter(options = {}) {
     const avatarUrl = record.avatarUrl || null;
     const role = record.role || 'user';
     if (!login || !name) throw new Error('login и name обязательны');
-    const { rows } = await resolvedPool.query(
-      `INSERT INTO users (login, name, password_hash, avatar_url, role, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [login, name, passwordHash, avatarUrl, role, ts.created, ts.updated]
-    );
-    return subscriberFromRow(rows[0]);
+
+    try {
+      const { rows } = await resolvedPool.query(
+        `INSERT INTO users (login, name, password_hash, avatar_url, role, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [login, name, passwordHash, avatarUrl, role, ts.created, ts.updated]
+      );
+      return subscriberFromRow(rows[0]);
+    } catch (err) {
+      if (err.code === '23505') throw new Error('DUPLICATE_LOGIN');
+      throw err;
+    }
   };
 
   const insertCall = async (record) => {
@@ -593,13 +618,26 @@ export function createPostgresAdapter(options = {}) {
     };
   };
 
+
+
+  const deleteSubscriber = async (subscriberId) => {
+    const nid = normalizeId(subscriberId);
+    if (nid == null) return false;
+    await ensure();
+    const { rowCount } = await resolvedPool.query(`DELETE FROM users WHERE id = $1`, [nid]);
+    return rowCount > 0;
+  };
+
   return {
     listSubscribers,
+    listSubscribersPaged,
     getSubscriberById,
     getSubscriberByLogin,
     upsertSubscriber,
     insertSubscriber,
+    deleteSubscriber,
     insertCall,
+    getCallById,
     listPendingCalls,
     updateCallStatus,
     deleteOldNonPendingCalls,

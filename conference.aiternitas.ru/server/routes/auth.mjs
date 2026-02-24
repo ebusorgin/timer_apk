@@ -64,6 +64,10 @@ export function registerAuthRoutes({ app, persistence, logger }) {
         },
       });
     } catch (error) {
+      if (error?.message === 'DUPLICATE_LOGIN') {
+        res.status(409).json({ success: false, error: 'Пользователь с таким логином уже существует.' });
+        return;
+      }
       log.error?.('Ошибка регистрации', { error: error?.message });
       res.status(500).json({ success: false, error: 'Не удалось зарегистрироваться' });
     }

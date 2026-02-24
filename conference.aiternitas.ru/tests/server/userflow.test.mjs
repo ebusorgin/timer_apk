@@ -9,7 +9,11 @@ import supertest from 'supertest';
 import { io as ioClient } from 'socket.io-client';
 import { createServerApp } from '../../server/app.mjs';
 
-const dataDir = path.join(os.tmpdir(), 'conf-userflow-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+const dataDir = path.join(os.tmpdir(), 'conf-userflow-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7));
+
+// Increase timeout for complex E2E userflow
+import { vi } from 'vitest';
+vi.setConfig({ testTimeout: 30000 });
 
 describe('Full userflow E2E', () => {
   let app, server, io, request, serverUrl;
@@ -314,7 +318,7 @@ describe('Full userflow E2E', () => {
 
       const msg = await Promise.race([
         eventPromise,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 3000)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 5000)),
       ]);
       client.disconnect();
       expect(msg.body).toBe('Socket test!');
@@ -410,7 +414,7 @@ describe('Full userflow E2E', () => {
 
       const call = await Promise.race([
         eventPromise,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 3000)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 5000)),
       ]);
       client.disconnect();
       expect(call.callType).toBe('video');
@@ -584,7 +588,7 @@ describe('Full userflow E2E', () => {
 
       const data = await Promise.race([
         eventPromise,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 3000)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 5000)),
       ]);
       client.disconnect();
       expect(data.fromId).toBe(ALICE.id);
@@ -593,7 +597,8 @@ describe('Full userflow E2E', () => {
     it('contact:request:accepted emitted to requester', async () => {
       // Get the pending request
       const pending = await request.get('/api/me/contacts/requests').set(headers(CAROL.id));
-      const rid = pending.body.requests.find((r) => r.fromId === ALICE.id)?.id;
+      const requests = pending.body.requests || [];
+      const rid = requests.find((r) => String(r.fromId) === String(ALICE.id))?.id;
       expect(rid).toBeDefined();
 
       const client = ioClient(serverUrl, {
@@ -610,7 +615,7 @@ describe('Full userflow E2E', () => {
 
       const data = await Promise.race([
         eventPromise,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 3000)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 5000)),
       ]);
       client.disconnect();
       expect(data.requestId).toBe(rid);

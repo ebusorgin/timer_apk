@@ -66,7 +66,7 @@ const App = {
             return;
         }
         this.displayName = this.getStoredDisplayName();
-        try { this.myAvatarUrl = localStorage.getItem('conference:avatarUrl') || null; } catch(e){}
+        try { this.myAvatarUrl = localStorage.getItem('conference:avatarUrl') || null; } catch (e) { }
         if (this.elements.inputDisplayName) this.elements.inputDisplayName.value = this.displayName;
         this.showMainApp();
         this.setupMainApp();
@@ -133,7 +133,7 @@ const App = {
             const savedLogin = localStorage.getItem('conference:login');
             const input = document.getElementById('inputLogin');
             if (input && savedLogin) input.value = savedLogin;
-        } catch (e) {}
+        } catch (e) { }
     },
 
     setupAuthForms() {
@@ -247,7 +247,7 @@ const App = {
             localStorage.setItem('conference:displayName', subscriber.name);
             if (subscriber.login) localStorage.setItem('conference:login', subscriber.login);
             if (subscriber.avatarUrl) localStorage.setItem('conference:avatarUrl', subscriber.avatarUrl);
-        } catch (e) {}
+        } catch (e) { }
         this.displayName = subscriber.name;
         this.myAvatarUrl = subscriber.avatarUrl || null;
         if ('Notification' in window && Notification.permission === 'default') {
@@ -272,7 +272,7 @@ const App = {
             localStorage.removeItem('conference:displayName');
             localStorage.removeItem('conference:login');
             localStorage.removeItem('conference:avatarUrl');
-        } catch (e) {}
+        } catch (e) { }
         this.stopPresenceWorker();
         if (this.socket) { this.socket.disconnect(); this.socket = null; }
         this.socketChatSetup = false;
@@ -298,7 +298,7 @@ const App = {
                     headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
                     body: JSON.stringify({ status: 'declined' })
                 });
-            } catch (e) {}
+            } catch (e) { }
             const url = new URL(window.location.href);
             url.searchParams.delete('declineCall');
             window.history.replaceState({}, '', url.pathname + url.search);
@@ -364,31 +364,92 @@ const App = {
     },
 
     async checkForAppUpdate() {
-        if (!this.isInNativeApp()) return;
-        try {
-            const cap = window.Capacitor;
-            const App = cap?.Plugins?.App;
-            if (!App) return;
-            const info = await App.getInfo();
-            const currentVersion = info?.version || info?.appVersion || '0';
-            const res = await fetch(this.SERVER_URL + '/app-version.json?t=' + Date.now());
-            if (!res.ok) return;
-            const data = await res.json();
-            const serverVersion = data?.version;
-            const downloadUrl = data?.downloadUrl || '/conference-app.apk';
-            if (!serverVersion || !this.isVersionNewer(serverVersion, currentVersion)) return;
-            const banner = this.elements.updateBanner;
-            const btn = this.elements.btnUpdateApp;
-            if (banner) banner.style.display = 'flex';
-            if (btn) {
-                btn.onclick = () => {
-                    const url = downloadUrl.startsWith('http') ? downloadUrl : this.SERVER_URL + downloadUrl;
-                    const App = window.Capacitor?.Plugins?.App;
-                    if (App?.openUrl) App.openUrl({ url }).catch(() => window.open(url));
-                    else window.open(url);
-                };
+        const versionEl = document.getElementById('appVersionValue');
+        let currentVersion = 'Web';
+        let debugInfo = '';
+
+        if (this.isInNativeApp()) {
+            currentVersion = 'Android...';
+            if (versionEl) versionEl.textContent = currentVersion;
+
+            try {
+                const cap = window.Capacitor;
+                const App = cap?.Plugins?.App;
+                debugInfo += `Cap: ${!!cap}, App: ${!!App}`;
+
+                if (App) {
+                    // Создаем промис с таймаутом, чтобы не висеть вечно
+                    const getInfoPromise = App.getInfo();
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Timeout')), 2000)
+                    );
+
+                    try {
+                        const info = await Promise.race([getInfoPromise, timeoutPromise]);
+                        currentVersion = (info?.version || info?.appVersion || 'Android').trim();
+                        debugInfo += `, Ver: ${currentVersion}`;
+
+                        // Проверка обновления на сервере
+                        try {
+                            const res = await fetch(this.SERVER_URL + '/app-version.json?t=' + Date.now());
+                            if (res.ok) {
+                                const data = await res.json();
+                                const serverVersion = (data?.version || '').trim();
+                                const downloadUrl = data?.downloadUrl || '/conference-app.apk';
+
+                                debugInfo += `, Srv: ${serverVersion}`;
+
+                                if (serverVersion && this.isVersionNewer(serverVersion, currentVersion)) {
+                                    const banner = this.elements.updateBanner;
+                                    const btn = this.elements.btnUpdateApp;
+                                    if (banner) banner.style.display = 'flex';
+                                    if (btn) {
+                                        btn.onclick = () => {
+                                            const url = downloadUrl.startsWith('http') ? downloadUrl : this.SERVER_URL + downloadUrl;
+                                            if (App?.openUrl) App.openUrl({ url }).catch(() => window.open(url));
+                                            else window.open(url);
+                                        };
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            debugInfo += `, FetchErr: ${e.message}`;
+                        }
+                    } catch (err) {
+                        console.warn('[App] App.getInfo timeout or error:', err);
+                        currentVersion = 'Android';
+                        debugInfo += `, Err: ${err.message}`;
+                    }
+                } else {
+                    currentVersion = 'Android (App plugin missing)';
+                }
+            } catch (e) {
+                console.warn('[App] Version check failed:', e);
+                currentVersion = 'Android (Error)';
+                debugInfo += `, Catch: ${e.message}`;
             }
-        } catch (e) { console.warn('[App] Version check failed:', e); }
+        } else {
+            // Для веба
+            try {
+                const res = await fetch(this.SERVER_URL + '/app-version.json?t=' + Date.now());
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data?.version) currentVersion = data.version.trim();
+                }
+            } catch (e) { }
+        }
+
+        if (versionEl) {
+            versionEl.textContent = currentVersion;
+            // Добавляем обработчик нажатия для отладки
+            versionEl.parentElement.onclick = async () => {
+                this._vClick = (this._vClick || 0) + 1;
+                if (this._vClick >= 5) {
+                    this.showMessage(`Debug: ${debugInfo}`, 'info');
+                    this._vClick = 0;
+                }
+            };
+        }
     },
 
     initPresenceWorker() {
@@ -484,7 +545,7 @@ const App = {
                 chats = data.chats || [];
                 this._cachedChats = chats;
             }
-        } catch (e) {}
+        } catch (e) { }
         list.innerHTML = '';
         if (empty) empty.style.display = chats.length === 0 ? 'block' : 'none';
         chats.forEach((c) => {
@@ -543,7 +604,7 @@ const App = {
             this.hideOverlay('chatScreen');
             this._markRead(contact.id);
             this._cachedChats = null;
-                    this.renderChatsList();
+            this.renderChatsList();
         };
         if (this.elements.btnAudioCallFromChat) this.elements.btnAudioCallFromChat.onclick = () => { this.hideOverlay('chatScreen'); this.initiateCall(contact, 'audio'); };
         if (this.elements.btnVideoCallFromChat) this.elements.btnVideoCallFromChat.onclick = () => { this.hideOverlay('chatScreen'); this.initiateCall(contact, 'video'); };
@@ -576,7 +637,7 @@ const App = {
     _markRead(contactId) {
         try {
             localStorage.setItem('conference:read:' + contactId, String(Date.now()));
-        } catch (e) {}
+        } catch (e) { }
     },
 
     async fetchProfileAndSync() {
@@ -588,14 +649,14 @@ const App = {
                 const p = data.profile;
                 if (p.name) {
                     this.displayName = p.name;
-                    try { localStorage.setItem('conference:displayName', p.name); } catch (e) {}
+                    try { localStorage.setItem('conference:displayName', p.name); } catch (e) { }
                 }
                 if (p.avatarUrl !== undefined && p.avatarUrl !== null) {
                     this.myAvatarUrl = p.avatarUrl;
-                    try { localStorage.setItem('conference:avatarUrl', p.avatarUrl); } catch (e) {}
+                    try { localStorage.setItem('conference:avatarUrl', p.avatarUrl); } catch (e) { }
                 } else if (p.avatarUrl === null) {
                     this.myAvatarUrl = null;
-                    try { localStorage.removeItem('conference:avatarUrl'); } catch (e) {}
+                    try { localStorage.removeItem('conference:avatarUrl'); } catch (e) { }
                 }
             }
         } catch (e) { /* используем данные из localStorage */ }
@@ -658,7 +719,7 @@ const App = {
             const data = await res.json();
             if (data.success) {
                 this.displayName = data.profile.name;
-                try { localStorage.setItem('conference:displayName', data.profile.name); } catch(e){}
+                try { localStorage.setItem('conference:displayName', data.profile.name); } catch (e) { }
                 this.updateHeaderUser();
                 if (this.elements.settingsDisplayName) this.elements.settingsDisplayName.textContent = data.profile.name;
                 if (this.elements.settingsNameView) this.elements.settingsNameView.style.display = '';
@@ -715,7 +776,7 @@ const App = {
             try { data = text ? JSON.parse(text) : {}; } catch (_) { data = {}; }
             if (data.success) {
                 this.myAvatarUrl = data.avatarUrl;
-                try { localStorage.setItem('conference:avatarUrl', data.avatarUrl); } catch(e){}
+                try { localStorage.setItem('conference:avatarUrl', data.avatarUrl); } catch (e) { }
                 if (this.elements.settingsAvatar && this.isSafeAvatarUrl(data.avatarUrl)) {
                     this.elements.settingsAvatar.innerHTML = `<img src="${String(data.avatarUrl).replace(/"/g, '&quot;')}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
                 }
@@ -728,7 +789,7 @@ const App = {
             console.warn('[uploadAvatar]', err);
             const msg = err?.message?.includes('Session expired') ? 'Сессия истекла, войдите снова'
                 : err?.message?.includes('Failed to fetch') || err?.name === 'TypeError' ? 'Проверьте соединение и настройки прокси'
-                : err?.message || 'Ошибка сети';
+                    : err?.message || 'Ошибка сети';
             this.showMessage(msg, 'error');
         }
     },
@@ -1195,7 +1256,7 @@ const App = {
         try {
             const token = localStorage.getItem('conference:token');
             if (token) return { 'Authorization': 'Bearer ' + token };
-        } catch (e) {}
+        } catch (e) { }
         return {};
     },
 
@@ -1214,14 +1275,14 @@ const App = {
         let id = null;
         try {
             id = localStorage.getItem(key);
-        } catch (e) {}
+        } catch (e) { }
         if (!id) {
             id = typeof crypto !== 'undefined' && crypto.randomUUID
                 ? crypto.randomUUID()
                 : 'user_' + Math.random().toString(36).slice(2, 15);
             try {
                 localStorage.setItem(key, id);
-            } catch (e) {}
+            } catch (e) { }
         }
         return id;
     },
@@ -1231,7 +1292,7 @@ const App = {
         try {
             const v = localStorage.getItem('conference:displayName');
             if (v) return v;
-        } catch (e) {}
+        } catch (e) { }
         return 'Участник';
     },
 
@@ -1330,7 +1391,7 @@ const App = {
                     if (navigator.clipboard) await navigator.clipboard.writeText(text);
                     else if (document.execCommand) { el.select(); document.execCommand('copy'); }
                     this.showMessage('Ссылка скопирована', 'success');
-                } catch (err) { try { this.elements.inviteLink.select(); document.execCommand('copy'); this.showMessage('Скопировано', 'success'); } catch(e){} }
+                } catch (err) { try { this.elements.inviteLink.select(); document.execCommand('copy'); this.showMessage('Скопировано', 'success'); } catch (e) { } }
             });
         }
         if (this.elements.btnChangeRoom) this.elements.btnChangeRoom.addEventListener('click', () => this.disconnect());
@@ -1440,7 +1501,7 @@ const App = {
         this.socket.on('presence:subscriber:online', (data) => {
             if (data?.subscriberId) {
                 this.subscriberPresence.set(data.subscriberId, { online: true });
-                    this.renderChatsList();
+                this.renderChatsList();
                 if (this.activeTab === 'contacts') this.renderContactsList();
                 if (this.selectedContact?.id === data.subscriberId) this.updateContactOnlineUI(data.subscriberId);
             }
@@ -1448,7 +1509,7 @@ const App = {
         this.socket.on('presence:subscriber:offline', (data) => {
             if (data?.subscriberId) {
                 this.subscriberPresence.set(data.subscriberId, { online: false });
-                    this.renderChatsList();
+                this.renderChatsList();
                 if (this.activeTab === 'contacts') this.renderContactsList();
                 if (this.selectedContact?.id === data.subscriberId) this.updateContactOnlineUI(data.subscriberId);
             }
@@ -1460,9 +1521,39 @@ const App = {
             this.loadContactRequests();
         });
         this.socket.on('contact:request:accepted', (data) => {
-            if (!data?.contactName) return;
-            this.showMessage(data.contactName + ' принял(а) ваш запрос', 'success');
-            this.loadMyContacts();
+            const contactId = data?.contactId;
+            const name = data?.contactName || 'Пользователь';
+            if (!contactId && !data?.contactName) return;
+
+            this.showMessage(name + ' принял(а) ваш запрос', 'success');
+            this.loadMyContacts().then(() => {
+                const overlay = document.getElementById('globalSearchOverlay');
+                const list = this.elements.globalSearchResults;
+                if (overlay && overlay.style.display !== 'none' && list && contactId) {
+                    const selector = `.list-item[data-contact-id="${contactId}"]`;
+                    const item = list.querySelector(selector);
+                    if (item) {
+                        const btn = item.querySelector('button');
+                        if (btn) btn.remove();
+
+                        const body = item.querySelector('.list-item-body');
+                        if (body) {
+                            const title = body.querySelector('.list-item-title');
+                            const sub = body.querySelector('.list-item-subtitle');
+                            if (title) title.innerHTML = `${this._esc(name)} ${this.getOnlineIndicatorHtml(contactId)}`;
+                            if (sub) sub.textContent = 'В контактах';
+                        }
+
+                        const newItem = item.cloneNode(true);
+                        item.parentNode.replaceChild(newItem, item);
+                        newItem.addEventListener('click', () => {
+                            this.hideOverlay('globalSearchOverlay');
+                            this.openChat({ id: contactId, name: name });
+                        });
+                        this.updateContactOnlineUI(contactId);
+                    }
+                }
+            });
         });
         // contact:request:declined не отправляется — отправитель не узнаёт об отклонении
         this.socket.on('chat:typing', (data) => {
@@ -1557,11 +1648,12 @@ const App = {
             results.slice(0, 20).forEach((s) => {
                 const item = document.createElement('div');
                 item.className = 'list-item';
+                item.setAttribute('data-contact-id', s.id);
                 const inContacts = myIds.has(s.id);
                 item.innerHTML = `
                     <div class="list-item-avatar">${(s.name || '?').charAt(0).toUpperCase()}</div>
                     <div class="list-item-body">
-                        <div class="list-item-title">${this._esc(s.name || 'Без имени')}</div>
+                        <div class="list-item-title">${this._esc(s.name || 'Без имени')} ${inContacts ? this.getOnlineIndicatorHtml(s.id) : ''}</div>
                         <div class="list-item-subtitle">${inContacts ? 'В контактах' : ''}</div>
                     </div>`;
                 if (inContacts) {
@@ -1857,7 +1949,7 @@ const App = {
                     headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
                     body: JSON.stringify({ status: 'cancelled' })
                 });
-            } catch (e) {}
+            } catch (e) { }
         }
         this.disconnect();
     },
@@ -1903,12 +1995,12 @@ const App = {
             this.callRingtoneInterval = null;
         }
         if (this.callRingtoneOscillator) {
-            try { this.callRingtoneOscillator.stop(); } catch (e) {}
+            try { this.callRingtoneOscillator.stop(); } catch (e) { }
             this.callRingtoneOscillator = null;
         }
         this.callRingtoneGain = null;
         if (this.callRingtoneContext) {
-            try { this.callRingtoneContext.close(); } catch (e) {}
+            try { this.callRingtoneContext.close(); } catch (e) { }
             this.callRingtoneContext = null;
         }
     },
@@ -1984,7 +2076,7 @@ const App = {
                     headers: { 'Content-Type': 'application/json', ...this.getSubscriberHeaders() },
                     body: JSON.stringify({ status: 'declined' })
                 });
-            } catch (e) {}
+            } catch (e) { }
         }
         this.hideIncomingCallModal();
     },
@@ -2218,7 +2310,7 @@ const App = {
         }
 
         // Проверяем, что есть хотя бы один активный трек
-        const activeAudioTracks = audioTracks.filter(track => 
+        const activeAudioTracks = audioTracks.filter(track =>
             track.readyState === 'live' && !track.muted && track.enabled
         );
         if (activeAudioTracks.length === 0) {
@@ -2629,7 +2721,7 @@ const App = {
         if (this.participants.has(targetSocketId)) {
             const existingParticipant = this.participants.get(targetSocketId);
             // Если соединение активно, не переподключаемся
-            if (existingParticipant && existingParticipant.peerConnection && 
+            if (existingParticipant && existingParticipant.peerConnection &&
                 existingParticipant.peerConnection.connectionState !== 'closed' &&
                 existingParticipant.peerConnection.connectionState !== 'failed') {
                 console.log('Уже подключен к', targetSocketId);
@@ -2733,7 +2825,7 @@ const App = {
                             oldTrack.stop();
                         }
                     });
-                    
+
                     // Добавляем новый трек только если его еще нет
                     if (!remoteStream.getTracks().includes(event.track)) {
                         remoteStream.addTrack(event.track);
@@ -2926,7 +3018,7 @@ const App = {
                         console.log('✅ Remote description установлен (answer)');
                         participant.connected = true;
                         this.updateParticipantUI(data.fromSocketId);
-                this.updateParticipantStatusIcons(data.fromSocketId);
+                        this.updateParticipantStatusIcons(data.fromSocketId);
 
                         // Добавляем отложенные ICE кандидаты если есть
                         if (participant.pendingCandidates) {
@@ -3676,7 +3768,7 @@ const App = {
 
         // Clear the list but keep it visible if it will have content
         const hasParticipants = this.presence.size > 0 || this.participants.size > 0;
-        
+
         list.innerHTML = '';
 
         const selfMedia = this.getLocalMediaState();
@@ -3910,11 +4002,11 @@ const App = {
 
         // Count all video tiles (including self)
         const tileCount = grid.querySelectorAll('.video-tile').length;
-        
+
         // Remove all grid classes
-        grid.classList.remove('grid-1', 'grid-2', 'grid-3', 'grid-4', 'grid-5', 
-                              'grid-6', 'grid-7', 'grid-8', 'grid-9', 'grid-10');
-        
+        grid.classList.remove('grid-1', 'grid-2', 'grid-3', 'grid-4', 'grid-5',
+            'grid-6', 'grid-7', 'grid-8', 'grid-9', 'grid-10');
+
         // Apply appropriate grid class based on count
         if (tileCount > 0 && tileCount <= 10) {
             grid.classList.add(`grid-${tileCount}`);
@@ -4070,7 +4162,7 @@ const App = {
         tileElement.appendChild(labelElement);
         tileElement.appendChild(statusIconsElement);
         grid.appendChild(tileElement);
-        
+
         // Update grid layout after adding tile
         this.updateVideoGridLayout();
 

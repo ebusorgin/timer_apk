@@ -1,7 +1,6 @@
 {
   "nav.home": "Home",
-  "nav.schools": "Our Schools",
-  "nav.programs": "Courses",
+  "nav.programs": "Programs",
   "nav.language": "Language",
   "nav.cabinet": "Cabinet",
   "nav.admin": "Admin",
@@ -12,7 +11,7 @@
   "hero.title1": "School for",
   "hero.title2": "curious minds",
   "hero.subtitle": "Tech school: programming, robotics, neural networks. Art school: drawing, painting, design. Flexible programs for children 5–18 years.",
-  "hero.viewPrograms": "Course Catalog",
+  "hero.viewPrograms": "View programs",
   "hero.signUp": "Sign up",
   "hero.titleConcrete": "Programming and creative courses for children 5–18 years",
   "hero.subtitleConcrete": "Programming, robotics, neural networks. Drawing, painting, design. Small groups, experienced teachers.",

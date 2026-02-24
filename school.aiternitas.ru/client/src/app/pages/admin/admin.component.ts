@@ -150,38 +150,22 @@ interface Homework {
             <button (click)="openProgramForm()" class="btn-add">{{ 'admin.addProgram' | translate }}</button>
           </div>
         } @else {
-          <div class="grouped-list">
-            @for (st of schoolTypes(); track st.id) {
-              <div class="school-type-group">
-                <div class="group-header">
-                  <h3>{{ st.title }}</h3>
-                  <button (click)="openProgramForm({schoolType: st.id})" class="btn-add-inline">+ {{ 'admin.addProgram' | translate }}</button>
+          <div class="list">
+            @for (p of filteredPrograms(); track p.id) {
+              <div class="row">
+                <div class="row-content">
+                  @if (p.imageUrl) {
+                    <img [src]="p.imageUrl" [alt]="p.title" class="row-thumb" />
+                  }
+                  <div class="row-info">
+                    <strong>{{ p.title }}</strong>
+                    <span class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</span>
+                    <span>{{ getSchoolTypeTitle(p.schoolType || '') }}</span>
+                  </div>
                 </div>
-                <div class="list">
-                  @let stPrograms = getProgramsBySchoolType(st.id);
-                  @if (stPrograms.length === 0) {
-                    <p class="empty-msg">{{ 'admin.noPrograms' | translate }}</p>
-                  }
-                  @for (p of stPrograms; track p.id) {
-                    <div class="row">
-                      <div class="row-content">
-                        @if (p.imageUrl) {
-                          <img [src]="p.imageUrl" [alt]="p.title" class="row-thumb" />
-                        }
-                        <div class="row-info">
-                          <strong>{{ p.title }}</strong>
-                          <span class="age">{{ p.ageMin }}–{{ p.ageMax }} {{ 'programs.years' | translate }}</span>
-                          <span class="groups-count" (click)="tab.set('groups'); loadGroups(); groupFilterProgram.set(p.id)">
-                            {{ getGroupsCount(p.id) }} {{ 'admin.tabGroups' | translate }}
-                          </span>
-                        </div>
-                      </div>
-                      <div class="row-actions">
-                        <button (click)="editProgram(p)">{{ 'admin.edit' | translate }}</button>
-                        <button (click)="deleteProgram(p)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
-                      </div>
-                    </div>
-                  }
+                <div class="row-actions">
+                  <button (click)="editProgram(p)">{{ 'admin.edit' | translate }}</button>
+                  <button (click)="deleteProgram(p)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
                 </div>
               </div>
             }
@@ -352,45 +336,30 @@ interface Homework {
       }
 
       @if (tab() === 'groups') {
+        <div class="programs-toolbar">
+          <button (click)="openGroupForm()" class="btn-add">{{ 'admin.addGroup' | translate }}</button>
+        </div>
         @if (loadingGroups()) {
           <p class="loading-text">{{ 'admin.loading' | translate }}</p>
         } @else if (adminGroups().length === 0) {
-          <div class="programs-toolbar">
-            <button (click)="openGroupForm()" class="btn-add">{{ 'admin.addGroup' | translate }}</button>
-          </div>
           <p class="empty-state">{{ 'admin.noGroups' | translate }}</p>
         } @else {
-          <div class="grouped-list">
-            @for (p of adminPrograms(); track p.id) {
-              @let pGroups = getGroupsByProgram(p.id);
-              @if (pGroups.length > 0) {
-                <div class="school-type-group">
-                  <div class="group-header">
-                    <h3>{{ p.title }} <span class="badge-mini">{{ getSchoolTypeTitle(p.schoolType || '') }}</span></h3>
-                    <button (click)="openGroupForm({programId: p.id})" class="btn-add-inline">+ {{ 'admin.addGroup' | translate }}</button>
-                  </div>
-                  <div class="list">
-                    @for (g of pGroups; track g.id) {
-                      <div class="row">
-                        <div class="row-content">
-                          <strong>{{ g.title || ('admin.tabGroups' | translate) }}</strong>
-                          <span class="schedule">{{ g.schedule }}</span>
-                        </div>
-                        <div class="row-actions">
-                          <button (click)="editGroup(g)">{{ 'admin.edit' | translate }}</button>
-                          <button (click)="openHomeworkForm(g)">{{ 'admin.homework' | translate }}</button>
-                          <button (click)="openAnnouncementForm(g)">{{ 'admin.announcement' | translate }}</button>
-                          <button (click)="deleteGroup(g)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
-                        </div>
-                      </div>
-                    }
-                  </div>
+          <div class="list">
+            @for (g of adminGroups(); track g.id) {
+              <div class="row">
+                <div class="row-content">
+                  <strong>{{ g.title || g.programTitle }}</strong>
+                  <span class="muted">{{ g.programTitle }}</span>
+                  <span class="schedule">{{ g.schedule }}</span>
                 </div>
-              }
+                <div class="row-actions">
+                  <button (click)="editGroup(g)">{{ 'admin.edit' | translate }}</button>
+                  <button (click)="openHomeworkForm(g)">{{ 'admin.homework' | translate }}</button>
+                  <button (click)="openAnnouncementForm(g)">{{ 'admin.announcement' | translate }}</button>
+                  <button (click)="deleteGroup(g)" class="btn-danger">{{ 'admin.delete' | translate }}</button>
+                </div>
+              </div>
             }
-          </div>
-          <div class="footer-actions">
-            <button (click)="openGroupForm()" class="btn-add-ghost">{{ 'admin.addGroup' | translate }}</button>
           </div>
         }
         @if (showGroupForm()) {
@@ -660,19 +629,6 @@ interface Homework {
     .programs-toolbar { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
     .programs-toolbar select { padding: 0.5rem 1rem; min-height: 44px; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg); }
     .list, .students-list { display: flex; flex-direction: column; gap: 0.5rem; }
-    .grouped-list { display: flex; flex-direction: column; gap: 2rem; }
-    .school-type-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.02); padding: 1.5rem; }
-    .group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid var(--color-border); padding-bottom: 0.75rem; }
-    .group-header h3 { margin: 0; font-size: 1.25rem; color: var(--color-primary); }
-    .btn-add-inline { padding: 0.4rem 0.8rem; font-size: 0.85rem; background: var(--color-primary); color: white; border-radius: var(--radius); border: none; cursor: pointer; }
-    .groups-count { font-size: 0.85rem; color: var(--color-primary); cursor: pointer; text-decoration: underline; margin-top: 0.2rem; }
-    .groups-count:hover { color: var(--color-primary-hover); }
-    .badge-mini { font-size: 0.75rem; background: var(--color-bg); padding: 0.1rem 0.4rem; border-radius: 4px; color: var(--color-muted); vertical-align: middle; margin-left: 0.5rem; }
-    .footer-actions { margin-top: 2rem; display: flex; justify-content: center; }
-    .btn-add-ghost { background: transparent; border: 1px dashed var(--color-border); padding: 0.6rem 2rem; color: var(--color-muted); cursor: pointer; border-radius: var(--radius); }
-    .btn-add-ghost:hover { border-color: var(--color-primary); color: var(--color-primary); }
-    .row { background: var(--color-bg); margin-bottom: 0.75rem; border: 1px solid transparent; transition: border-color var(--transition); }
-    .row:hover { border-color: var(--color-border); }
     .row, .student-row {
       display: flex;
       align-items: center;
@@ -886,7 +842,6 @@ export class AdminComponent implements OnInit {
   adminStudents = signal<Student[]>([]);
   adminEnrollments = signal<Enrollment[]>([]);
   adminGroups = signal<Group[]>([]);
-  groupFilterProgram = signal<string>('');
   showGroupForm = signal(false);
   editingGroup = signal<Group | null>(null);
   groupForm = { programId: '', title: '', schedule: '' };
@@ -934,7 +889,7 @@ export class AdminComponent implements OnInit {
   constructor(
     private api: ApiService,
     private translate: TranslateService,
-  ) { }
+  ) {}
 
   ngOnInit() {
     this.loadStats();
@@ -1036,17 +991,10 @@ export class AdminComponent implements OnInit {
     });
   }
 
-  openGroupForm(initial?: Partial<typeof this.groupForm>) {
+  openGroupForm() {
     this.editingGroup.set(null);
-    this.groupForm = { programId: this.adminPrograms().length > 0 ? this.adminPrograms()[0].id : '', title: '', schedule: '' };
-    if (initial) {
-      Object.assign(this.groupForm, initial);
-    }
+    this.groupForm = { programId: this.adminPrograms()[0]?.id || '', title: '', schedule: '' };
     this.showGroupForm.set(true);
-  }
-
-  getGroupsByProgram(pId: string) {
-    return this.adminGroups().filter(g => g.programId === pId);
   }
 
   editGroup(g: Group) {
@@ -1173,7 +1121,10 @@ export class AdminComponent implements OnInit {
     this.showSchoolTypeForm.set(true);
   }
 
-  resetProgramForm() {
+  openProgramForm() {
+    this.editingProgram.set(null);
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
     this.programFormLang.set('ru');
     this.programForm = {
       titleRu: '',
@@ -1196,17 +1147,7 @@ export class AdminComponent implements OnInit {
       curriculumSr: [],
       curriculumEn: [],
     };
-  }
-
-  openProgramForm(initial?: Partial<typeof this.programForm>) {
-    this.resetProgramForm();
-    if (initial) {
-      Object.assign(this.programForm, initial);
-    }
     this.showProgramForm.set(true);
-    this.editingProgram.set(null);
-    this.errorMessage.set(null);
-    this.successMessage.set(null);
   }
 
   addLesson(lang: 'ru' | 'sr' | 'en') {
@@ -1284,15 +1225,6 @@ export class AdminComponent implements OnInit {
         this.showProgramForm.set(true);
       },
     });
-  }
-
-
-  getProgramsBySchoolType(stId: string) {
-    return this.adminPrograms().filter(p => (p.schoolType || 'tech') === stId);
-  }
-
-  getGroupsCount(pId: string) {
-    return this.adminGroups().filter(g => g.programId === pId).length;
   }
 
   closeProgramForm() {
@@ -1429,16 +1361,16 @@ export class AdminComponent implements OnInit {
     };
     if (st) {
       this.api.put<{ success: boolean; schoolType: SchoolType }>(`/admin/school-types/${st.id}`, body).subscribe({
-        next: () => {
-          this.schoolTypeSuccess.set(this.translate.instant('admin.saved'));
-          this.loadSchoolTypes();
-          this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
-            next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
-          });
-          setTimeout(() => this.closeSchoolTypeForm(), 800);
-        },
-        error: (err) => this.schoolTypeError.set(err.error?.error || this.translate.instant('admin.saveError')),
-      });
+      next: () => {
+        this.schoolTypeSuccess.set(this.translate.instant('admin.saved'));
+        this.loadSchoolTypes();
+        this.api.get<{ success: boolean; schoolTypes: SchoolType[] }>('/programs/meta/school-types').subscribe({
+          next: (r) => { if (r.success) this.schoolTypes.set(r.schoolTypes); },
+        });
+        setTimeout(() => this.closeSchoolTypeForm(), 800);
+      },
+      error: (err) => this.schoolTypeError.set(err.error?.error || this.translate.instant('admin.saveError')),
+    });
     } else {
       const id = titleRu.toLowerCase().replace(/\s+/g, '-').replace(/[^a-zа-яё0-9-]/gi, '') || 'school-' + Date.now();
       this.api.post<{ success: boolean; schoolType: SchoolType }>('/admin/school-types', { ...body, id }).subscribe({

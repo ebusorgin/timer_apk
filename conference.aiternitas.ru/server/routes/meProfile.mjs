@@ -1,5 +1,5 @@
 import path from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import fs, { existsSync, mkdirSync } from 'fs';
 import multer from 'multer';
 import { createRequestValidator, stringField } from '../middleware/validation.mjs';
 import { isPushAvailable } from '../services/push.mjs';
@@ -49,16 +49,13 @@ export function registerMeProfileRoutes({ app, persistence, subscriberAuth, conf
 
   // Serve avatars
   app.use('/uploads/avatars', (req, res, next) => {
-    const options = {
-      root: avatarsDir,
-      dotfiles: 'deny',
-    };
     const fileName = req.path.replace(/^\//, '');
     if (!fileName || fileName.includes('..')) {
       res.status(404).end();
       return;
     }
-    res.sendFile(fileName, options, (err) => {
+    const localPath = path.join(avatarsDir, fileName);
+    res.sendFile(fileName, { root: avatarsDir, dotfiles: 'deny' }, (err) => {
       if (err) res.status(404).end();
     });
   });
@@ -176,6 +173,7 @@ export function registerMeProfileRoutes({ app, persistence, subscriberAuth, conf
       }
       try {
         const avatarUrl = '/uploads/avatars/' + req.file.filename;
+
         const subscriber = await persistence.upsertSubscriber({
           id: req.subscriberId,
           name: (await persistence.getSubscriberById(req.subscriberId))?.name || '',
